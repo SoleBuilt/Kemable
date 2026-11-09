@@ -11,10 +11,10 @@ use std::time::Duration;
 use paboable_core::catalog::{ColumnInfo, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
 use paboable_core::config::{ConnectionConfig, Secret, Target};
 use paboable_core::engine::EngineInfo;
-use paboable_core::sql::{split, statement_at};
+use paboable_core::sql::{SortColumn, sorted_statement, split, statement_at};
 use paboable_core::{CallOptions, DriverError};
 use paboable_storage::SavedConnection;
-use paboable_store::{CellRange, MAX_COPY_CELLS, WindowRequest};
+use paboable_store::{CellRange, MAX_COPY_CELLS, SortKey, WindowRequest};
 use serde::Serialize;
 use tauri::State;
 use tauri::ipc::{Channel, Response};
@@ -219,6 +219,7 @@ pub async fn run_query(
     sql: String,
     cursor: Option<usize>,
     follow_created_database: bool,
+    row_limit: Option<u64>,
     on_event: Channel<RunEvent>,
 ) -> CommandResult<RunStarted> {
     let server = state.server(conn)?;
@@ -257,6 +258,7 @@ pub async fn run_query(
         grammar,
         statements,
         follow_created_database,
+        row_limit,
         cancel,
         channel: on_event,
     };
@@ -265,6 +267,75 @@ pub async fn run_query(
         run: id,
         ranges,
         script_statements: spans.len(),
+    })
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SortRequestKey {
+    column: usize,
+    descending: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum SortOutcome {
+    /// Run `sql` in `database` with `row_limit`; its result is the sorted one.
+    /// `statement` is the one it was written from, to run for "unsorted".
+    Rerun {
+        sql: String,
+        statement: String,
+        database: Option<String>,
+        row_limit: Option<u64>,
+    },
+    /// The core sorted the rows held; `limited` says they are not every row.
+    Sorted { limited: bool },
+}
+
+/// Sorts a result as `docs/decisions/0005-sorting-a-result.md` decides: its
+/// statement again with ORDER BY when that is safe, else the rows it holds.
+/// No keys clears a sort the core made.
+#[tauri::command]
+pub async fn sort_result(
+    state: State<'_, Arc<AppState>>,
+    result: u64,
+    keys: Vec<SortRequestKey>,
+) -> CommandResult<SortOutcome> {
+    let store = state.result(result)?;
+    if !keys.is_empty()
+        && let Some(origin) = state.origin(result).filter(|origin| origin.alone)
+    {
+        let names: Vec<String> = store.columns().iter().map(|column| column.name.clone()).collect();
+        let columns: Vec<SortColumn> = keys
+            .iter()
+            .map(|key| SortColumn {
+                column: key.column,
+                descending: key.descending,
+            })
+            .collect();
+        if let Some(sql) = sorted_statement(&origin.statement, origin.grammar, &names, &columns) {
+            return Ok(SortOutcome::Rerun {
+                sql,
+                statement: origin.statement,
+                database: origin.database,
+                row_limit: origin.row_limit,
+            });
+        }
+    }
+    let keys: Vec<SortKey> = keys
+        .iter()
+        .map(|key| SortKey {
+            column: key.column,
+            descending: key.descending,
+        })
+        .collect();
+    // A big set takes a moment to sort: keep it off the async workers.
+    let sorting = Arc::clone(&store);
+    tauri::async_runtime::spawn_blocking(move || sorting.sort(&keys))
+        .await
+        .map_err(|error| DriverError::internal(error.to_string()))?;
+    Ok(SortOutcome::Sorted {
+        limited: store.state().limited,
     })
 }
 

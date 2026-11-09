@@ -9,7 +9,7 @@
 A grid sorts in two places:
 
 - **A table tab**, opened from the tree, browses a table that may be far bigger than the rows loaded. Sorting the rows loaded would show the wrong "first" rows.
-- **A query result**, from a statement the user wrote. It may hold every row, or stop at the row cap (`ROW_LIMIT`, `ui/windows/src-tauri/src/run.rs`).
+- **A query result**, from a statement the user wrote. It may hold every row, or stop at the row cap the run named (the toolbar's Limit).
 
 The two ways to sort, compared (2026-11-09):
 
@@ -34,6 +34,8 @@ Naming the column in an `ORDER BY` is not always safe:
 
 Opening a table runs `SELECT * FROM <schema>.<table>` written by the core, and a header click writes it again with `ORDER BY <quoted column>` and the page (`LIMIT`/`OFFSET` on PostgreSQL and SQLite, `OFFSET ... FETCH` on SQL Server). The column names come from the catalog, so they are always safe. A sort shows the table as it is now.
 
+Paging comes with Phase 2's table browsing (`docs/roadmap.md`). Until then a table tab holds the first rows up to the row cap, and its sort is written by `sorted_statement` like any other `SELECT *`, which names every column safely.
+
 ### A query result: run again when the column can be named, else sort the rows held
 
 `paboable_core::sql::sorted_statement(statement, grammar, columns, key)` returns the statement to run again, or `None`:
@@ -49,7 +51,7 @@ When `sorted_statement` gives `None`, the core sorts the rows the result holds: 
 
 ### Order of the rows held
 
-The one ordering for every UI, in the core (`paboable_core::value::order`):
+The one ordering for every UI, in the core (`paboable_store::order`, which reads the store's cells directly):
 
 - NULL first ascending, last descending (descending is the comparison reversed). Equal values keep their arrival order: the sort is stable.
 - Each value orders by its own kind. Numbers compare exactly across integer, float and decimal kinds, NaN after every number. Dates and timestamps compare by instant. UUIDs and bytes compare by content.
@@ -59,7 +61,7 @@ The one ordering for every UI, in the core (`paboable_core::value::order`):
 
 ### Interaction
 
-- A header click cycles ascending, descending, unsorted; the header shows the arrow. Shift+click adds a second key.
+- A header click cycles ascending, descending, unsorted; the header shows the arrow, and the key's number when there are several. Shift+click adds a key. Ctrl+click selects the column instead.
 - Unsorted shows the result as it arrived: for a re-run, the original statement runs again.
 - A sort that runs the statement again goes through the same run as Ctrl+Enter, with its events, its Stop and its row cap. It is not added to the query history as a new query.
 - Once rows can be edited, a sort that would reload asks before discarding unsaved edits.
@@ -73,7 +75,8 @@ The one ordering for every UI, in the core (`paboable_core::value::order`):
 
 ## Consequences
 
-- The core grows `sql::sorted_statement` (reading the select list and the top-level clauses per grammar, with tests for each rule above) and `value::order`, and the store a row order that windows read through (`docs/decisions/0002-result-windows.md`). The window format does not change: a sorted window is still rows in order.
+- The core grows `sql::sorted_statement` (reading the select list and the top-level clauses per grammar, with tests for each rule above), and the store `order` and a row order that windows, copies and the detail pane read through (`ResultStore::sort`; `docs/decisions/0002-result-windows.md`). The window format does not change: a sorted window is still rows in order.
+- Each result set records where it came from (`ResultOrigin` in the Windows app: statement, database, row cap, and whether the run held that statement alone), which `sort_result` reads to choose the path.
 - A query result sorted by re-running may show different rows than before: new ones, gone ones, the top N by the new key. That is the point of the server path, and the reason a client sort never re-runs.
 - Text sorted in the core and text sorted by the server may differ for accented or mixed-case words. The status bar names which path sorted.
 - Rows that arrive after a client sort (a result still streaming) follow in arrival order until the sort is applied again.

@@ -16,11 +16,7 @@ use serde::Serialize;
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
 
-use crate::state::{AppState, OpenServer};
-
-/// The most rows one result set keeps. Past it the driver stops reading and
-/// the set reports `limited`.
-pub const ROW_LIMIT: u64 = 500_000;
+use crate::state::{AppState, OpenServer, ResultOrigin};
 
 /// Row counts reach the UI at most this often. Rows arrive at wire speed into
 /// the store; the UI only needs to know how many there are, about once a frame
@@ -89,6 +85,9 @@ struct RunSink {
     channel: Channel<RunEvent>,
     statement: AtomicUsize,
     open: Mutex<Option<OpenSet>>,
+    /// What a set started now came from; updated before each statement.
+    origin: Mutex<ResultOrigin>,
+    row_limit: Option<u64>,
 }
 
 impl RunSink {
@@ -127,8 +126,9 @@ impl RunSink {
 impl ResultSink for RunSink {
     fn begin_set(&self, columns: Vec<ColumnMeta>) {
         self.close_open_set();
-        let store = Arc::new(ResultStore::new(columns.clone(), Some(ROW_LIMIT)));
-        let id = self.state.add_result(Arc::clone(&store));
+        let store = Arc::new(ResultStore::new(columns.clone(), self.row_limit));
+        let origin = self.origin.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let id = self.state.add_result(Arc::clone(&store), Some(origin));
         self.send(RunEvent::SetStarted {
             result: id,
             statement: self.statement(),
@@ -186,6 +186,8 @@ pub struct Run {
     pub statements: Vec<Statement>,
     /// After `CREATE DATABASE x` succeeds, run the rest of the script in `x`.
     pub follow_created_database: bool,
+    /// The most rows a set keeps; `None` keeps every row.
+    pub row_limit: Option<u64>,
     pub cancel: CancellationToken,
     pub channel: Channel<RunEvent>,
 }
@@ -199,6 +201,14 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
         channel: run.channel.clone(),
         statement: AtomicUsize::new(0),
         open: Mutex::new(None),
+        origin: Mutex::new(ResultOrigin {
+            database: run.database.clone(),
+            grammar: run.grammar,
+            statement: String::new(),
+            alone: run.statements.len() == 1,
+            row_limit: run.row_limit,
+        }),
+        row_limit: run.row_limit,
     });
     let mut database = run.database.clone();
     let mut failed = false;
@@ -209,6 +219,11 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
         }
         sink.statement.store(index, Ordering::Relaxed);
         let text = statement.text.as_str();
+        {
+            let mut origin = sink.origin.lock().unwrap_or_else(PoisonError::into_inner);
+            origin.statement = text.to_owned();
+            origin.database = database.clone();
+        }
         sink.send(RunEvent::StatementStarted {
             index,
             text: text.chars().take(STATEMENT_PREVIEW_CHARS).collect(),

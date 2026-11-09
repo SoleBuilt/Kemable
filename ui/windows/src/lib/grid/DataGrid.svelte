@@ -1,19 +1,26 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import { GridEngine, type GridCallbacks, type GridSource } from "./engine";
+  import { GridEngine, type GridCallbacks, type GridSource, type SortKey } from "./engine";
 
   interface Props {
     source: GridSource | null;
     totalRows: number;
+    /** The sort the header shows. */
+    sortKeys: SortKey[];
     callbacks: GridCallbacks;
   }
 
-  let { source, totalRows, callbacks }: Props = $props();
+  let { source, totalRows, sortKeys, callbacks }: Props = $props();
 
   let scroller: HTMLDivElement;
   let spacer: HTMLDivElement;
   let canvas: HTMLCanvasElement;
   let engine: GridEngine | null = $state(null);
+
+  /** Reads the rows again, after the core sorted them. */
+  export function reload() {
+    engine?.reload();
+  }
 
   /** Moves the cell cursor, for the detail pane's field list. */
   export function focusCell(row: number, column: number) {
@@ -43,6 +50,11 @@
       current.setSource(next);
       current.setTotalRows(totalRows);
     });
+  });
+
+  $effect(() => {
+    const keys = sortKeys;
+    untrack(() => engine?.setSortKeys(keys));
   });
 
   $effect(() => {

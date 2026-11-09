@@ -5,6 +5,8 @@
     cursor: number | null;
     /** Where `sql` starts in the editor, in UTF-16 units: 0 for the whole text, the selection start for a selection. */
     origin: number;
+    /** Keep every row: no row cap (Ctrl+Alt+Enter, Fetch All). */
+    unlimited?: boolean;
   }
 </script>
 
@@ -85,9 +87,9 @@
     return { sql: text, cursor: encoder.encode(text.slice(0, selection.head)).length, origin: 0 };
   }
 
-  function run(mode: "statement" | "all"): boolean {
+  function run(mode: "statement" | "all", unlimited = false): boolean {
     const next = request(mode);
-    if (next) onRun(next);
+    if (next) onRun({ ...next, unlimited });
     return true;
   }
 
@@ -140,6 +142,7 @@
           Prec.highest(
             keymap.of([
               { key: "Mod-Enter", run: () => run("statement") },
+              { key: "Mod-Alt-Enter", run: () => run("statement", true) },
               { key: "Shift-Mod-Enter", run: () => run("all") },
               { key: "F5", run: () => run("all") },
             ]),

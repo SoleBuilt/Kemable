@@ -21,8 +21,24 @@ pub struct AppState {
     pub registry: DriverRegistry,
     ids: AtomicU64,
     servers: Mutex<HashMap<u64, Arc<OpenServer>>>,
-    results: Mutex<HashMap<u64, Arc<ResultStore>>>,
+    results: Mutex<HashMap<u64, ResultEntry>>,
     runs: Mutex<HashMap<u64, CancellationToken>>,
+}
+
+/// A result set and where it came from.
+type ResultEntry = (Arc<ResultStore>, Option<ResultOrigin>);
+
+/// Where a result set came from, so a sort can run its statement again
+/// (`docs/decisions/0005-sorting-a-result.md`).
+#[derive(Debug, Clone)]
+pub struct ResultOrigin {
+    pub database: Option<String>,
+    pub grammar: paboable_core::sql::SqlGrammar,
+    pub statement: String,
+    /// The run held this one statement and nothing else, so running it again
+    /// alone means the same thing.
+    pub alone: bool,
+    pub row_limit: Option<u64>,
 }
 
 /// A connection the user opened: one server, and a session per database
@@ -145,16 +161,20 @@ impl AppState {
         lock(&self.servers).remove(&id)
     }
 
-    pub fn add_result(&self, store: Arc<ResultStore>) -> u64 {
+    pub fn add_result(&self, store: Arc<ResultStore>, origin: Option<ResultOrigin>) -> u64 {
         let id = self.next_id();
-        lock(&self.results).insert(id, store);
+        lock(&self.results).insert(id, (store, origin));
         id
+    }
+
+    pub fn origin(&self, id: u64) -> Option<ResultOrigin> {
+        lock(&self.results).get(&id).and_then(|(_, origin)| origin.clone())
     }
 
     pub fn result(&self, id: u64) -> Result<Arc<ResultStore>> {
         lock(&self.results)
             .get(&id)
-            .cloned()
+            .map(|(store, _)| Arc::clone(store))
             .ok_or_else(|| DriverError::not_found("result"))
     }
 

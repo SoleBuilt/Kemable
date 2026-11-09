@@ -144,3 +144,15 @@ export interface SavedConnection {
   /** Milliseconds since the Unix epoch. */
   lastUsed: number | null;
 }
+
+/** How `sort_result` sorted (docs/decisions/0005-sorting-a-result.md). */
+export type SortOutcome =
+  | {
+      /** Run `sql` for the sorted result; `statement` is the one it was written from. */
+      kind: "rerun";
+      sql: string;
+      statement: string;
+      database: string | null;
+      rowLimit: number | null;
+    }
+  | { kind: "sorted"; limited: boolean };

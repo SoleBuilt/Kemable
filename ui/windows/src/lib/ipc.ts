@@ -13,6 +13,7 @@ import type {
   RunStarted,
   SavedConnection,
   SchemaInfo,
+  SortOutcome,
 } from "./types";
 
 export const ipc = {
@@ -52,6 +53,7 @@ export const ipc = {
    * `cursor` is a UTF-8 byte offset: with it, only the statement under the
    * cursor runs; without it, every statement in `sql`. With
    * `followCreatedDatabase`, the statements after `CREATE DATABASE x` run in x.
+   * `rowLimit` caps each result set; null keeps every row.
    */
   runQuery(
     conn: number,
@@ -59,12 +61,25 @@ export const ipc = {
     sql: string,
     cursor: number | null,
     followCreatedDatabase: boolean,
+    rowLimit: number | null,
     onEvent: (event: RunEvent) => void,
   ) {
     const channel = new Channel<RunEvent>();
     channel.onmessage = onEvent;
-    return invoke<RunStarted>("run_query", { conn, database, sql, cursor, followCreatedDatabase, onEvent: channel });
+    return invoke<RunStarted>("run_query", {
+      conn,
+      database,
+      sql,
+      cursor,
+      followCreatedDatabase,
+      rowLimit,
+      onEvent: channel,
+    });
   },
+
+  /** Sorts a result: by running it again with ORDER BY, or in the core. No keys clears the core's sort. */
+  sortResult: (result: number, keys: { column: number; descending: boolean }[]) =>
+    invoke<SortOutcome>("sort_result", { result, keys }),
 
   cancelRun: (run: number) => invoke<void>("cancel_run", { run }),
 

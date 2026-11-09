@@ -1,9 +1,10 @@
-use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use paboable_core::catalog::ColumnMeta;
 use paboable_core::format::{hex_preview, write_display};
 use paboable_core::value::{Value, ValueKind};
 
+use crate::order::{SortCell, compare};
 use crate::window::{self, WindowRequest};
 
 /// Rows per chunk. A chunk is the unit a store grows by, so appending never
@@ -48,6 +49,17 @@ pub(crate) struct Inner {
     pub(crate) total_rows: u64,
     pub(crate) finished: bool,
     pub(crate) limited: bool,
+    /// The sorted order: display row `i` is stored row `order[i]`. Rows that
+    /// arrived after the sort follow in arrival order.
+    pub(crate) order: Option<Arc<Vec<u64>>>,
+    pub(crate) sort_keys: Vec<SortKey>,
+}
+
+/// One key of a sort: a column, and its direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SortKey {
+    pub column: usize,
+    pub descending: bool,
 }
 
 pub(crate) struct Chunk {
@@ -114,7 +126,21 @@ impl ColumnChunk {
 }
 
 impl Inner {
-    /// The chunk that holds `row`, and the row's index inside it.
+    /// The stored row a display row shows: itself, unless the set is sorted.
+    pub(crate) fn physical(&self, row: u64) -> u64 {
+        self.order
+            .as_ref()
+            .and_then(|order| usize::try_from(row).ok().and_then(|index| order.get(index)))
+            .copied()
+            .unwrap_or(row)
+    }
+
+    /// The chunk and index that hold display row `row`.
+    pub(crate) fn locate_display(&self, row: u64) -> Option<(usize, usize)> {
+        self.locate(self.physical(row))
+    }
+
+    /// The chunk that holds stored row `row`, and the row's index inside it.
     pub(crate) fn locate(&self, row: u64) -> Option<(usize, usize)> {
         if row >= self.total_rows {
             return None;
@@ -211,7 +237,7 @@ impl ResultStore {
 
     pub fn cell(&self, row: u64, column: usize) -> Option<CellValue> {
         let inner = self.read();
-        let (chunk, local) = inner.locate(row)?;
+        let (chunk, local) = inner.locate_display(row)?;
         let column = inner.chunks[chunk].columns.get(column)?;
         if column.is_null(local) {
             return Some(CellValue::Null);
@@ -272,6 +298,58 @@ impl ResultStore {
     }
 }
 
+impl ResultStore {
+    /// Sorts the rows held by `keys` (`order` module), or clears the sort
+    /// when `keys` is empty. The rows stay where they are: windows read
+    /// through the new order. Holds the read lock while it sorts, so rows
+    /// arriving meanwhile wait, and are not in the order.
+    pub fn sort(&self, keys: &[SortKey]) {
+        let order = if keys.is_empty() {
+            None
+        } else {
+            let inner = self.read();
+            let keys: Vec<SortKey> = keys
+                .iter()
+                .copied()
+                .filter(|key| key.column < self.columns.len())
+                .collect();
+            let cell = |row: u64, column: usize| -> SortCell<'_> {
+                match inner.locate(row) {
+                    Some((chunk, local)) => {
+                        let data = &inner.chunks[chunk].columns[column];
+                        SortCell::read(
+                            data.kinds[local],
+                            data.raw[local],
+                            data.bytes(local),
+                            data.is_null(local),
+                        )
+                    }
+                    None => SortCell::Null,
+                }
+            };
+            let mut rows: Vec<u64> = (0..inner.total_rows).collect();
+            rows.sort_by(|&a, &b| {
+                keys.iter()
+                    .map(|key| {
+                        let order = compare(cell(a, key.column), cell(b, key.column));
+                        if key.descending { order.reverse() } else { order }
+                    })
+                    .find(|order| order.is_ne())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            Some(Arc::new(rows))
+        };
+        let mut inner = self.write();
+        inner.sort_keys = if order.is_some() { keys.to_vec() } else { Vec::new() };
+        inner.order = order;
+    }
+
+    /// The keys the set is sorted by; empty when it shows arrival order.
+    pub fn sort_keys(&self) -> Vec<SortKey> {
+        self.read().sort_keys.clone()
+    }
+}
+
 /// The most cells one copy takes, so selecting everything in a huge result
 /// does not build gigabytes of text.
 pub const MAX_COPY_CELLS: u64 = 2_000_000;
@@ -286,7 +364,7 @@ pub struct CellRange {
 }
 
 fn cell_text_in(inner: &Inner, row: u64, column: usize) -> Option<Option<String>> {
-    let (chunk, local) = inner.locate(row)?;
+    let (chunk, local) = inner.locate_display(row)?;
     let data = inner.chunks[chunk].columns.get(column)?;
     if data.is_null(local) {
         return Some(None);
