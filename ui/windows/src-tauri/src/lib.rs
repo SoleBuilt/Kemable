@@ -2,6 +2,7 @@
 //! and turns the UI's commands into core calls. It formats nothing and words
 //! nothing; the core formats values and the UI words errors.
 
+mod catalog;
 mod commands;
 mod library;
 mod run;
@@ -71,6 +72,8 @@ pub fn run() {
             commands::release_result,
             commands::browse_statements,
             commands::count_rows,
+            commands::complete,
+            commands::forget_catalog,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

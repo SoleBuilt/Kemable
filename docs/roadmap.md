@@ -31,7 +31,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 
 - [x] Query history and saved queries. The history is `history.db` (SQLite) in the app data folder, at most 20,000 entries, and keeps only what a person ran: not a sort, not opening a table, not a statement that holds a password. Saved queries are `queries.json`, each for one saved connection or for all.
 - [x] Table browsing with server-side paging and filters; a table tab's sort pages with it (ADR 0005, ADR 0006).
-- [ ] Autocomplete from the catalog.
+- [x] Autocomplete from the catalog (ADR 0007).
 - [ ] Redis: keys, typed values, TTL.
 - [ ] D1 over HTTP.
 - [ ] Editing rows, with a preview of the statements before they run.

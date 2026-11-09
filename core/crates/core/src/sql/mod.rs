@@ -1,11 +1,17 @@
 //! Reading SQL scripts the way each engine's own client does.
 
 mod browse;
+mod completion;
 mod database_change;
+mod lex;
 mod sorted;
 mod split;
 
 pub use browse::{BrowseQuery, BrowseSort, Filter, FilterOp, count_statement, page_statement};
+pub use completion::{
+    CatalogView, Clause, CompletionContext, CompletionItem, ItemKind, Lookups, TableReference, completion_context,
+    completions,
+};
 pub use database_change::{DatabaseChange, database_change};
 pub use sorted::{SortColumn, sorted_statement};
 pub use split::{StatementKind, StatementSpan, split, statement_at};

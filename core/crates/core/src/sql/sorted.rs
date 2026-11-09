@@ -13,6 +13,7 @@
 //! line of its own so a `--` comment before it cannot swallow it. A comment
 //! after the last token is left out.
 
+use super::lex::{Kind, Token, lex_strict};
 use super::{SqlGrammar, quote_ident, quote_ident_bracket};
 
 /// One column of a sort, by its index in the result.
@@ -33,7 +34,7 @@ pub fn sorted_statement(
     if keys.is_empty() || keys.iter().any(|key| key.column >= columns.len()) {
         return None;
     }
-    let mut tokens = lex(statement, grammar)?;
+    let mut tokens = lex_strict(statement, grammar)?;
     // One statement: a trailing `;` is dropped, any other top-level one refuses.
     while tokens
         .last()
@@ -217,185 +218,6 @@ fn skip_group(tokens: &[Token], at: usize) -> usize {
         Some(_) => at + 1,
         None => at,
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    Word,
-    QuotedName,
-    Literal,
-    Punct(char),
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Token {
-    kind: Kind,
-    start: usize,
-    end: usize,
-    /// Parentheses around the token; a `(` and its `)` sit at the outer depth.
-    depth: u32,
-}
-
-impl Token {
-    fn is_word(&self, text: &str, word: &str) -> bool {
-        self.kind == Kind::Word && text[self.start..self.end].eq_ignore_ascii_case(word)
-    }
-
-    /// The name a word or quoted name stands for.
-    fn identifier(&self, text: &str) -> Option<String> {
-        let raw = &text[self.start..self.end];
-        match self.kind {
-            Kind::Word => Some(raw.to_owned()),
-            Kind::QuotedName => {
-                let close = raw.chars().last()?;
-                let inner = raw.get(1..raw.len() - close.len_utf8())?;
-                Some(inner.replace(&format!("{close}{close}"), &close.to_string()))
-            }
-            _ => None,
-        }
-    }
-}
-
-/// The tokens of a statement, comments dropped. `None` when a quote, comment
-/// or parenthesis is left open, since nothing sure can be said about it.
-fn lex(text: &str, grammar: SqlGrammar) -> Option<Vec<Token>> {
-    let bytes = text.as_bytes();
-    let mut tokens = Vec::new();
-    let mut depth = 0u32;
-    let mut i = 0;
-    let nested = matches!(grammar, SqlGrammar::Postgres | SqlGrammar::SqlServer);
-    while i < bytes.len() {
-        let byte = bytes[i];
-        let next = bytes.get(i + 1).copied().unwrap_or(0);
-        let start = i;
-        let kind = match byte {
-            b if b.is_ascii_whitespace() => {
-                i += 1;
-                continue;
-            }
-            b'-' if next == b'-' => {
-                i = bytes[i..]
-                    .iter()
-                    .position(|&b| b == b'\n')
-                    .map_or(bytes.len(), |n| i + n + 1);
-                continue;
-            }
-            b'/' if next == b'*' => {
-                let mut level = 0;
-                loop {
-                    if i + 1 >= bytes.len() {
-                        return None;
-                    }
-                    if bytes[i] == b'/' && bytes[i + 1] == b'*' && (level == 0 || nested) {
-                        level += 1;
-                        i += 2;
-                    } else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                        level -= 1;
-                        i += 2;
-                        if level == 0 {
-                            break;
-                        }
-                    } else {
-                        i += 1;
-                    }
-                }
-                continue;
-            }
-            b'\'' => {
-                let backslash = grammar == SqlGrammar::Postgres && i > 0 && matches!(bytes[i - 1], b'E' | b'e');
-                i = quoted(bytes, i, b'\'', backslash)?;
-                Kind::Literal
-            }
-            b'"' => {
-                i = quoted(bytes, i, b'"', false)?;
-                Kind::QuotedName
-            }
-            b'[' if grammar == SqlGrammar::SqlServer => {
-                i = quoted(bytes, i, b']', false)?;
-                Kind::QuotedName
-            }
-            b'`' if grammar == SqlGrammar::Sqlite => {
-                i = quoted(bytes, i, b'`', false)?;
-                Kind::QuotedName
-            }
-            b'$' if grammar == SqlGrammar::Postgres && (next == b'$' || next.is_ascii_alphabetic() || next == b'_') => {
-                let tag_end = bytes[i + 1..].iter().position(|&b| b == b'$').map(|n| i + 1 + n)?;
-                let tag = &bytes[i..=tag_end];
-                let body = tag_end + 1;
-                let close = bytes[body..].windows(tag.len()).position(|w| w == tag)?;
-                i = body + close + tag.len();
-                Kind::Literal
-            }
-            b if b.is_ascii_alphabetic() || b == b'_' || b >= 0x80 || b == b'@' || b == b'#' => {
-                while i < bytes.len()
-                    && (bytes[i].is_ascii_alphanumeric()
-                        || matches!(bytes[i], b'_' | b'$' | b'@' | b'#')
-                        || bytes[i] >= 0x80)
-                {
-                    i += 1;
-                }
-                Kind::Word
-            }
-            b if b.is_ascii_digit() => {
-                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.') {
-                    i += 1;
-                }
-                Kind::Literal
-            }
-            b'(' => {
-                tokens.push(Token {
-                    kind: Kind::Punct('('),
-                    start,
-                    end: i + 1,
-                    depth,
-                });
-                depth += 1;
-                i += 1;
-                continue;
-            }
-            b')' => {
-                depth = depth.checked_sub(1)?;
-                tokens.push(Token {
-                    kind: Kind::Punct(')'),
-                    start,
-                    end: i + 1,
-                    depth,
-                });
-                i += 1;
-                continue;
-            }
-            other => {
-                i += 1;
-                Kind::Punct(char::from(other))
-            }
-        };
-        tokens.push(Token {
-            kind,
-            start,
-            end: i,
-            depth,
-        });
-    }
-    (depth == 0).then_some(tokens)
-}
-
-/// The end of a quoted run opened at `start`, a doubled close staying inside.
-fn quoted(bytes: &[u8], start: usize, close: u8, backslash: bool) -> Option<usize> {
-    let mut i = start + 1;
-    while i < bytes.len() {
-        if backslash && bytes[i] == b'\\' {
-            i += 2;
-        } else if bytes[i] == close {
-            if bytes.get(i + 1) == Some(&close) {
-                i += 2;
-            } else {
-                return Some(i + 1);
-            }
-        } else {
-            i += 1;
-        }
-    }
-    None
 }
 
 #[cfg(test)]

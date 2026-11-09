@@ -6,6 +6,7 @@ import type {
   BrowseQuery,
   BrowseStatements,
   ColumnInfo,
+  CompletionReply,
   ConnectionConfig,
   CoreError,
   DatabaseInfo,
@@ -59,6 +60,13 @@ export const ipc = {
 
   /** The page and count statements a table tab runs. */
   browseStatements: (conn: number, query: BrowseQuery) => invoke<BrowseStatements>("browse_statements", { conn, query }),
+
+  /** The names to offer at UTF-8 byte `cursor` of `text`; null inside a string or a comment. */
+  complete: (conn: number, database: string | null, text: string, cursor: number) =>
+    invoke<CompletionReply | null>("complete", { conn, database, text, cursor }),
+
+  /** Forgets what completion read of a server's catalog, after a change to it. */
+  forgetCatalog: (conn: number) => invoke<void>("forget_catalog", { conn }),
 
   /** Runs a count statement; gives up after 30 s. */
   countRows: (conn: number, database: string | null, sql: string) =>

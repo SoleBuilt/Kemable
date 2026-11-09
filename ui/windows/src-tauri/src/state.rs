@@ -12,6 +12,8 @@ use paboable_core::{CallOptions, DriverError, Result};
 use paboable_store::ResultStore;
 use tokio_util::sync::CancellationToken;
 
+use crate::catalog::CatalogCache;
+
 /// Neon wakes a suspended compute in a few seconds; leave room for it.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -25,6 +27,8 @@ pub struct AppState {
     servers: Mutex<HashMap<u64, Arc<OpenServer>>>,
     results: Mutex<HashMap<u64, ResultEntry>>,
     runs: Mutex<HashMap<u64, CancellationToken>>,
+    /// What the editor's completion has read of each server's catalog.
+    pub catalog: CatalogCache,
 }
 
 /// A result set and where it came from.
@@ -143,6 +147,7 @@ impl AppState {
             servers: Mutex::default(),
             results: Mutex::default(),
             runs: Mutex::default(),
+            catalog: CatalogCache::default(),
         }
     }
 

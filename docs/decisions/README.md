@@ -34,3 +34,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0004 | [How each engine is reached](0004-engines.md) |
 | 0005 | [Sorting a result: run again with ORDER BY, else sort the rows held](0005-sorting-a-result.md) |
 | 0006 | [A table tab reads one page at a time, filtered, sorted and counted on the server](0006-table-browsing.md) |
+| 0007 | [Autocomplete reads its context in the core and its names from a cached catalog](0007-autocomplete.md) |

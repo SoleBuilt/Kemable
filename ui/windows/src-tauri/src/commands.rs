@@ -13,7 +13,8 @@ use paboable_core::config::{ConnectionConfig, Secret, Target};
 use paboable_core::engine::EngineInfo;
 use paboable_core::sink::ResultSink;
 use paboable_core::sql::{
-    BrowseQuery, SortColumn, count_statement, page_statement, sorted_statement, split, statement_at,
+    BrowseQuery, Clause, CompletionItem, SortColumn, completion_context, completions, count_statement, page_statement,
+    sorted_statement, split, statement_at,
 };
 use paboable_core::value::Value;
 use paboable_core::{CallOptions, DriverError};
@@ -152,6 +153,7 @@ fn title_of(target: &Target) -> String {
 
 #[tauri::command]
 pub async fn disconnect(state: State<'_, Arc<AppState>>, conn: u64) -> CommandResult<()> {
+    state.catalog.forget(conn);
     if let Some(server) = state.remove_server(conn) {
         server.close().await;
     }
@@ -562,4 +564,51 @@ impl ResultSink for CountSink {
     fn command_done(&self, _rows_affected: Option<u64>) {}
 
     fn notice(&self, _text: &str) {}
+}
+
+/// What the editor offers at a cursor (docs/decisions/0007-autocomplete.md).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionReply {
+    /// The UTF-8 byte offset where the word the items replace starts.
+    from: usize,
+    items: Vec<CompletionItem>,
+}
+
+/// The names to offer at byte `cursor` of `text`; `None` inside a string or a comment.
+#[tauri::command]
+pub async fn complete(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    text: String,
+    cursor: usize,
+) -> CommandResult<Option<CompletionReply>> {
+    let server = state.server(conn)?;
+    let Some(grammar) = server.engine.sql_grammar else {
+        return Ok(None);
+    };
+    let Some(context) = completion_context(&text, cursor, grammar) else {
+        return Ok(None);
+    };
+    let from = context.from;
+    if matches!(context.clause, Clause::Start | Clause::AfterTable | Clause::Other) {
+        return Ok(Some(CompletionReply {
+            from,
+            items: Vec::new(),
+        }));
+    }
+    let session = server.session(database.as_deref()).await?;
+    let view = state.catalog.view(conn, database, session, &context).await;
+    Ok(Some(CompletionReply {
+        from,
+        items: completions(&context, &view, grammar),
+    }))
+}
+
+/// Forgets what completion read of a server's catalog, after a change to it.
+#[tauri::command]
+pub async fn forget_catalog(state: State<'_, Arc<AppState>>, conn: u64) -> CommandResult<()> {
+    state.catalog.forget(conn);
+    Ok(())
 }
