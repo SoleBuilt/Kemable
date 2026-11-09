@@ -15,8 +15,8 @@ use paboable_core::engine::{DataModel, EngineInfo};
 use paboable_core::keys::{KeyDetail, KeyPage, KeyScan};
 use paboable_core::sink::ResultSink;
 use paboable_core::sql::{
-    BrowseQuery, Clause, CompletionItem, SortColumn, completion_context, completions, count_statement, page_statement,
-    sorted_statement, split, statement_at,
+    BrowseQuery, Clause, CompletionItem, NewValue, RowEdit, SortColumn, SqlGrammar, completion_context, completions,
+    count_statement, edit_statement, page_statement, sorted_statement, split, statement_at,
 };
 use paboable_core::value::Value;
 use paboable_core::{CallOptions, DriverError};
@@ -24,7 +24,7 @@ use paboable_storage::SavedConnection;
 use paboable_storage::history::{HistoryEntry, HistoryQuery};
 use paboable_storage::queries::SavedQuery;
 use paboable_store::{CellRange, MAX_COPY_CELLS, ResultStore, SortKey, WindowRequest};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::{Channel, Response};
 use tokio_util::sync::CancellationToken;
@@ -727,3 +727,125 @@ impl ResultSink for KeySink {
             .push(text.to_owned());
     }
 }
+
+/// A table tab's pending edits (docs/decisions/0010-editing-rows.md). Rows
+/// are rows of `result`, the page the tab shows; columns are its columns.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditRequest {
+    pub result: u64,
+    pub table: TableRef,
+    /// The primary key's columns, which name each row.
+    pub key: Vec<String>,
+    #[serde(default)]
+    pub updates: Vec<RowUpdate>,
+    #[serde(default)]
+    pub deletes: Vec<u64>,
+    #[serde(default)]
+    pub inserts: Vec<Vec<CellEdit>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RowUpdate {
+    pub row: u64,
+    pub cells: Vec<CellEdit>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CellEdit {
+    pub column: usize,
+    pub value: NewValue,
+}
+
+/// The statements that save `request`, in the order they run: deletes,
+/// updates, inserts, so a key freed by a delete can be taken by the rest.
+pub fn edit_statements(state: &AppState, grammar: SqlGrammar, request: &EditRequest) -> CommandResult<Vec<String>> {
+    let store = state.result(request.result)?;
+    let names: Vec<String> = store.columns().iter().map(|column| column.name.clone()).collect();
+    let key: Vec<(usize, &String)> = request
+        .key
+        .iter()
+        .map(|name| {
+            names
+                .iter()
+                .position(|column| column == name)
+                .map(|index| (index, name))
+                .ok_or_else(|| DriverError::config(format!("the key column {name} is not in the page")))
+        })
+        .collect::<CommandResult<_>>()?;
+    let name_of = |column: usize| {
+        names
+            .get(column)
+            .cloned()
+            .ok_or_else(|| DriverError::config(format!("no column {column}")))
+    };
+    let key_of = |row: u64| {
+        key.iter()
+            .map(|(index, name)| {
+                let value = store
+                    .cell(row, *index)
+                    .ok_or_else(|| DriverError::not_found(format!("row {row}")))?
+                    .into_value();
+                Ok(((*name).clone(), value))
+            })
+            .collect::<CommandResult<Vec<_>>>()
+    };
+    let cells = |cells: &[CellEdit]| {
+        cells
+            .iter()
+            .map(|cell| Ok((name_of(cell.column)?, cell.value.clone())))
+            .collect::<CommandResult<Vec<_>>>()
+    };
+
+    let mut edits = Vec::new();
+    for row in &request.deletes {
+        edits.push(RowEdit::Delete { key: key_of(*row)? });
+    }
+    for update in &request.updates {
+        edits.push(RowEdit::Update {
+            key: key_of(update.row)?,
+            set: cells(&update.cells)?,
+        });
+    }
+    for insert in &request.inserts {
+        edits.push(RowEdit::Insert { values: cells(insert)? });
+    }
+    edits
+        .iter()
+        .map(|edit| edit_statement(grammar, &request.table, edit))
+        .collect()
+}
+
+/// The statements a Save would run, for the preview.
+#[tauri::command]
+pub async fn edit_preview(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    request: EditRequest,
+) -> CommandResult<Vec<String>> {
+    let server = state.server(conn)?;
+    let grammar = server
+        .engine
+        .sql_grammar
+        .ok_or_else(|| DriverError::unsupported("this engine has no tables to edit"))?;
+    edit_statements(&state, grammar, &request)
+}
+
+/// Runs the previewed statements, all or none.
+#[tauri::command]
+pub async fn apply_edits(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    statements: Vec<String>,
+) -> CommandResult<()> {
+    let session = state.server(conn)?.session(database.as_deref()).await?;
+    session
+        .apply_edits(&statements, CallOptions::default().with_timeout(EDIT_TIMEOUT))
+        .await
+}
+
+/// How long saving edits may take: each statement names one row by its key.
+const EDIT_TIMEOUT: Duration = Duration::from_secs(60);

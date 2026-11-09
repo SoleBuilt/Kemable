@@ -218,3 +218,43 @@ Cần một tài khoản Cloudflare (gói free đủ dùng) và một database D
 - [ ] Đóng app, mở lại, mở `D1 test` từ danh sách đã lưu.
   **Đúng:** kết nối mà không hỏi token (token ở Windows Credential Manager). Bỏ tick lưu token rồi mở lại thì app hỏi "API token".
 - [ ] Nếu máy đi Internet qua proxy công ty: kết nối vẫn được, vì app dùng proxy của Windows.
+
+## 7. Sửa dữ liệu trong bảng (xem trước câu lệnh rồi mới lưu)
+
+Dùng `demo_sales` (PostgreSQL), rồi lặp lại các bước chính trên SQL Server và SQLite. Nên thử trên bảng thử, ví dụ:
+
+```sql
+create table edit_test (id int primary key, name varchar(50), qty int default 0, note text);
+insert into edit_test values (1, 'a', 1, null), (2, 'b', 2, 'x'), (3, 'c', 3, null);
+```
+
+- [ ] Mở `edit_test` từ cây.
+  **Đúng:** dưới thanh phân trang có thanh sửa: **+ Row**, **Delete rows**, **Set NULL**. Mở một view hoặc bảng không có khóa chính thì thanh ghi "Read-only: no primary key...".
+- [ ] Double-click ô `name` của dòng 1, gõ `A'1 chào`, Enter.
+  **Đúng:** ô có nền vàng nhạt, con trỏ xuống dòng 2; bên phải thanh sửa ghi "1 changed". F2 hoặc gõ một chữ khi đang chọn ô cũng mở ô sửa (gõ chữ thì thay cả giá trị).
+- [ ] Trong ô sửa: Tab, Shift+Tab, Shift+Enter, Esc, nút **NULL** hoặc Ctrl+Shift+N.
+  **Đúng:** Tab lưu và sang phải, Shift+Tab sang trái, Shift+Enter xuống dòng trong ô, Esc bỏ, NULL đặt NULL (chữ NULL màu xám).
+- [ ] Sửa một ô rồi sửa lại đúng giá trị cũ.
+  **Đúng:** nền vàng mất, không còn tính là thay đổi.
+- [ ] Chọn dòng 2, nhấn **Delete**; nhấn Delete lần nữa.
+  **Đúng:** lần 1 dòng bị gạch ngang, nền đỏ nhạt; lần 2 bỏ đánh dấu.
+- [ ] Bấm **+ Row** (Alt+Insert), gõ `4` vào `id`, Tab, gõ `d`.
+  **Đúng:** dòng mới ở cuối, số dòng là `*`; ô chưa nhập ghi `DEFAULT`. Delete trên dòng mới thì xóa hẳn dòng đó.
+- [ ] Khi đang có thay đổi: bấm sang trang khác, bấm tiêu đề cột để sort, mở bảng khác, chạy một câu trong editor, Disconnect.
+  **Đúng:** đều bị chặn, status bar ghi "Save or discard the table's edits first (Ctrl+S)".
+- [ ] Nhấn **Ctrl+S** (hoặc **Preview & save**).
+  **Đúng:** hộp thoại liệt kê đúng các câu sẽ chạy, theo thứ tự DELETE → UPDATE → INSERT, ví dụ `UPDATE "public"."edit_test" SET "name" = 'A''1 chào' WHERE "id" = 1;`. Có **Copy SQL**. Esc đóng mà không chạy gì.
+- [ ] Bấm **Save** (Ctrl+Enter).
+  **Đúng:** status bar ghi "Saved N changes"; trang đọc lại, thấy dữ liệu mới, tổng số dòng đếm lại; nền vàng/đỏ mất.
+- [ ] Thử xung đột: mở `edit_test`, sửa ô của dòng `id = 3` nhưng chưa lưu; trong một cửa sổ khác (psql/SSMS, hoặc tạm Discard rồi chạy trong editor) chạy `delete from edit_test where id = 3`; quay lại lưu.
+  **Đúng:** hộp thoại báo "A row being saved is no longer there; nothing was saved" kèm "statement N changed 0 rows"; các thay đổi khác trong cùng lần lưu cũng không được ghi; thay đổi vẫn còn trên lưới để sửa hoặc Discard.
+- [ ] Gõ chữ vào cột số (`qty` = `abc`) rồi lưu.
+  **Đúng:** hộp thoại hiện lỗi của server; không có gì được ghi.
+- [ ] Bấm **Discard**.
+  **Đúng:** mọi thay đổi chưa lưu biến mất.
+- [ ] Trên **SQL Server** và **SQLite**: sửa, xóa, thêm dòng, lưu.
+  **Đúng:** câu lệnh dùng `[...]` và `N'...'` (SQL Server) hoặc `"..."` (SQLite); lưu đúng; xung đột cũng không ghi gì.
+- [ ] Giao diện sáng và tối.
+  **Đúng:** nền vàng/đỏ của ô sửa và dòng xóa đọc rõ ở cả hai.
+
+Test tự động: `edits_save_on_sqlite` chạy trong `node scripts/verify.mjs`; `edits_save_on_postgres` và `edits_save_on_sql_server` chạy cùng các test live (cuối `docs/testing/phase-1.md`).

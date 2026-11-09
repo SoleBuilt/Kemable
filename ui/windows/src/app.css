@@ -19,6 +19,9 @@
   --active-line: rgb(0 0 0 / 0.035);
   --grid-line: #ececf0;
   --grid-stripe: #fafafc;
+  /* A cell with an unsaved edit, and a row marked for delete. */
+  --grid-edited: rgb(234 179 8 / 0.22);
+  --grid-deleted: rgb(198 40 40 / 0.12);
   --danger: #c62828;
   --success: #2e7d32;
 
@@ -47,6 +50,8 @@
     --active-line: rgb(255 255 255 / 0.04);
     --grid-line: #2c2c32;
     --grid-stripe: #222226;
+    --grid-edited: rgb(234 179 8 / 0.2);
+    --grid-deleted: rgb(255 107 107 / 0.14);
     --danger: #ff6b6b;
     --success: #5cc26a;
 

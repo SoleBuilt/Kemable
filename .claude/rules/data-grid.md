@@ -26,6 +26,7 @@ The grid is `GridEngine` (`engine.ts`): one canvas laid over a native scroll con
 - **A selection is an anchor, a focus (the cell cursor) and a mode**: cells, rows, columns or all. Click a cell, drag or Shift+click for cells; the row numbers for rows; Ctrl+click a header for columns (a plain header click is the sort's); the corner or Ctrl+A for all. The grid reports every change through `selectionChanged`.
 - Keys: arrows, Ctrl+arrows, Tab, Page Up/Down, Home/End, Ctrl+Home/End move the cursor; with Shift they extend the selection; Escape collapses it.
 - **Copy is the core's.** Ctrl+C copies the selection as tab-separated text built by `ResultStore::copy_tsv` (CRLF rows, NULL as an empty field, quoting as spreadsheets read it); Ctrl+Shift+C adds the column names. Never assemble copied text from windows: they are cut at the character cap.
+- **Edits are drawn, not stored.** The owner passes an `EditOverlay` (new cell values, deleted rows, new rows after `baseRows`); the grid tints and draws them over the rows and never fetches a block past `baseRows`. Keys and double-click only ask the owner (`editRequested`, `deleteRequested`); the editor input is the owner's (`docs/decisions/0010-editing-rows.md`).
 - Svelte state never reaches the draw loop: `DataGrid.svelte` passes plain objects (`$state.raw` in the owner), so no proxy is read per cell.
 
 ## Checking a change

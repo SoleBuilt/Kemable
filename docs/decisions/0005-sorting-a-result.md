@@ -64,7 +64,7 @@ The one ordering for every UI, in the core (`paboable_store::order`, which reads
 - A header click cycles ascending, descending, unsorted; the header shows the arrow, and the key's number when there are several. Shift+click adds a key. Ctrl+click selects the column instead.
 - Unsorted shows the result as it arrived: for a re-run, the original statement runs again.
 - A sort that runs the statement again goes through the same run as Ctrl+Enter, with its events, its Stop and its row cap. It is not added to the query history as a new query.
-- Once rows can be edited, a sort that would reload asks before discarding unsaved edits.
+- While a table tab has unsaved edits, a sort that would read the page again is refused until they are saved or discarded (`docs/decisions/0010-editing-rows.md`).
 - Fresh data is never a side effect of a client sort: to see rows inserted since, run the statement again (Ctrl+Enter, F5).
 
 ## Rationale

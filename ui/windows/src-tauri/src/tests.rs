@@ -509,3 +509,176 @@ async fn completion_reads_the_sql_server_catalog() {
     completion_checks(&state, &server, SqlGrammar::SqlServer, "dbo").await;
     server.close().await;
 }
+
+/// A table tab's edits on each engine: from the page's rows to the statements
+/// to the saved table, and a save that names a gone row changing nothing
+/// (docs/decisions/0010-editing-rows.md).
+async fn edit_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, grammar: SqlGrammar) {
+    use crate::commands::{CellEdit, EditRequest, RowUpdate, edit_statements};
+    use paboable_core::ErrorCode;
+    use paboable_core::catalog::TableRef;
+    use paboable_core::sql::NewValue;
+
+    let name = format!("paboable_edit_{}", std::process::id());
+    let text_type = if grammar == SqlGrammar::SqlServer {
+        "nvarchar(50)"
+    } else {
+        "varchar(50)"
+    };
+    let setup = format!(
+        "create table {name} (id int primary key, name {text_type}, qty int);\n\
+         insert into {name} values (1, 'a', 1), (2, 'b', 2), (3, 'c', 3);"
+    );
+    let events = run_script(state, server, &setup, grammar).await;
+    assert!(of_type(&events, "statementFailed").is_empty(), "{events:#?}");
+    let page = run_script(state, server, &format!("select * from {name} order by id"), grammar).await;
+    let result = of_type(&page, "setStarted")[0]["result"].as_u64().unwrap();
+
+    let text = |value: &str| NewValue::Text(value.to_owned());
+    let request = |updates: Vec<RowUpdate>, deletes: Vec<u64>, inserts: Vec<Vec<CellEdit>>| EditRequest {
+        result,
+        table: TableRef {
+            schema: None,
+            name: name.clone(),
+        },
+        key: vec!["id".into()],
+        updates,
+        deletes,
+        inserts,
+    };
+    let session = server.session(None).await.unwrap();
+    let rows = |sql: String| async move {
+        let events = run_script(state, server, &sql, grammar).await;
+        let result = of_type(&events, "setStarted")[0]["result"].as_u64().unwrap();
+        let store = state.result(result).unwrap();
+        (0..store.state().total_rows)
+            .map(|row| store.row_texts(row).unwrap_or_default())
+            .collect::<Vec<_>>()
+    };
+    let cells = |values: &[Option<&str>]| values.iter().map(|value| value.map(str::to_owned)).collect::<Vec<_>>();
+
+    let saved = request(
+        vec![RowUpdate {
+            row: 0,
+            cells: vec![
+                CellEdit {
+                    column: 1,
+                    value: text("A'1 chào"),
+                },
+                CellEdit {
+                    column: 2,
+                    value: NewValue::Null,
+                },
+            ],
+        }],
+        vec![1],
+        vec![vec![
+            CellEdit {
+                column: 0,
+                value: text("4"),
+            },
+            CellEdit {
+                column: 1,
+                value: text("d"),
+            },
+            CellEdit {
+                column: 2,
+                value: NewValue::Default,
+            },
+        ]],
+    );
+    let statements = edit_statements(state, grammar, &saved).unwrap();
+    assert_eq!(statements.len(), 3, "{statements:#?}");
+    session
+        .apply_edits(&statements, CallOptions::default())
+        .await
+        .unwrap_or_else(|error| panic!("{grammar:?}: {error:?}\n{statements:#?}"));
+    assert_eq!(
+        rows(format!("select id, name, qty from {name} order by id")).await,
+        [
+            cells(&[Some("1"), Some("A'1 chào"), None]),
+            cells(&[Some("3"), Some("c"), Some("3")]),
+            cells(&[Some("4"), Some("d"), None]),
+        ],
+        "{grammar:?}"
+    );
+
+    // Row 1 of the page (id 2) is gone now: the update before it is rolled back too.
+    let gone = request(
+        vec![
+            RowUpdate {
+                row: 2,
+                cells: vec![CellEdit {
+                    column: 1,
+                    value: text("changed"),
+                }],
+            },
+            RowUpdate {
+                row: 1,
+                cells: vec![CellEdit {
+                    column: 1,
+                    value: text("x"),
+                }],
+            },
+        ],
+        Vec::new(),
+        Vec::new(),
+    );
+    let statements = edit_statements(state, grammar, &gone).unwrap();
+    let error = session.apply_edits(&statements, CallOptions::default()).await.err();
+    assert_eq!(error.map(|error| error.code), Some(ErrorCode::RowGone), "{grammar:?}");
+    assert_eq!(
+        rows(format!("select name from {name} where id = 3")).await,
+        [cells(&[Some("c")])],
+        "{grammar:?}: nothing was saved"
+    );
+    // The session is out of the transaction: the next run works.
+    let after = run_script(state, server, &format!("drop table {name};"), grammar).await;
+    assert!(of_type(&after, "statementFailed").is_empty(), "{after:#?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn edits_save_on_sqlite() {
+    use paboable_core::config::{ConnectionConfig, Target};
+    use paboable_driver_sqlite::SqliteDriver;
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
+    let driver = state.registry.get("sqlite").cloned().unwrap();
+    let config = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: ":memory:".into(),
+            read_only: false,
+        },
+        options: Default::default(),
+    };
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    edit_checks(&state, &server, SqlGrammar::Sqlite).await;
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+async fn edits_save_on_postgres() {
+    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
+    let driver = state.registry.get("postgres").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    edit_checks(&state, &server, SqlGrammar::Postgres).await;
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+async fn edits_save_on_sql_server() {
+    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
+    let driver = state.registry.get("mssql").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    edit_checks(&state, &server, SqlGrammar::SqlServer).await;
+    server.close().await;
+}

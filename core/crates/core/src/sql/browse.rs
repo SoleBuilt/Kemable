@@ -9,7 +9,8 @@
 
 use serde::Deserialize;
 
-use super::{SqlGrammar, StatementKind, quote_ident, quote_ident_bracket, split};
+use super::literal::typed as literal;
+use super::{SqlGrammar, StatementKind, quote_name as ident, split, table_name};
 use crate::catalog::TableRef;
 use crate::error::DriverError;
 
@@ -253,54 +254,6 @@ fn escape_like(grammar: SqlGrammar, value: &str) -> String {
         out.push(ch);
     }
     out
-}
-
-/// A value as a literal. SQLite compares a column with the literal's own
-/// type, so a number goes bare there; PostgreSQL and SQL Server convert a
-/// quoted literal to the column's type, and refuse one that does not fit.
-fn literal(grammar: SqlGrammar, value: &str) -> String {
-    if grammar == SqlGrammar::Sqlite && is_number(value) {
-        return value.to_owned();
-    }
-    let mut out = String::with_capacity(value.len() + 3);
-    if grammar == SqlGrammar::SqlServer {
-        out.push('N');
-    }
-    out.push('\'');
-    for ch in value.chars() {
-        if ch == '\'' {
-            out.push('\'');
-        }
-        out.push(ch);
-    }
-    out.push('\'');
-    out
-}
-
-fn is_number(value: &str) -> bool {
-    let digits = value.strip_prefix('-').unwrap_or(value);
-    let mut parts = digits.splitn(2, '.');
-    let whole = parts.next().unwrap_or_default();
-    let fraction = parts.next();
-    !whole.is_empty()
-        && whole.bytes().all(|byte| byte.is_ascii_digit())
-        && fraction.is_none_or(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-        // A leading zero is text, as a code or a phone number is.
-        && (whole == "0" || !whole.starts_with('0'))
-}
-
-fn ident(grammar: SqlGrammar, name: &str) -> String {
-    match grammar {
-        SqlGrammar::SqlServer => quote_ident_bracket(name),
-        SqlGrammar::Postgres | SqlGrammar::Sqlite => quote_ident(name),
-    }
-}
-
-fn table_name(grammar: SqlGrammar, table: &TableRef) -> String {
-    match &table.schema {
-        Some(schema) => format!("{}.{}", ident(grammar, schema), ident(grammar, &table.name)),
-        None => ident(grammar, &table.name),
-    }
 }
 
 #[cfg(test)]

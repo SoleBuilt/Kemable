@@ -27,6 +27,10 @@ pub enum ErrorCode {
     /// An id the caller holds names nothing open any more.
     #[serde(rename = "not_found")]
     NotFound,
+    /// An edit named a row by its key and changed another number of rows:
+    /// the row is gone, or the key is not unique. Nothing was saved.
+    #[serde(rename = "edit.row_gone")]
+    RowGone,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -45,6 +49,7 @@ impl ErrorCode {
             Self::Lost => "driver.lost",
             Self::Unsupported => "driver.unsupported",
             Self::NotFound => "not_found",
+            Self::RowGone => "edit.row_gone",
             Self::Internal => "internal",
         }
     }
@@ -115,6 +120,16 @@ impl DriverError {
 
     pub fn not_found(what: impl Into<String>) -> Self {
         Self::new(ErrorCode::NotFound, what)
+    }
+
+    /// Statement `index` (from 0) of an edit changed `changed` rows, not one;
+    /// `None` when the engine does not say how many.
+    pub fn row_gone(index: usize, changed: Option<u64>) -> Self {
+        let changed = changed.map_or_else(|| "not one".to_owned(), |count| count.to_string());
+        Self::new(
+            ErrorCode::RowGone,
+            format!("statement {} changed {changed} rows", index + 1),
+        )
     }
 
     pub fn internal(message: impl Into<String>) -> Self {

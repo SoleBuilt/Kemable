@@ -14,6 +14,7 @@ const TITLES: Record<string, string> = {
   "driver.lost": "The connection was lost",
   "driver.unsupported": "Not supported by this database",
   not_found: "That item is no longer open",
+  "edit.row_gone": "A row being saved is no longer there; nothing was saved",
   internal: "Something went wrong inside Paboable",
 };
 

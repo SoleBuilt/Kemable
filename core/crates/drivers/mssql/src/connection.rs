@@ -464,6 +464,21 @@ impl Connection for MssqlConnection {
         }
     }
 
+    /// One batch: tiberius does not hand out row counts, so the batch checks
+    /// `@@ROWCOUNT` after each statement and throws, and `XACT_ABORT` with the
+    /// CATCH rolls everything back, a cancel's attention included.
+    async fn apply_edits(&self, statements: &[String], options: CallOptions) -> Result<()> {
+        let batch = edit_batch(statements);
+        match self.execute(&batch, Arc::new(Discard), options).await {
+            Ok(_) => Ok(()),
+            Err(error) if error.engine_code.as_deref() == Some(ROW_GONE_ERROR) => {
+                let index = error.message.trim().parse::<usize>().unwrap_or(0);
+                Err(DriverError::row_gone(index, None))
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     async fn close(&self) -> Result<()> {
         for slot in [&self.editor, &self.catalog] {
             if let Some(client) = slot.lock().await.take() {
@@ -472,4 +487,39 @@ impl Connection for MssqlConnection {
         }
         Ok(())
     }
+}
+
+/// The error number an edit's batch throws when a statement changes another number of rows than one.
+const ROW_GONE_ERROR: &str = "50001";
+
+/// An edit's statements as one all-or-nothing batch; the error's message is the statement's index.
+fn edit_batch(statements: &[String]) -> String {
+    let mut batch = String::from("SET XACT_ABORT ON;\nBEGIN TRY\nBEGIN TRANSACTION;\n");
+    for (index, statement) in statements.iter().enumerate() {
+        batch.push_str(statement);
+        batch.push_str(&format!(
+            ";\nIF @@ROWCOUNT <> 1 THROW {ROW_GONE_ERROR}, N'{index}', 1;\n"
+        ));
+    }
+    batch.push_str(
+        "COMMIT TRANSACTION;\nEND TRY\nBEGIN CATCH\nIF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\nTHROW;\nEND CATCH",
+    );
+    batch
+}
+
+/// A sink for a batch whose rows nobody reads.
+struct Discard;
+
+impl ResultSink for Discard {
+    fn begin_set(&self, _columns: Vec<ColumnMeta>) {}
+
+    fn push_rows(&self, _values: &[paboable_core::value::Value]) -> bool {
+        true
+    }
+
+    fn end_set(&self) {}
+
+    fn command_done(&self, _rows_affected: Option<u64>) {}
+
+    fn notice(&self, _text: &str) {}
 }

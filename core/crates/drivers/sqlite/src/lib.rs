@@ -211,6 +211,30 @@ impl Connection for SqliteConnection {
             .await
     }
 
+    async fn apply_edits(&self, statements: &[String], options: CallOptions) -> Result<()> {
+        let statements = statements.to_vec();
+        self.blocking(&options, move |conn| {
+            // IMMEDIATE takes the write lock now, so a busy file fails before any row changes.
+            conn.execute_batch("BEGIN IMMEDIATE").map_err(map_error)?;
+            let applied = statements.iter().enumerate().try_for_each(|(index, statement)| {
+                let changed = conn.execute(statement, []).map_err(map_error)?;
+                if changed == 1 {
+                    Ok(())
+                } else {
+                    Err(DriverError::row_gone(index, u64::try_from(changed).ok()))
+                }
+            });
+            match applied {
+                Ok(()) => conn.execute_batch("COMMIT").map_err(map_error),
+                Err(error) => {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    Err(error)
+                }
+            }
+        })
+        .await
+    }
+
     async fn close(&self) -> Result<()> {
         // The file closes when the last handle drops.
         Ok(())

@@ -37,3 +37,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0007 | [Autocomplete reads its context in the core and its names from a cached catalog](0007-autocomplete.md) |
 | 0008 | [Key-value engines: a console of commands, keys by SCAN, a key read in steps](0008-key-value-engines.md) |
 | 0009 | [Cloudflare D1 through its REST API, one request per statement](0009-d1-over-http.md) |
+| 0010 | [Editing rows: statements shown before they run, saved all or none](0010-editing-rows.md) |

@@ -478,6 +478,42 @@ impl Connection for PostgresConnection {
         }
     }
 
+    async fn apply_edits(&self, statements: &[String], options: CallOptions) -> Result<()> {
+        options.check()?;
+        // Simple queries: they report each command's count, and Supabase's pooler takes them.
+        let work = async {
+            self.editor
+                .batch_execute("BEGIN")
+                .await
+                .map_err(|error| errors::map(&error, None, Phase::Run))?;
+            for (index, statement) in statements.iter().enumerate() {
+                let messages = self
+                    .editor
+                    .simple_query(statement)
+                    .await
+                    .map_err(|error| errors::map(&error, Some(statement), Phase::Run))?;
+                let changed = messages.iter().find_map(|message| match message {
+                    tokio_postgres::SimpleQueryMessage::CommandComplete(count) => Some(*count),
+                    _ => None,
+                });
+                if changed != Some(1) {
+                    return Err(DriverError::row_gone(index, changed));
+                }
+            }
+            self.editor
+                .batch_execute("COMMIT")
+                .await
+                .map_err(|error| errors::map(&error, None, Phase::Run))
+        };
+        let result = options.run(work).await;
+        if result.is_err() {
+            // After a failure, a cancel or a deadline the transaction may still
+            // be open on the editor session; it must not outlive the edit.
+            let _ = self.editor.batch_execute("ROLLBACK").await;
+        }
+        result
+    }
+
     async fn close(&self) -> Result<()> {
         for task in &self.tasks {
             task.abort();

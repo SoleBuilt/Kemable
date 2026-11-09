@@ -80,6 +80,8 @@ pub fn run() {
             commands::forget_catalog,
             commands::scan_keys,
             commands::read_key,
+            commands::edit_preview,
+            commands::apply_edits,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

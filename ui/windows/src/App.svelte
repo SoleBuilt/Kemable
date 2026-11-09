@@ -1,10 +1,12 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import SqlEditor, { type RunRequest } from "./lib/editor/SqlEditor.svelte";
   import { errorTitle } from "./lib/errors";
   import DataGrid from "./lib/grid/DataGrid.svelte";
-  import type { CellRect, GridCallbacks, GridSource, SortKey } from "./lib/grid/engine";
+  import CellEditor, { type Move } from "./lib/grid/CellEditor.svelte";
+  import EditPreview from "./lib/grid/EditPreview.svelte";
+  import type { Cell, CellBox, CellRect, EditOverlay, GridCallbacks, GridSource, SortKey } from "./lib/grid/engine";
   import RowDetail from "./lib/grid/RowDetail.svelte";
   import TableBar, { PAGE_SIZES } from "./lib/grid/TableBar.svelte";
   import { asCoreError, ipc } from "./lib/ipc";
@@ -19,12 +21,15 @@
   import type {
     ColumnMeta,
     ConnectionConfig,
+    CellEdit,
     ColumnInfo,
     CoreError,
+    EditRequest,
     Filter,
     HistoryEntry,
     KeyDetail,
     KeyInfo,
+    NewValue,
     ObjectInfo,
     OpenedConnection,
     RunEvent,
@@ -146,6 +151,30 @@
   let saving: SavedQuery | null = $state(null);
 
   let tableTab = $state.raw<TableTab | null>(null);
+
+  /**
+   * A table tab's unsaved edits (docs/decisions/0010-editing-rows.md): new
+   * cell values by "row:column" (null for NULL), rows marked for delete, and
+   * how many new rows follow the page's. Replaced, never changed in place.
+   */
+  interface Edits {
+    cells: Map<string, string | null>;
+    deleted: Set<number>;
+    added: number;
+  }
+  const NO_EDITS: Edits = { cells: new Map(), deleted: new Set(), added: 0 };
+  let edits = $state.raw<Edits>(NO_EDITS);
+  /** The cell being edited, and the value it had when read (undefined for a new row's cell). */
+  let editing = $state.raw<{
+    row: number;
+    column: number;
+    box: CellBox;
+    initial: string | null;
+    replaced: boolean;
+    original: string | null | undefined;
+  } | null>(null);
+  let preview = $state.raw<{ statements: string[]; busy: boolean; error: CoreError | null } | null>(null);
+  const hasEdits = $derived(edits.cells.size > 0 || edits.deleted.size > 0 || edits.added > 0);
   /** A Redis key open in the results, and what reading it found. */
   let keyView = $state.raw<{ name: string; detail: KeyDetail } | null>(null);
   let keyBrowser: KeyBrowser | undefined = $state();
@@ -173,7 +202,7 @@
       return set ? { result, columns: set.columns } : null;
     });
   });
-  const gridRows = $derived(activeSet?.totalRows ?? 0);
+  const gridRows = $derived((activeSet?.totalRows ?? 0) + (tableTab && activeTab === 0 ? edits.added : 0));
   const errorCount = $derived(messages.filter((message) => message.kind === "error").length);
 
   /** The grid's cell cursor and selection, for the detail pane and the status bar. */
@@ -207,6 +236,8 @@
       selected = rect;
     },
     sortRequested: (column, additive) => void sortBy(column, additive),
+    editRequested: (cell, typed) => void beginEdit(cell, typed),
+    deleteRequested: (firstRow, rowCount) => markDeleted(firstRow, rowCount),
   };
 
   /** Opens a connection in place of the current one. Resolves to the error, or null. */
@@ -236,6 +267,10 @@
 
   function disconnect() {
     if (!connection || running) return;
+    if (hasEdits) {
+      note("Save or discard the table's edits first (Ctrl+S)");
+      return;
+    }
     void ipc.disconnect(connection.id);
     clearResults();
     tableTab = null;
@@ -332,6 +367,10 @@
     overrides: { inDatabase?: string | null; rowLimit?: number | null; record?: boolean; tablePage?: boolean } = {},
   ) {
     if (!connection || running) return;
+    if (hasEdits) {
+      note("Save or discard the table's edits first (Ctrl+S)");
+      return;
+    }
     pageRun = overrides.tablePage === true;
     if (!pageRun) {
       tableTab = null;
@@ -520,6 +559,10 @@
   async function openObject(object: ObjectInfo, inDatabase: string | null) {
     if (object.kind !== "table" && object.kind !== "view" && object.kind !== "materializedView") return;
     if (running || !connection) return;
+    if (hasEdits) {
+      note("Save or discard the table's edits first (Ctrl+S)");
+      return;
+    }
     if (inDatabase !== null) database = inDatabase;
     const table: TableRef = { schema: object.schema, name: object.name };
     let columns: ColumnInfo[] = [];
@@ -556,6 +599,10 @@
   /** Reads one page of a table tab; with `recount`, counts the rows its filters match after. */
   async function loadPage(next: TableTab, recount: boolean) {
     if (!connection || running) return;
+    if (hasEdits) {
+      note("Save or discard the table's edits first (Ctrl+S)");
+      return;
+    }
     let statements;
     try {
       statements = await ipc.browseStatements(connection.id, {
@@ -647,6 +694,199 @@
     return seconds < 120 ? `expires in ${seconds} s` : `expires in ${numberFormat.format(Math.round(seconds / 60))} min`;
   }
 
+  // --- Editing a table tab (docs/decisions/0010-editing-rows.md) ---------
+
+  /** The page's result set, while a table tab shows it. */
+  const pageSet = $derived(tableTab ? sets[0] : undefined);
+  const canEdit = $derived(
+    tableTab !== null && tableTab.key.length > 0 && !running && pageSet?.finished === true && activeTab === 0,
+  );
+  const editOverlay: EditOverlay | null = $derived.by(() => {
+    const set = pageSet;
+    const pending = edits;
+    if (!set || !hasEdits) return null;
+    return {
+      baseRows: set.totalRows,
+      cell: (row, column) => {
+        const key = `${row}:${column}`;
+        return pending.cells.has(key) ? (pending.cells.get(key) ?? null) : undefined;
+      },
+      deleted: (row) => pending.deleted.has(row),
+    };
+  });
+  const editSummary = $derived.by(() => {
+    const set = pageSet;
+    if (!set) return "";
+    const changed = new Set<number>();
+    for (const key of edits.cells.keys()) {
+      const row = Number(key.split(":")[0]);
+      if (row < set.totalRows && !edits.deleted.has(row)) changed.add(row);
+    }
+    const parts = [];
+    if (changed.size > 0) parts.push(`${changed.size} changed`);
+    if (edits.deleted.size > 0) parts.push(`${edits.deleted.size} to delete`);
+    if (edits.added > 0) parts.push(`${edits.added} new`);
+    return parts.join(", ");
+  });
+
+  function cannotEdit() {
+    if (tableTab && tableTab.key.length === 0) note("This table has no primary key, so its rows cannot be named for an edit");
+  }
+
+  async function beginEdit(cell: Cell, typed: string | null) {
+    const set = pageSet;
+    if (!canEdit || !set) return cannotEdit();
+    if (edits.deleted.has(cell.row)) return;
+    const key = `${cell.row}:${cell.column}`;
+    let original: string | null | undefined;
+    if (cell.row < set.totalRows) {
+      try {
+        original = await ipc.cellText(set.result, cell.row, cell.column);
+      } catch (caught) {
+        note(`Not read: ${asCoreError(caught).message}`);
+        return;
+      }
+    }
+    const current = edits.cells.has(key) ? (edits.cells.get(key) ?? null) : original === undefined ? "" : original;
+    const box = grid?.cellBox(cell.row, cell.column);
+    if (!box) return;
+    editing = { row: cell.row, column: cell.column, box, initial: typed ?? current, replaced: typed !== null, original };
+  }
+
+  function commitEdit(value: string | null, move: Move) {
+    const target = editing;
+    const set = pageSet;
+    if (!target || !set) return;
+    editing = null;
+    const key = `${target.row}:${target.column}`;
+    const cells = new Map(edits.cells);
+    // Back to what it was: no longer an edit.
+    if (target.original !== undefined && value === target.original) cells.delete(key);
+    else cells.set(key, value);
+    edits = { ...edits, cells };
+    const lastRow = set.totalRows + edits.added - 1;
+    const lastColumn = set.columns.length - 1;
+    let { row, column } = target;
+    if (move === "down") row = Math.min(lastRow, row + 1);
+    else if (move === "right") column = Math.min(lastColumn, column + 1);
+    else if (move === "left") column = Math.max(0, column - 1);
+    if (move !== null) {
+      grid?.focusCell(row, column);
+      grid?.focus();
+    }
+  }
+
+  function cancelEdit() {
+    editing = null;
+    grid?.focus();
+  }
+
+  /** Delete on rows: marks the page's rows (or unmarks them, when all are marked) and drops new ones. */
+  function markDeleted(firstRow: number, rowCount: number) {
+    const set = pageSet;
+    if (!canEdit || !set) return cannotEdit();
+    const base = set.totalRows;
+    const rows = Array.from({ length: rowCount }, (_, offset) => firstRow + offset);
+    const existing = rows.filter((row) => row < base);
+    const removed = new Set(rows.filter((row) => row >= base));
+    const deleted = new Set(edits.deleted);
+    const unmark = existing.length > 0 && existing.every((row) => deleted.has(row));
+    for (const row of existing) {
+      if (unmark) deleted.delete(row);
+      else deleted.add(row);
+    }
+    let cells = edits.cells;
+    if (removed.size > 0) {
+      // The new rows after a removed one move up.
+      cells = new Map();
+      for (const [key, value] of edits.cells) {
+        const [row = 0, column = 0] = key.split(":").map(Number);
+        if (removed.has(row)) continue;
+        const shift = row >= base ? [...removed].filter((gone) => gone < row).length : 0;
+        cells.set(`${row - shift}:${column}`, value);
+      }
+    }
+    edits = { cells, deleted, added: edits.added - removed.size };
+  }
+
+  async function addRow() {
+    const set = pageSet;
+    if (!canEdit || !set) return cannotEdit();
+    edits = { ...edits, added: edits.added + 1 };
+    await tick();
+    grid?.focusCell(set.totalRows + edits.added - 1, 0);
+    grid?.focus();
+  }
+
+  async function setNullAtCursor() {
+    const set = pageSet;
+    const at = cursor;
+    if (!canEdit || !set || !at || at.result !== set.result || edits.deleted.has(at.row)) return cannotEdit();
+    const original = at.row < set.totalRows ? await ipc.cellText(set.result, at.row, at.column) : undefined;
+    const key = `${at.row}:${at.column}`;
+    const cells = new Map(edits.cells);
+    if (original === null) cells.delete(key);
+    else cells.set(key, null);
+    edits = { ...edits, cells };
+  }
+
+  function discardEdits() {
+    edits = NO_EDITS;
+    editing = null;
+    preview = null;
+  }
+
+  function editRequest(): EditRequest | null {
+    const set = pageSet;
+    const tab = tableTab;
+    if (!set || !tab) return null;
+    const base = set.totalRows;
+    const toValue = (value: string | null): NewValue => (value === null ? { kind: "null" } : { kind: "text", text: value });
+    const updates = new Map<number, CellEdit[]>();
+    const inserts: CellEdit[][] = Array.from({ length: edits.added }, () => []);
+    for (const [key, value] of edits.cells) {
+      const [row = 0, column = 0] = key.split(":").map(Number);
+      const cell = { column, value: toValue(value) };
+      if (row >= base) inserts[row - base]?.push(cell);
+      else if (!edits.deleted.has(row)) updates.set(row, [...(updates.get(row) ?? []), cell]);
+    }
+    return {
+      result: set.result,
+      table: tab.table,
+      key: tab.key,
+      updates: [...updates].map(([row, cells]) => ({ row, cells })),
+      deletes: [...edits.deleted].sort((a, b) => a - b),
+      inserts,
+    };
+  }
+
+  /** Ctrl+S: the statements Save would run, to read before they run. */
+  async function openPreview() {
+    const request = editRequest();
+    if (!request || !connection || !hasEdits || editing) return;
+    try {
+      preview = { statements: await ipc.editPreview(connection.id, request), busy: false, error: null };
+    } catch (caught) {
+      note(`Not saved: ${asCoreError(caught).message}`);
+    }
+  }
+
+  async function saveEdits() {
+    const shown = preview;
+    const tab = tableTab;
+    if (!shown || !connection || !tab || shown.busy) return;
+    preview = { ...shown, busy: true, error: null };
+    try {
+      await ipc.applyEdits(connection.id, tab.database, shown.statements);
+      edits = NO_EDITS;
+      preview = null;
+      note(`Saved ${shown.statements.length} ${shown.statements.length === 1 ? "change" : "changes"}`);
+      await loadPage(tab, true);
+    } catch (caught) {
+      preview = { ...shown, busy: false, error: asCoreError(caught) };
+    }
+  }
+
   function pageTo(offset: number) {
     if (tableTab && offset >= 0) void loadPage({ ...tableTab, offset }, false);
   }
@@ -727,6 +967,15 @@
         void tree?.refresh();
         keyBrowser?.refresh();
       }
+    } else if (ctrl && !event.shiftKey && key === "s") {
+      event.preventDefault();
+      if (hasEdits) void openPreview();
+    } else if (event.altKey && event.key === "Insert" && tableTab) {
+      event.preventDefault();
+      void addRow();
+    } else if (ctrl && event.shiftKey && key === "n" && tableTab) {
+      event.preventDefault();
+      void setNullAtCursor();
     } else if (ctrl && event.shiftKey && key === "d") {
       event.preventDefault();
       if (!saving) saveFromEditor();
@@ -999,6 +1248,34 @@
               onToggle={() => (filtersOpen = !filtersOpen)}
             />
           {/key}
+          <div class="flex h-7 shrink-0 items-center gap-1 border-b border-line bg-surface-2 px-2 text-[12px]">
+            {#if tab.key.length === 0}
+              <span class="text-muted">Read-only: no primary key, so a row cannot be named for an edit.</span>
+            {:else}
+              <button class="toolbar-button" onclick={addRow} disabled={!canEdit} title="Add a row (Alt+Insert)">+ Row</button>
+              <button
+                class="toolbar-button"
+                onclick={() => selected && markDeleted(selected.firstRow, selected.rowCount)}
+                disabled={!canEdit || !selected}
+                title="Mark the selected rows for delete, or unmark them (Delete)">Delete rows</button
+              >
+              <button class="toolbar-button" onclick={setNullAtCursor} disabled={!canEdit || !cursor} title="Set the cell to NULL (Ctrl+Shift+N)"
+                >Set NULL</button
+              >
+              <span class="ml-1 truncate text-[11.5px] text-muted">Double-click, F2 or type to edit a cell</span>
+              <div class="flex-1"></div>
+              {#if hasEdits}
+                <span class="shrink-0 text-accent">{editSummary}</span>
+                <button class="toolbar-button" onclick={discardEdits} disabled={running}>Discard</button>
+                <button
+                  class="toolbar-button font-semibold text-accent"
+                  onclick={openPreview}
+                  disabled={running || editing !== null}
+                  title="See the statements, then save them (Ctrl+S)">Preview & save</button
+                >
+              {/if}
+            {/if}
+          </div>
         {/if}
         <nav class="flex h-8 shrink-0 items-end gap-0.5 border-b border-line bg-surface-2 px-2 text-[12px]">
           {#each sets as set, index (set.result)}
@@ -1043,14 +1320,26 @@
             </div>
           {:else}
             <div class="flex h-full">
-              <div class="min-w-0 flex-1">
+              <div class="relative min-w-0 flex-1">
                 <DataGrid
                   bind:this={grid}
                   source={gridSource}
                   totalRows={gridRows}
                   sortKeys={activeSet?.sort ?? NO_SORT}
                   callbacks={gridCallbacks}
+                  edits={editOverlay}
                 />
+                {#if editing}
+                  {#key `${editing.row}:${editing.column}`}
+                    <CellEditor
+                      box={editing.box}
+                      initial={editing.initial}
+                      replaced={editing.replaced}
+                      onCommit={commitEdit}
+                      onCancel={cancelEdit}
+                    />
+                  {/key}
+                {/if}
               </div>
               {#if detailOpen && gridSource}
                 <aside class="w-80 shrink-0 border-l border-line">
@@ -1134,6 +1423,18 @@
     onClose={() => {
       saving = null;
       editor?.focus();
+    }}
+  />
+{/if}
+
+{#if preview}
+  <EditPreview
+    statements={preview.statements}
+    busy={preview.busy}
+    error={preview.error}
+    onSave={saveEdits}
+    onClose={() => {
+      if (!preview?.busy) preview = null;
     }}
   />
 {/if}

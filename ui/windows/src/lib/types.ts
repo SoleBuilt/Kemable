@@ -302,3 +302,21 @@ export interface KeyRead {
   limited: boolean;
   notices: string[];
 }
+
+/** What a cell becomes when edits are saved (docs/decisions/0010-editing-rows.md). */
+export type NewValue = { kind: "null" } | { kind: "default" } | { kind: "text"; text: string };
+
+export interface CellEdit {
+  column: number;
+  value: NewValue;
+}
+
+/** A table tab's pending edits; rows are rows of `result`, the page it shows. */
+export interface EditRequest {
+  result: number;
+  table: TableRef;
+  key: string[];
+  updates: { row: number; cells: CellEdit[] }[];
+  deletes: number[];
+  inserts: CellEdit[][];
+}
