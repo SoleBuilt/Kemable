@@ -8,7 +8,7 @@
   import { asCoreError, ipc } from "./lib/ipc";
   import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
-  import PostgresDialog from "./lib/connect/PostgresDialog.svelte";
+  import ConnectDialog, { type NetworkEngine } from "./lib/connect/ConnectDialog.svelte";
   import type { ColumnMeta, ConnectionConfig, CoreError, ObjectInfo, OpenedConnection, RunEvent } from "./lib/types";
 
   interface ResultSetView {
@@ -101,11 +101,12 @@
     connectError = await connectWith({ engine: "sqlite", target: { kind: "file", path, readOnly: false } });
   }
 
-  let postgresDialog = $state(false);
+  /** The engine the connect dialog opened for, or null when it is closed. */
+  let connectDialog: NetworkEngine | null = $state(null);
 
-  async function connectPostgres(config: ConnectionConfig): Promise<CoreError | null> {
+  async function connectNetwork(config: ConnectionConfig): Promise<CoreError | null> {
     const error = await connectWith(config);
-    if (!error) postgresDialog = false;
+    if (!error) connectDialog = null;
     return error;
   }
 
@@ -286,7 +287,8 @@
   <header class="flex h-10 shrink-0 items-center gap-1 border-b border-line bg-surface-2 px-2">
     <button class="toolbar-button" onclick={openFile} disabled={connecting}>Open SQLite…</button>
     <button class="toolbar-button" onclick={() => connectTo(":memory:")} disabled={connecting}>In memory</button>
-    <button class="toolbar-button" onclick={() => (postgresDialog = true)} disabled={connecting}>PostgreSQL…</button>
+    <button class="toolbar-button" onclick={() => (connectDialog = "postgres")} disabled={connecting}>PostgreSQL…</button>
+    <button class="toolbar-button" onclick={() => (connectDialog = "mssql")} disabled={connecting}>SQL Server…</button>
     {#if connection}
       <div class="ml-2 flex min-w-0 items-center gap-2 text-[12px]">
         <span class="size-2 shrink-0 rounded-full bg-success"></span>
@@ -335,7 +337,7 @@
         />
       {:else}
         <div class="p-4 text-[12.5px] leading-relaxed text-muted">
-          Open a SQLite file or connect to PostgreSQL (Neon and Supabase included) to start. Cloudflare D1's local
+          Open a SQLite file, or connect to PostgreSQL (Neon and Supabase included) or SQL Server, to start. Cloudflare D1's local
           databases are SQLite files under <code class="text-fg">.wrangler/state/v3/d1</code>.
         </div>
       {/if}
@@ -436,8 +438,8 @@
   </footer>
 </div>
 
-{#if postgresDialog}
-  <PostgresDialog onConnect={connectPostgres} onClose={() => (postgresDialog = false)} />
+{#if connectDialog}
+  <ConnectDialog engine={connectDialog} onConnect={connectNetwork} onClose={() => (connectDialog = null)} />
 {/if}
 
 <style>

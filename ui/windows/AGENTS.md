@@ -18,7 +18,7 @@ Tauri 2 over WebView2, with a Svelte 5 and TypeScript UI. The Rust side (`src-ta
 - `src/lib/grid/`: `engine.ts` (the canvas grid), `window.ts` (the packed window reader), `DataGrid.svelte` (the thin Svelte wrapper).
 - `src/lib/editor/SqlEditor.svelte`: CodeMirror 6 with the engine's SQL dialect.
 - `src/lib/sidebar/ObjectTree.svelte`: the tree: databases (for an engine with them), their schemas and objects, loaded when opened. Ctrl+R refreshes it.
-- `src/lib/connect/`: `PostgresDialog.svelte` (the connect form), `DatabasePicker.svelte` (the toolbar database switcher, Ctrl+K).
+- `src/lib/connect/`: `ConnectDialog.svelte` (the connect form for PostgreSQL and SQL Server), `DatabasePicker.svelte` (the toolbar database switcher, Ctrl+K).
 - `src/app.css`: Tailwind and the colour tokens (`.claude/rules/ui-theme.md`).
 - `src-tauri/src/lib.rs`: the driver registry and the command list. `commands.rs`: the commands; `conn` names a server, `database` one of its databases. `run.rs`: running a script and its events. `state.rs`: the open servers (`OpenServer`, a session per database in use), result sets and runs, by id.
 - `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`: the window, the CSP and what the UI may call.

@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use paboable_core::CallOptions;
 use paboable_core::registry::DriverRegistry;
 use paboable_core::sql::{SqlGrammar, split};
+use paboable_driver_mssql::MssqlDriver;
 use paboable_driver_postgres::PostgresDriver;
 use serde_json::Value as Json;
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -12,7 +13,7 @@ use crate::run::{self, Run, Statement};
 use crate::state::{AppState, OpenServer};
 
 /// Runs `script` the way `run_query` does and returns its events as JSON.
-async fn run_script(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &str) -> Vec<Json> {
+async fn run_script(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &str, grammar: SqlGrammar) -> Vec<Json> {
     let events = Arc::new(Mutex::new(Vec::new()));
     let collected = Arc::clone(&events);
     let channel = Channel::new(move |body| {
@@ -24,7 +25,7 @@ async fn run_script(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &st
         }
         Ok(())
     });
-    let statements = split(script, SqlGrammar::Postgres)
+    let statements = split(script, grammar)
         .iter()
         .map(|span| Statement {
             text: span.text(script).to_owned(),
@@ -35,7 +36,7 @@ async fn run_script(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &st
         id: 1,
         server: Arc::clone(server),
         database: None,
-        grammar: SqlGrammar::Postgres,
+        grammar,
         statements,
         follow_created_database: true,
         cancel: CancellationToken::new(),
@@ -77,7 +78,7 @@ async fn a_script_runs_on_in_the_database_it_creates() {
          drop database {created};",
         upper = created.to_uppercase(),
     );
-    let events = run_script(&state, &server, &script).await;
+    let events = run_script(&state, &server, &script, SqlGrammar::Postgres).await;
 
     assert!(of_type(&events, "statementFailed").is_empty(), "{events:#?}");
     let switches: Vec<_> = of_type(&events, "databaseChanged")
@@ -101,5 +102,51 @@ async fn a_script_runs_on_in_the_database_it_creates() {
         })
         .collect();
     assert_eq!(answers, [Some("true".to_owned()), Some("true".to_owned())]);
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+async fn a_sql_server_script_follows_create_database_and_use() {
+    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
+    let driver = state.registry.get("mssql").cloned().expect("the driver is registered");
+    let first = driver
+        .connect(&config, CallOptions::default())
+        .await
+        .expect("the server accepts the connection");
+    let server = Arc::new(OpenServer::new(driver, config, first));
+    let created = format!("paboable_follow_{}", std::process::id());
+
+    // GO splits the batches; the table lands in the new database, then
+    // USE master moves back and the drop is not refused by our own session.
+    let script = format!(
+        "CREATE DATABASE [{created}]\nGO\n\
+         create table followed (x int)\nGO\n\
+         select db_name()\nGO\n\
+         use master\nGO\n\
+         select case when db_id('{created}') is not null then 1 else 0 end\nGO\n\
+         drop database [{created}]"
+    );
+    let events = run_script(&state, &server, &script, SqlGrammar::SqlServer).await;
+
+    assert!(of_type(&events, "statementFailed").is_empty(), "{events:#?}");
+    let switches: Vec<_> = of_type(&events, "databaseChanged")
+        .iter()
+        .map(|event| event["database"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(switches, [created.clone(), "master".to_owned()]);
+    let answers: Vec<_> = of_type(&events, "setStarted")
+        .iter()
+        .map(|event| {
+            state
+                .result(event["result"].as_u64().unwrap())
+                .unwrap()
+                .cell_text(0, 0)
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(answers, [Some(created.clone()), Some("1".to_owned())]);
     server.close().await;
 }

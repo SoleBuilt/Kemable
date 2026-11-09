@@ -2,7 +2,9 @@
 //! Neon, Supabase or a `.env` file fills the connection form.
 //!
 //! `postgres://user:password@host:port/database?sslmode=require&...`
-//! (`postgresql://` too). `sslmode` becomes the TLS mode; every other query
+//! (`postgresql://` too), and the same shape for SQL Server as `sqlserver://`
+//! (or `mssql://`), where a URL without a user logs in as the Windows user.
+//! `sslmode` becomes the TLS mode; every other query
 //! parameter goes to `options` unchanged, for the driver to read.
 
 use std::collections::BTreeMap;
@@ -17,6 +19,7 @@ pub fn parse(url: &str) -> Result<ConnectionConfig, DriverError> {
         .ok_or_else(|| DriverError::config("the URL has no scheme"))?;
     let engine = match scheme.to_ascii_lowercase().as_str() {
         "postgres" | "postgresql" => "postgres",
+        "sqlserver" | "mssql" => "mssql",
         other => return Err(DriverError::unsupported(format!("no driver reads {other}:// URLs"))),
     };
 
@@ -181,6 +184,17 @@ mod tests {
                 TlsMode::VerifyFull
             )
         );
+    }
+
+    #[test]
+    fn a_sql_server_url_without_a_user_is_a_windows_login() {
+        let config = parse("sqlserver://localhost/demo").expect("a valid URL");
+        assert_eq!(config.engine, "mssql");
+        assert_eq!(
+            network(&config),
+            ("localhost", None, None, "", Some("demo"), TlsMode::Prefer)
+        );
+        assert_eq!(parse("mssql://sa:pw@db:1433").expect("a valid URL").engine, "mssql");
     }
 
     #[test]
