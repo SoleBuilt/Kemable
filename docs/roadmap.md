@@ -9,11 +9,22 @@ Windows first. Each phase ends with `node scripts/verify.mjs` passing and the ap
 - [x] Store: columnar result sets, packed windows.
 - [x] SQLite driver, with interrupt on cancel and deadline.
 - [x] Windows app: open a SQLite file, schema tree, SQL editor, run statement or script, streaming canvas grid, Stop, Messages.
-- [ ] PostgreSQL driver (also Neon and Supabase), with TLS and the cancel request.
+- [x] PostgreSQL driver (also Neon and Supabase), with TLS and the cancel request; a connect dialog that reads a pasted URL.
 - [ ] SQL Server driver, with `GO` batches and attention.
 - [ ] Connection form and saved connections; secrets in Windows Credential Manager.
 - [ ] Grid: range selection, copy as TSV, a cell detail pane, column sort by re-running the query.
 - [ ] Row cap as a setting (today a fixed 500,000 in `run.rs`), Run Without Limit (Ctrl+Alt+Enter), and Fetch All for a capped result.
+
+## UX backlog, from using the app
+
+Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phase 2's new features.
+
+- [ ] **A connection is to the server, and the sidebar shows every database the login may see.** As SQL Server Management Studio's Object Explorer does: Database in the connection form is optional; once connected, the tree's top level is the server's databases, each expanding to its schemas and objects. The list is what the server lets this login see (PostgreSQL `pg_database` where `has_database_privilege(datname, 'CONNECT')`, SQL Server `sys.databases`, which already filters by permission). PostgreSQL needs a session per database, so a database's session opens when it is first expanded or used, and closes after it has been idle a while.
+- [ ] **Connection form: Database is a combobox.** Once host, port, user and password are filled, list the databases the login may see (the same query as above) and let the user pick the one to open first. Typing a name stays possible.
+- [ ] **A script that creates a database runs the rest in it.** Decided (2026-11-09): after `CREATE DATABASE x` succeeds, the run continues in `x`: on PostgreSQL the editor reopens its session on `x`, on SQL Server and MySQL the run sends `USE x`. The Messages tab says "Switched to x". psql's `\c x` / `\connect x` is also read as a directive that switches. This differs from psql, pgAdmin, DBeaver, DataGrip and TablePlus, which all stay on the database they were on, so the switch is announced, and a setting turns it off.
+- [ ] **Switch database without the connect dialog.** A database picker in the toolbar and Ctrl+K, reusing the saved credentials. Agreed 2026-11-09.
+- [ ] **Run and Run all are easy to confuse.** Ctrl+Enter / ▶ Run runs only the statement under the cursor. Label it "Run statement", flash the range that ran, and say "Ran 1 of 4 statements" in the status bar, so running one statement of a script is never mistaken for running all of it.
+- [ ] **Sidebar refresh.** A refresh button and Ctrl+R on the object tree, besides the refresh after a run that changed the schema.
 
 ## Phase 2: daily use
 

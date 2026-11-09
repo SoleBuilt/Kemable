@@ -38,6 +38,12 @@ pub async fn engines(state: State<'_, Arc<AppState>>) -> CommandResult<Vec<Engin
     Ok(state.registry.engines().cloned().collect())
 }
 
+/// Reads a pasted connection URL into a config the connect form shows.
+#[tauri::command]
+pub async fn parse_connection_url(url: String) -> CommandResult<ConnectionConfig> {
+    paboable_core::connection_url::parse(&url)
+}
+
 #[tauri::command]
 pub async fn connect(state: State<'_, Arc<AppState>>, config: ConnectionConfig) -> CommandResult<OpenedConnection> {
     let driver = state

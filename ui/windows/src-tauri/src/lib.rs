@@ -9,12 +9,15 @@ mod state;
 use std::sync::Arc;
 
 use paboable_core::registry::DriverRegistry;
+use paboable_driver_postgres::PostgresDriver;
 use paboable_driver_sqlite::SqliteDriver;
 
 use crate::state::AppState;
 
 fn registry() -> DriverRegistry {
-    DriverRegistry::new().with(Arc::new(SqliteDriver))
+    DriverRegistry::new()
+        .with(Arc::new(SqliteDriver))
+        .with(Arc::new(PostgresDriver))
 }
 
 pub fn run() {
@@ -24,6 +27,7 @@ pub fn run() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::engines,
+            commands::parse_connection_url,
             commands::connect,
             commands::disconnect,
             commands::list_schemas,

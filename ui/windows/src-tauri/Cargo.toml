@@ -15,6 +15,7 @@ tauri-build.workspace = true
 
 [dependencies]
 paboable-core.workspace = true
+paboable-driver-postgres.workspace = true
 paboable-driver-sqlite.workspace = true
 paboable-store.workspace = true
 serde.workspace = true

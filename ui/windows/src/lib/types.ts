@@ -7,6 +7,7 @@ export type ValueKind =
   | "int"
   | "uInt"
   | "float"
+  | "float32"
   | "decimal"
   | "text"
   | "json"

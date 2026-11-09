@@ -4,6 +4,7 @@ members = [
     "core/crates/core",
     "core/crates/store",
     "core/crates/drivers/sqlite",
+    "core/crates/drivers/postgres",
     "ui/windows/src-tauri",
 ]
 
@@ -17,8 +18,17 @@ publish = false
 paboable-core = { path = "core/crates/core" }
 paboable-store = { path = "core/crates/store" }
 paboable-driver-sqlite = { path = "core/crates/drivers/sqlite" }
+paboable-driver-postgres = { path = "core/crates/drivers/postgres" }
 
 async-trait = "0.1"
+fallible-iterator = "0.2"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+postgres-protocol = "0.6"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = { version = "1", features = ["std"] }
+rustls-platform-verifier = "0.7"
+tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime"] }
+tokio-postgres-rustls = { version = "0.14", default-features = false }
 rusqlite = { version = "0.41", features = ["bundled", "column_decltype"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

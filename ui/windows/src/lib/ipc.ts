@@ -15,6 +15,9 @@ import type {
 export const ipc = {
   engines: () => invoke<EngineInfo[]>("engines"),
 
+  /** A pasted connection URL as a config for the connect form. */
+  parseConnectionUrl: (url: string) => invoke<ConnectionConfig>("parse_connection_url", { url }),
+
   connect: (config: ConnectionConfig) => invoke<OpenedConnection>("connect", { config }),
 
   disconnect: (conn: number) => invoke<void>("disconnect", { conn }),

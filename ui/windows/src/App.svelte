@@ -7,7 +7,8 @@
   import type { GridCallbacks, GridSource } from "./lib/grid/engine";
   import { asCoreError, ipc } from "./lib/ipc";
   import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
-  import type { ColumnMeta, CoreError, ObjectInfo, OpenedConnection, RunEvent } from "./lib/types";
+  import PostgresDialog from "./lib/connect/PostgresDialog.svelte";
+  import type { ColumnMeta, ConnectionConfig, CoreError, ObjectInfo, OpenedConnection, RunEvent } from "./lib/types";
 
   interface ResultSetView {
     result: number;
@@ -63,20 +64,33 @@
     },
   };
 
-  async function connectTo(path: string) {
+  /** Opens a connection in place of the current one. Resolves to the error, or null. */
+  async function connectWith(config: ConnectionConfig): Promise<CoreError | null> {
     connecting = true;
-    connectError = null;
     try {
-      const opened = await ipc.connect({ engine: "sqlite", target: { kind: "file", path, readOnly: false } });
+      const opened = await ipc.connect(config);
       if (connection) void ipc.disconnect(connection.id);
       clearResults();
       connection = opened;
       editor?.focus();
+      return null;
     } catch (caught) {
-      connectError = asCoreError(caught);
+      return asCoreError(caught);
     } finally {
       connecting = false;
     }
+  }
+
+  async function connectTo(path: string) {
+    connectError = await connectWith({ engine: "sqlite", target: { kind: "file", path, readOnly: false } });
+  }
+
+  let postgresDialog = $state(false);
+
+  async function connectPostgres(config: ConnectionConfig): Promise<CoreError | null> {
+    const error = await connectWith(config);
+    if (!error) postgresDialog = false;
+    return error;
   }
 
   async function openFile() {
@@ -211,6 +225,7 @@
   <header class="flex h-10 shrink-0 items-center gap-1 border-b border-line bg-surface-2 px-2">
     <button class="toolbar-button" onclick={openFile} disabled={connecting}>Open SQLite…</button>
     <button class="toolbar-button" onclick={() => connectTo(":memory:")} disabled={connecting}>In memory</button>
+    <button class="toolbar-button" onclick={() => (postgresDialog = true)} disabled={connecting}>PostgreSQL…</button>
     {#if connection}
       <div class="ml-2 flex min-w-0 items-center gap-2 text-[12px]">
         <span class="size-2 shrink-0 rounded-full bg-success"></span>
@@ -249,8 +264,8 @@
         <ObjectTree {connection} {refreshKey} onOpen={openObject} />
       {:else}
         <div class="p-4 text-[12.5px] leading-relaxed text-muted">
-          Open a SQLite file to start. Cloudflare D1's local databases are SQLite files under
-          <code class="text-fg">.wrangler/state/v3/d1</code>.
+          Open a SQLite file or connect to PostgreSQL (Neon and Supabase included) to start. Cloudflare D1's local
+          databases are SQLite files under <code class="text-fg">.wrangler/state/v3/d1</code>.
         </div>
       {/if}
     </aside>
@@ -337,6 +352,10 @@
     <span>Paboable</span>
   </footer>
 </div>
+
+{#if postgresDialog}
+  <PostgresDialog onConnect={connectPostgres} onClose={() => (postgresDialog = false)} />
+{/if}
 
 <style>
   :global(.toolbar-button) {
