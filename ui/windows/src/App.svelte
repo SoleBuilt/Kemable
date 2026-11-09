@@ -8,8 +8,17 @@
   import { asCoreError, ipc } from "./lib/ipc";
   import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
-  import ConnectDialog, { type NetworkEngine } from "./lib/connect/ConnectDialog.svelte";
-  import type { ColumnMeta, ConnectionConfig, CoreError, ObjectInfo, OpenedConnection, RunEvent } from "./lib/types";
+  import ConnectDialog, { type ConnectRequest, type NetworkEngine } from "./lib/connect/ConnectDialog.svelte";
+  import SavedList from "./lib/connect/SavedList.svelte";
+  import type {
+    ColumnMeta,
+    ConnectionConfig,
+    CoreError,
+    ObjectInfo,
+    OpenedConnection,
+    RunEvent,
+    SavedConnection,
+  } from "./lib/types";
 
   interface ResultSetView {
     result: number;
@@ -80,10 +89,10 @@
   };
 
   /** Opens a connection in place of the current one. Resolves to the error, or null. */
-  async function connectWith(config: ConnectionConfig): Promise<CoreError | null> {
+  async function openWith(opening: () => Promise<OpenedConnection>): Promise<CoreError | null> {
     connecting = true;
     try {
-      const opened = await ipc.connect(config);
+      const opened = await opening();
       if (connection) void ipc.disconnect(connection.id);
       clearResults();
       connection = opened;
@@ -98,16 +107,55 @@
   }
 
   async function connectTo(path: string) {
-    connectError = await connectWith({ engine: "sqlite", target: { kind: "file", path, readOnly: false } });
+    const config: ConnectionConfig = { engine: "sqlite", target: { kind: "file", path, readOnly: false } };
+    connectError = await openWith(() => ipc.connect(config));
   }
 
-  /** The engine the connect dialog opened for, or null when it is closed. */
-  let connectDialog: NetworkEngine | null = $state(null);
+  function disconnect() {
+    if (!connection || running) return;
+    void ipc.disconnect(connection.id);
+    clearResults();
+    connection = null;
+    database = null;
+  }
 
-  async function connectNetwork(config: ConnectionConfig): Promise<CoreError | null> {
-    const error = await connectWith(config);
+  /** The connect dialog: the engine it is for, and the saved connection it edits. */
+  let connectDialog: { engine: NetworkEngine; saved: SavedConnection | null } | null = $state(null);
+  let savedKey = $state(0);
+
+  async function connectNetwork(request: ConnectRequest): Promise<CoreError | null> {
+    const error = await openWith(async () => {
+      // A saved connection opens by id: a password left blank is the kept one.
+      const opened = request.savedId
+        ? await ipc.connectSaved(request.savedId, request.password)
+        : await ipc.connect(request.config);
+      return { ...opened, title: request.title };
+    });
     if (!error) connectDialog = null;
     return error;
+  }
+
+  /** A saved connection whose password is not kept asks for it first. */
+  let askPassword: SavedConnection | null = $state(null);
+
+  function needsPassword(saved: SavedConnection): boolean {
+    const target = saved.config.target;
+    return target.kind === "network" && !saved.savePassword && !(saved.config.engine === "mssql" && !target.user);
+  }
+
+  async function openSaved(saved: SavedConnection, password: string | null = null) {
+    if (password === null && needsPassword(saved)) {
+      askPassword = saved;
+      return;
+    }
+    askPassword = null;
+    connectError = await openWith(() => ipc.connectSaved(saved.id, password));
+    savedKey++;
+  }
+
+  function editSaved(saved: SavedConnection) {
+    const engine: NetworkEngine = saved.config.engine === "mssql" ? "mssql" : "postgres";
+    connectDialog = { engine, saved };
   }
 
   async function openFile() {
@@ -287,13 +335,19 @@
   <header class="flex h-10 shrink-0 items-center gap-1 border-b border-line bg-surface-2 px-2">
     <button class="toolbar-button" onclick={openFile} disabled={connecting}>Open SQLite…</button>
     <button class="toolbar-button" onclick={() => connectTo(":memory:")} disabled={connecting}>In memory</button>
-    <button class="toolbar-button" onclick={() => (connectDialog = "postgres")} disabled={connecting}>PostgreSQL…</button>
-    <button class="toolbar-button" onclick={() => (connectDialog = "mssql")} disabled={connecting}>SQL Server…</button>
+    <button class="toolbar-button" onclick={() => (connectDialog = { engine: "postgres", saved: null })} disabled={connecting}>PostgreSQL…</button>
+    <button class="toolbar-button" onclick={() => (connectDialog = { engine: "mssql", saved: null })} disabled={connecting}>SQL Server…</button>
     {#if connection}
       <div class="ml-2 flex min-w-0 items-center gap-2 text-[12px]">
         <span class="size-2 shrink-0 rounded-full bg-success"></span>
         <span class="truncate font-semibold">{connection.title}</span>
         <span class="shrink-0 text-muted">{connection.engine.displayName} {connection.serverVersion ?? ""}</span>
+        <button
+          class="toolbar-button text-muted"
+          onclick={disconnect}
+          disabled={running}
+          title="Disconnect and show the saved connections">Disconnect</button
+        >
       </div>
       {#if connection.engine.hasDatabases}
         <DatabasePicker bind:this={picker} conn={connection.id} {database} onPick={useDatabase} />
@@ -336,9 +390,19 @@
           onUseDatabase={useDatabase}
         />
       {:else}
-        <div class="p-4 text-[12.5px] leading-relaxed text-muted">
-          Open a SQLite file, or connect to PostgreSQL (Neon and Supabase included) or SQL Server, to start. Cloudflare D1's local
-          databases are SQLite files under <code class="text-fg">.wrangler/state/v3/d1</code>.
+        <div class="flex h-full flex-col">
+          <div class="min-h-0 flex-1">
+            <SavedList
+              refreshKey={savedKey}
+              busy={connecting}
+              onOpen={(saved) => void openSaved(saved)}
+              onEdit={editSaved}
+            />
+          </div>
+          <p class="border-t border-line p-3 text-[11.5px] leading-relaxed text-muted">
+            Cloudflare D1's local databases are SQLite files under <code class="text-fg">.wrangler/state/v3/d1</code>:
+            open one with Open SQLite.
+          </p>
         </div>
       {/if}
     </aside>
@@ -439,7 +503,44 @@
 </div>
 
 {#if connectDialog}
-  <ConnectDialog engine={connectDialog} onConnect={connectNetwork} onClose={() => (connectDialog = null)} />
+  <ConnectDialog
+    engine={connectDialog.engine}
+    saved={connectDialog.saved}
+    onConnect={connectNetwork}
+    onSaved={() => savedKey++}
+    onClose={() => (connectDialog = null)}
+  />
+{/if}
+
+{#if askPassword}
+  {@const target = askPassword}
+  <div class="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[18vh]" role="presentation">
+    <form
+      class="w-90 rounded-lg border border-line bg-surface p-5 shadow-xl"
+      onsubmit={(event) => {
+        event.preventDefault();
+        const field = event.currentTarget.elements.namedItem("password");
+        void openSaved(target, field instanceof HTMLInputElement ? field.value : "");
+      }}
+    >
+      <h2 class="mb-1 text-[14px] font-semibold">Password for {target.name}</h2>
+      <p class="mb-3 text-[12px] text-muted">This connection does not keep its password.</p>
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        name="password"
+        type="password"
+        autofocus
+        class="mb-4 h-7 w-full rounded border border-line bg-surface px-2 text-[12px] outline-none select-text focus:border-accent"
+        onkeydown={(event) => {
+          if (event.key === "Escape") askPassword = null;
+        }}
+      />
+      <div class="flex justify-end gap-2">
+        <button type="button" class="toolbar-button" onclick={() => (askPassword = null)}>Cancel</button>
+        <button type="submit" class="toolbar-button font-semibold text-accent">Connect</button>
+      </div>
+    </form>
+  </div>
 {/if}
 
 <style>

@@ -132,3 +132,15 @@ export type RunEvent =
   | { type: "databaseChanged"; statement: number; database: string }
   | { type: "statementFailed"; statement: number; error: CoreError }
   | { type: "finished"; elapsedMs: number; cancelled: boolean; failed: boolean };
+
+/** A connection in the library. Its config never carries the secret. */
+export interface SavedConnection {
+  /** Empty for one not saved yet. */
+  id: string;
+  name: string;
+  config: ConnectionConfig;
+  /** The password is kept in Windows Credential Manager. */
+  savePassword: boolean;
+  /** Milliseconds since the Unix epoch. */
+  lastUsed: number | null;
+}

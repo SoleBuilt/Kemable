@@ -14,11 +14,13 @@ crate-type = ["rlib"]
 tauri-build.workspace = true
 
 [dependencies]
+keyring.workspace = true
 paboable-core.workspace = true
 paboable-driver-mssql.workspace = true
 paboable-driver-postgres.workspace = true
 paboable-driver-sqlite.workspace = true
 paboable-store.workspace = true
+paboable-storage.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true

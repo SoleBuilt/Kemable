@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "core/crates/core",
     "core/crates/store",
+    "core/crates/storage",
     "core/crates/drivers/sqlite",
     "core/crates/drivers/postgres",
     "core/crates/drivers/mssql",
@@ -18,12 +19,14 @@ publish = false
 [workspace.dependencies]
 paboable-core = { path = "core/crates/core" }
 paboable-store = { path = "core/crates/store" }
+paboable-storage = { path = "core/crates/storage" }
 paboable-driver-sqlite = { path = "core/crates/drivers/sqlite" }
 paboable-driver-postgres = { path = "core/crates/drivers/postgres" }
 paboable-driver-mssql = { path = "core/crates/drivers/mssql" }
 
 async-trait = "0.1"
 fallible-iterator = "0.2"
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 postgres-protocol = "0.6"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
@@ -39,6 +42,7 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-util = "0.7"
 tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
 
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
