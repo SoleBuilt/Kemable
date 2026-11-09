@@ -10,6 +10,9 @@
 //! one, never half of one. A file that cannot be read is never written over:
 //! the change fails instead, so a damaged library is not lost to a save.
 
+pub mod history;
+pub mod queries;
+
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 

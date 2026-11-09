@@ -183,3 +183,189 @@ fn touching_records_when_it_was_opened() {
     library.touch(&saved.id).unwrap();
     assert!(library.list().unwrap()[0].last_used.is_some_and(|millis| millis > 0));
 }
+
+// --- query history ------------------------------------------------------------
+
+use crate::history::{HistoryEntry, HistoryQuery, Outcome, QueryHistory, WITHHELD, holds_password};
+use crate::queries::{SavedQueries, SavedQuery};
+
+fn entry(statement: &str, connection: &str) -> HistoryEntry {
+    HistoryEntry {
+        id: 0,
+        ran_at: 1,
+        connection: connection.into(),
+        engine: "postgres".into(),
+        database: Some("demo".into()),
+        statement: statement.into(),
+        duration_ms: 12,
+        rows: Some(3),
+        outcome: Outcome::Succeeded,
+        error: None,
+    }
+}
+
+#[test]
+fn history_comes_back_newest_first_and_filters_by_text_and_connection() {
+    let history = QueryHistory::in_memory().unwrap();
+    history.record(&entry("select * from orders", "Local PG")).unwrap();
+    history
+        .record(&entry("select * from customers where name like 'Nguyễn%'", "Local PG"))
+        .unwrap();
+    let last = history.record(&entry("select 1", "Local MSSQL")).unwrap();
+
+    let all = history.search(&HistoryQuery::default()).unwrap();
+    assert_eq!(all.len(), 3);
+    assert_eq!(all[0].id, last);
+
+    let found = history
+        .search(&HistoryQuery {
+            text: "NGUYỄN".to_lowercase(),
+            ..HistoryQuery::default()
+        })
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    let pg = history
+        .search(&HistoryQuery {
+            connection: Some("Local PG".into()),
+            ..HistoryQuery::default()
+        })
+        .unwrap();
+    assert_eq!(pg.len(), 2);
+    let older = history
+        .search(&HistoryQuery {
+            before: Some(last),
+            limit: Some(1),
+            ..HistoryQuery::default()
+        })
+        .unwrap();
+    assert_eq!(older.len(), 1);
+    assert!(older[0].id < last);
+}
+
+#[test]
+fn history_search_treats_percent_and_underscore_as_text() {
+    let history = QueryHistory::in_memory().unwrap();
+    history.record(&entry("select 'a_b'", "c")).unwrap();
+    history.record(&entry("select 'axb'", "c")).unwrap();
+    let found = history
+        .search(&HistoryQuery {
+            text: "a_b".into(),
+            ..HistoryQuery::default()
+        })
+        .unwrap();
+    assert_eq!(found.len(), 1);
+}
+
+#[test]
+fn a_statement_holding_a_password_is_kept_as_a_note() {
+    assert!(holds_password("CREATE USER app WITH PASSWORD 'hunter2'"));
+    assert!(holds_password("ALTER LOGIN sa WITH PASSWORD = 'x'"));
+    assert!(!holds_password("select password_changed_at from users"));
+    let history = QueryHistory::in_memory().unwrap();
+    history
+        .record(&entry("alter role app password 'hunter2'", "c"))
+        .unwrap();
+    let kept = history.search(&HistoryQuery::default()).unwrap();
+    assert_eq!(kept[0].statement, WITHHELD);
+}
+
+#[test]
+fn history_entries_delete_one_or_all() {
+    let history = QueryHistory::in_memory().unwrap();
+    let first = history.record(&entry("select 1", "c")).unwrap();
+    history.record(&entry("select 2", "c")).unwrap();
+    history.delete(first).unwrap();
+    assert_eq!(history.len().unwrap(), 1);
+    history.clear().unwrap();
+    assert!(history.is_empty().unwrap());
+}
+
+#[test]
+fn saved_queries_show_their_own_connection_and_the_global_ones() {
+    let folder = Folder::new("queries");
+    let queries = SavedQueries::in_folder(&folder.0);
+    let mine = SavedQuery {
+        id: String::new(),
+        name: "Top customers".into(),
+        sql: "select * from customers".into(),
+        connection_id: Some("pg".into()),
+        updated_at: 0,
+    };
+    let saved = queries.save(mine, 10).unwrap();
+    queries
+        .save(
+            SavedQuery {
+                name: "anywhere".into(),
+                connection_id: None,
+                ..saved.clone()
+            }
+            .with_new_id(),
+            11,
+        )
+        .unwrap();
+    queries
+        .save(
+            SavedQuery {
+                name: "other".into(),
+                connection_id: Some("ms".into()),
+                ..saved.clone()
+            }
+            .with_new_id(),
+            12,
+        )
+        .unwrap();
+
+    let names: Vec<_> = queries
+        .list(Some("pg"))
+        .unwrap()
+        .into_iter()
+        .map(|query| query.name)
+        .collect();
+    assert_eq!(names, ["anywhere", "Top customers"]);
+
+    queries
+        .save(
+            SavedQuery {
+                sql: "select 2".into(),
+                ..saved.clone()
+            },
+            20,
+        )
+        .unwrap();
+    let edited = queries
+        .list(Some("pg"))
+        .unwrap()
+        .into_iter()
+        .find(|query| query.id == saved.id)
+        .unwrap();
+    assert_eq!((edited.sql.as_str(), edited.updated_at), ("select 2", 20));
+
+    queries.delete(&saved.id).unwrap();
+    assert_eq!(queries.list(Some("pg")).unwrap().len(), 1);
+    assert_eq!(
+        queries
+            .save(
+                SavedQuery {
+                    name: " ".into(),
+                    ..saved
+                },
+                0
+            )
+            .unwrap_err()
+            .code,
+        ErrorCode::ConfigInvalid
+    );
+}
+
+trait WithNewId {
+    fn with_new_id(self) -> Self;
+}
+
+impl WithNewId for SavedQuery {
+    fn with_new_id(self) -> Self {
+        SavedQuery {
+            id: String::new(),
+            ..self
+        }
+    }
+}

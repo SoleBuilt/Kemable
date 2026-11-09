@@ -19,6 +19,8 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// counter, so an id is never reused within a launch.
 pub struct AppState {
     pub registry: DriverRegistry,
+    /// The query history, opened in the app's folder at startup.
+    pub history: std::sync::OnceLock<Arc<paboable_storage::history::QueryHistory>>,
     ids: AtomicU64,
     servers: Mutex<HashMap<u64, Arc<OpenServer>>>,
     results: Mutex<HashMap<u64, ResultEntry>>,
@@ -46,6 +48,8 @@ pub struct ResultOrigin {
 /// database the tree expands or a run uses gets its own, opened on first use.
 /// An engine without databases (SQLite) has one session, under `home`.
 pub struct OpenServer {
+    /// What the UI calls it: the saved name, or host and port.
+    pub title: String,
     pub driver: Arc<dyn Driver>,
     pub engine: &'static EngineInfo,
     config: ConnectionConfig,
@@ -55,7 +59,7 @@ pub struct OpenServer {
 }
 
 impl OpenServer {
-    pub fn new(driver: Arc<dyn Driver>, config: ConnectionConfig, first: Arc<dyn Connection>) -> Self {
+    pub fn new(driver: Arc<dyn Driver>, config: ConnectionConfig, first: Arc<dyn Connection>, title: String) -> Self {
         let engine = first.engine();
         let home = if engine.has_databases {
             first.current_database().unwrap_or_default()
@@ -63,6 +67,7 @@ impl OpenServer {
             String::new()
         };
         Self {
+            title,
             driver,
             engine,
             config,
@@ -133,6 +138,7 @@ impl AppState {
     pub fn new(registry: DriverRegistry) -> Self {
         Self {
             registry,
+            history: std::sync::OnceLock::new(),
             ids: AtomicU64::new(1),
             servers: Mutex::default(),
             results: Mutex::default(),

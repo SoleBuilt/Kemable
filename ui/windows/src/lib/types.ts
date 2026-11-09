@@ -59,6 +59,8 @@ export interface OpenedConnection {
   id: number;
   engine: EngineInfo;
   serverVersion: string | null;
+  /** The saved connection it was opened from, if any. */
+  savedId: string | null;
   /** The database the connection opened on, for an engine with databases. */
   database: string | null;
   title: string;
@@ -156,3 +158,28 @@ export type SortOutcome =
       rowLimit: number | null;
     }
   | { kind: "sorted"; limited: boolean };
+
+export type HistoryOutcome = "succeeded" | "failed" | "cancelled";
+
+/** One statement run from the editor. */
+export interface HistoryEntry {
+  id: number;
+  ranAt: number;
+  connection: string;
+  engine: string;
+  database: string | null;
+  statement: string;
+  durationMs: number;
+  rows: number | null;
+  outcome: HistoryOutcome;
+  error: string | null;
+}
+
+/** Named SQL; `connectionId` null shows it for every connection. */
+export interface SavedQuery {
+  id: string;
+  name: string;
+  sql: string;
+  connectionId: string | null;
+  updatedAt: number;
+}

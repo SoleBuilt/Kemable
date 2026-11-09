@@ -97,6 +97,29 @@
     view?.focus();
   }
 
+  /** The whole text, or the selection when there is one. */
+  export function text(): string {
+    if (!view) return "";
+    const selection = view.state.selection.main;
+    return selection.empty ? view.state.doc.toString() : view.state.sliceDoc(selection.from, selection.to);
+  }
+
+  /** Puts `sql` in place of the selection, on its own lines, and selects it. */
+  export function insert(sql: string): void {
+    if (!view) return;
+    const state = view.state;
+    const { from, to } = state.selection.main;
+    const before = from > 0 && state.sliceDoc(from - 1, from) !== "\n" ? "\n" : "";
+    const after = to < state.doc.length && state.sliceDoc(to, to + 1) !== "\n" ? "\n" : "";
+    const start = from + before.length;
+    view.dispatch({
+      changes: { from, to, insert: `${before}${sql}${after}` },
+      selection: { anchor: start, head: start + sql.length },
+      scrollIntoView: true,
+    });
+    view.focus();
+  }
+
   // The statements a run sent, marked for a moment so it is plain what ran.
   const setRan = StateEffect.define<{ from: number; to: number }[]>();
   const ranMark = Decoration.mark({ class: "cm-ran" });

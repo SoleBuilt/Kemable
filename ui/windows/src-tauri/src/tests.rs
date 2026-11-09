@@ -40,6 +40,7 @@ async fn run_script(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &st
         statements,
         follow_created_database: true,
         row_limit: Some(500_000),
+        record: false,
         cancel: CancellationToken::new(),
         channel,
     };
@@ -66,7 +67,7 @@ async fn a_script_runs_on_in_the_database_it_creates() {
         .connect(&config, CallOptions::default())
         .await
         .expect("the server accepts the connection");
-    let server = Arc::new(OpenServer::new(driver, config, first));
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
     let home = server.home.clone();
     let created = format!("paboable_follow_{}", std::process::id());
 
@@ -117,7 +118,7 @@ async fn a_sql_server_script_follows_create_database_and_use() {
         .connect(&config, CallOptions::default())
         .await
         .expect("the server accepts the connection");
-    let server = Arc::new(OpenServer::new(driver, config, first));
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
     let created = format!("paboable_follow_{}", std::process::id());
 
     // GO splits the batches; the table lands in the new database, then
@@ -175,7 +176,7 @@ async fn a_sorted_statement_runs_on_postgres_and_orders_before_the_limit() {
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
     let driver = state.registry.get("postgres").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
-    let server = Arc::new(OpenServer::new(driver, config, first));
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
 
     // m descending, then n: the LIMIT now takes the five rows that order first.
     let original = "select g as n, g % 3 as m from generate_series(1, 9) g limit 5 -- five rows";
@@ -209,7 +210,7 @@ async fn a_sorted_statement_runs_on_sql_server_with_top_and_option() {
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
     let driver = state.registry.get("mssql").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
-    let server = Arc::new(OpenServer::new(driver, config, first));
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
 
     let original =
         "SELECT TOP 3 n, n % 2 AS parity FROM (VALUES (1), (2), (3), (4)) AS v(n) ORDER BY n OPTION (RECOMPILE)";

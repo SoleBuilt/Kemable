@@ -2527,6 +2527,7 @@ name = "paboable-storage"
 version = "0.1.0"
 dependencies = [
  "paboable-core",
+ "rusqlite",
  "serde",
  "serde_json",
  "uuid",
