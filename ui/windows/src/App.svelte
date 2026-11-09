@@ -9,11 +9,12 @@
   import TableBar, { PAGE_SIZES } from "./lib/grid/TableBar.svelte";
   import { asCoreError, ipc } from "./lib/ipc";
   import HistoryList from "./lib/sidebar/HistoryList.svelte";
+  import KeyBrowser from "./lib/sidebar/KeyBrowser.svelte";
   import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
   import QueryList from "./lib/sidebar/QueryList.svelte";
   import SaveQueryDialog from "./lib/sidebar/SaveQueryDialog.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
-  import ConnectDialog, { type ConnectRequest, type NetworkEngine } from "./lib/connect/ConnectDialog.svelte";
+  import ConnectDialog, { type ConnectRequest, type NetworkEngine, isNetworkEngine } from "./lib/connect/ConnectDialog.svelte";
   import SavedList from "./lib/connect/SavedList.svelte";
   import type {
     ColumnMeta,
@@ -22,6 +23,8 @@
     CoreError,
     Filter,
     HistoryEntry,
+    KeyDetail,
+    KeyInfo,
     ObjectInfo,
     OpenedConnection,
     RunEvent,
@@ -95,7 +98,7 @@
 
   type Message =
     | { kind: "command"; statement: number; rowsAffected: number | null }
-    | { kind: "notice"; statement: number; text: string }
+    | { kind: "notice"; statement: number | null; text: string }
     | { kind: "switched"; statement: number; database: string }
     | { kind: "error"; statement: number | null; error: CoreError };
 
@@ -143,6 +146,10 @@
   let saving: SavedQuery | null = $state(null);
 
   let tableTab = $state.raw<TableTab | null>(null);
+  /** A Redis key open in the results, and what reading it found. */
+  let keyView = $state.raw<{ name: string; detail: KeyDetail } | null>(null);
+  let keyBrowser: KeyBrowser | undefined = $state();
+  const keyValue = $derived(connection?.engine.dataModel === "keyValue");
   let filtersOpen = $state(false);
   let tableBar: TableBar | undefined = $state();
   let pageSize = $state(readPageSize());
@@ -210,6 +217,7 @@
       if (connection) void ipc.disconnect(connection.id);
       clearResults();
       tableTab = null;
+      keyView = null;
       connection = opened;
       database = opened.database;
       editor?.focus();
@@ -231,6 +239,7 @@
     void ipc.disconnect(connection.id);
     clearResults();
     tableTab = null;
+    keyView = null;
     connection = null;
     database = null;
   }
@@ -270,7 +279,7 @@
   }
 
   function editSaved(saved: SavedConnection) {
-    const engine: NetworkEngine = saved.config.engine === "mssql" ? "mssql" : "postgres";
+    const engine: NetworkEngine = isNetworkEngine(saved.config.engine) ? saved.config.engine : "postgres";
     connectDialog = { engine, saved };
   }
 
@@ -326,6 +335,7 @@
       tableTab = null;
       filtersOpen = false;
     }
+    keyView = null;
     clearResults();
     statements = [];
     ranCount = null;
@@ -361,6 +371,10 @@
 
   /** Runs the last run again without a row cap, keeping a server sort's arrows. */
   function fetchAll() {
+    if (keyView) {
+      void openKey(keyView.name, true);
+      return;
+    }
     if (!lastRun || running) return;
     const set = activeSet;
     if (set?.sortedBy === "server" && set.original) pendingSort = { keys: set.sort, original: set.original };
@@ -581,6 +595,56 @@
     }
   }
 
+  /** Reads a key into the results, up to the row cap unless `unlimited`. */
+  async function openKey(name: string, unlimited = false) {
+    if (!connection || running) return;
+    try {
+      const read = await ipc.readKey(connection.id, database, name, unlimited ? null : rowCap);
+      clearResults();
+      tableTab = null;
+      filtersOpen = false;
+      keyView = { name, detail: read.detail };
+      messages = read.notices.map((text) => ({ kind: "notice", statement: null, text }));
+      if (read.result !== null) {
+        sets = [
+          {
+            result: read.result,
+            statement: 0,
+            columns: read.columns,
+            totalRows: read.totalRows,
+            finished: true,
+            limited: read.limited,
+            sort: [],
+            sortedBy: null,
+            original: null,
+          },
+        ];
+        activeTab = 0;
+      } else {
+        activeTab = "messages";
+      }
+    } catch (caught) {
+      note(`Not read: ${asCoreError(caught).message}`);
+      if (asCoreError(caught).code === "not_found") keyBrowser?.refresh();
+    }
+  }
+
+  const KEY_UNITS: Record<KeyDetail["kind"], string> = {
+    string: "bytes",
+    hash: "fields",
+    list: "items",
+    set: "members",
+    sortedSet: "members",
+    stream: "entries",
+    other: "",
+  };
+
+  function expiresIn(ms: number | null): string {
+    if (ms === null) return "no expiry";
+    const seconds = Math.ceil(ms / 1000);
+    return seconds < 120 ? `expires in ${seconds} s` : `expires in ${numberFormat.format(Math.round(seconds / 60))} min`;
+  }
+
   function pageTo(offset: number) {
     if (tableTab && offset >= 0) void loadPage({ ...tableTab, offset }, false);
   }
@@ -659,6 +723,7 @@
       if (connection) {
         void ipc.forgetCatalog(connection.id);
         void tree?.refresh();
+        keyBrowser?.refresh();
       }
     } else if (ctrl && event.shiftKey && key === "d") {
       event.preventDefault();
@@ -725,6 +790,7 @@
     <button class="toolbar-button" onclick={() => connectTo(":memory:")} disabled={connecting}>In memory</button>
     <button class="toolbar-button" onclick={() => (connectDialog = { engine: "postgres", saved: null })} disabled={connecting}>PostgreSQL…</button>
     <button class="toolbar-button" onclick={() => (connectDialog = { engine: "mssql", saved: null })} disabled={connecting}>SQL Server…</button>
+    <button class="toolbar-button" onclick={() => (connectDialog = { engine: "redis", saved: null })} disabled={connecting}>Redis…</button>
     {#if connection}
       <div class="ml-2 flex min-w-0 items-center gap-2 text-[12px]">
         <span class="size-2 shrink-0 rounded-full bg-success"></span>
@@ -788,7 +854,7 @@
         <div class="flex h-full flex-col">
           <nav class="flex h-8 shrink-0 items-end gap-0.5 border-b border-line px-2 text-[12px]">
             <button class="result-tab" class:active={sidebarTab === "objects"} onclick={() => (sidebarTab = "objects")}
-              >Objects</button
+              >{keyValue ? "Keys" : "Objects"}</button
             >
             <button class="result-tab" class:active={sidebarTab === "queries"} onclick={() => (sidebarTab = "queries")}
               >Queries</button
@@ -800,14 +866,25 @@
           <div class="min-h-0 flex-1">
             <!-- The tree stays mounted so its expanded nodes survive a tab switch. -->
             <div class="h-full" class:hidden={sidebarTab !== "objects"}>
-              <ObjectTree
-                bind:this={tree}
-                {connection}
-                {database}
-                {refreshKey}
-                onOpen={openObject}
-                onUseDatabase={useDatabase}
-              />
+              {#if keyValue}
+                <KeyBrowser
+                  bind:this={keyBrowser}
+                  conn={connection.id}
+                  {database}
+                  {refreshKey}
+                  openKey={keyView?.name ?? null}
+                  onOpen={(key: KeyInfo) => void openKey(key.name)}
+                />
+              {:else}
+                <ObjectTree
+                  bind:this={tree}
+                  {connection}
+                  {database}
+                  {refreshKey}
+                  onOpen={openObject}
+                  onUseDatabase={useDatabase}
+                />
+              {/if}
             </div>
             {#if sidebarTab === "queries"}
               <QueryList
@@ -857,6 +934,7 @@
         <SqlEditor
           bind:this={editor}
           {grammar}
+          plain={keyValue}
           initial={"select 1 as one, 'hello' as greeting;\n"}
           onRun={(request) => void startRun(request)}
           complete={completeAt}
@@ -870,6 +948,21 @@
       ></div>
 
       <section class="flex min-h-0 flex-1 flex-col">
+        {#if keyView}
+          {@const view = keyView}
+          <div class="flex h-8 shrink-0 items-center gap-3 border-b border-line bg-surface-2 px-3 text-[12px]">
+            <span class="min-w-0 truncate font-mono font-semibold select-text">{view.name}</span>
+            <span class="text-muted">{view.detail.kind === "sortedSet" ? "sorted set" : view.detail.kind}</span>
+            {#if KEY_UNITS[view.detail.kind]}
+              <span class="text-muted">{numberFormat.format(view.detail.length)} {KEY_UNITS[view.detail.kind]}</span>
+            {/if}
+            <span class="text-muted">{expiresIn(view.detail.ttlMs)}</span>
+            <div class="flex-1"></div>
+            <button class="toolbar-button" onclick={() => void openKey(view.name)} disabled={running} title="Read the key again"
+              >Reload</button
+            >
+          </div>
+        {/if}
         {#if tableTab}
           {@const tab = tableTab}
           <!-- Made again for each table, so its draft filters start from that table's. -->

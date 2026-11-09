@@ -5,6 +5,7 @@
 
 pub mod call;
 pub mod catalog;
+pub mod command;
 pub mod config;
 pub mod connection;
 pub mod connection_url;
@@ -12,6 +13,7 @@ pub mod driver;
 pub mod engine;
 pub mod error;
 pub mod format;
+pub mod keys;
 pub mod registry;
 pub mod sink;
 pub mod sql;

@@ -2512,6 +2512,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "paboable-driver-redis"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "paboable-core",
+ "paboable-store",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+]
+
+[[package]]
 name = "paboable-driver-sqlite"
 version = "0.1.0"
 dependencies = [
@@ -2548,6 +2563,7 @@ dependencies = [
  "paboable-core",
  "paboable-driver-mssql",
  "paboable-driver-postgres",
+ "paboable-driver-redis",
  "paboable-driver-sqlite",
  "paboable-storage",
  "paboable-store",

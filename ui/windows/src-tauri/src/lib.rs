@@ -16,6 +16,7 @@ use std::sync::Arc;
 use paboable_core::registry::DriverRegistry;
 use paboable_driver_mssql::MssqlDriver;
 use paboable_driver_postgres::PostgresDriver;
+use paboable_driver_redis::RedisDriver;
 use paboable_driver_sqlite::SqliteDriver;
 use tauri::Manager;
 
@@ -27,6 +28,7 @@ fn registry() -> DriverRegistry {
         .with(Arc::new(SqliteDriver))
         .with(Arc::new(PostgresDriver))
         .with(Arc::new(MssqlDriver))
+        .with(Arc::new(RedisDriver))
 }
 
 pub fn run() {
@@ -74,6 +76,8 @@ pub fn run() {
             commands::count_rows,
             commands::complete,
             commands::forget_catalog,
+            commands::scan_keys,
+            commands::read_key,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

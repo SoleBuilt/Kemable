@@ -12,6 +12,9 @@ import type {
   DatabaseInfo,
   EngineInfo,
   HistoryEntry,
+  KeyPage,
+  KeyRead,
+  KeyScan,
   ObjectInfo,
   OpenedConnection,
   RunEvent,
@@ -67,6 +70,14 @@ export const ipc = {
 
   /** Forgets what completion read of a server's catalog, after a change to it. */
   forgetCatalog: (conn: number) => invoke<void>("forget_catalog", { conn }),
+
+  /** One step of a scan over a key-value server's keys. */
+  scanKeys: (conn: number, database: string | null, scan: KeyScan) =>
+    invoke<KeyPage>("scan_keys", { conn, database, scan }),
+
+  /** Reads a key into a result set, up to `rowLimit` rows. */
+  readKey: (conn: number, database: string | null, key: string, rowLimit: number | null) =>
+    invoke<KeyRead>("read_key", { conn, database, key, rowLimit }),
 
   /** Runs a count statement; gives up after 30 s. */
   countRows: (conn: number, database: string | null, sql: string) =>

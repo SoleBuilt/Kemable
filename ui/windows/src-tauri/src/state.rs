@@ -39,7 +39,8 @@ type ResultEntry = (Arc<ResultStore>, Option<ResultOrigin>);
 #[derive(Debug, Clone)]
 pub struct ResultOrigin {
     pub database: Option<String>,
-    pub grammar: paboable_core::sql::SqlGrammar,
+    /// `None` for a console's command, which only the core sorts.
+    pub grammar: Option<paboable_core::sql::SqlGrammar>,
     pub statement: String,
     /// The run held this one statement and nothing else, so running it again
     /// alone means the same thing.

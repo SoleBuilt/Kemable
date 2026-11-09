@@ -260,3 +260,45 @@ export interface CompletionReply {
   from: number;
   items: CompletionItem[];
 }
+
+/** What a Redis key holds (docs/decisions/0008-key-value-engines.md). */
+export type KeyKind = "string" | "list" | "set" | "sortedSet" | "hash" | "stream" | "other";
+
+export interface KeyInfo {
+  name: string;
+  kind: KeyKind;
+  /** Milliseconds before it expires; null when it does not. */
+  ttlMs: number | null;
+}
+
+export interface KeyScan {
+  pattern: string;
+  /** Where the last step stopped; null to start. */
+  cursor: string | null;
+  /** How many keys the server looks at in a step: a hint. */
+  count: number;
+  kind: KeyKind | null;
+}
+
+export interface KeyPage {
+  keys: KeyInfo[];
+  /** Null once the scan has seen every key. */
+  cursor: string | null;
+}
+
+export interface KeyDetail {
+  kind: KeyKind;
+  ttlMs: number | null;
+  /** Elements in a collection, bytes in a string. */
+  length: number;
+}
+
+/** A key read into a result set. */
+export interface KeyRead {
+  result: number | null;
+  columns: ColumnMeta[];
+  detail: KeyDetail;
+  totalRows: number;
+  limited: boolean;
+  notices: string[];
+}

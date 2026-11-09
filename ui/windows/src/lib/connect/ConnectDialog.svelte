@@ -2,7 +2,11 @@
   import type { ConnectionConfig } from "../types";
 
   /** The engines this dialog connects to over the network. */
-  export type NetworkEngine = "postgres" | "mssql";
+  export type NetworkEngine = "postgres" | "mssql" | "redis";
+
+  export function isNetworkEngine(id: string): id is NetworkEngine {
+    return id === "postgres" || id === "mssql" || id === "redis";
+  }
 
   /** What Connect asks for: a saved connection by id, or a config as typed. */
   export interface ConnectRequest {
@@ -47,6 +51,12 @@
       urlHint: "sqlserver://user:password@host:1433/database",
       hostHint: "localhost or host\\INSTANCE",
     },
+    redis: {
+      title: "Redis",
+      port: 6379,
+      urlHint: "redis://:password@host:6379/0 (rediss:// for TLS)",
+      hostHint: "localhost",
+    },
   };
 
   // svelte-ignore state_referenced_locally
@@ -72,7 +82,7 @@
   // svelte-ignore state_referenced_locally
   if (saved && saved.config.target.kind === "network") {
     const target = saved.config.target;
-    if (saved.config.engine === "postgres" || saved.config.engine === "mssql") engine = saved.config.engine;
+    if (isNetworkEngine(saved.config.engine)) engine = saved.config.engine;
     savedId = saved.id;
     name = saved.name;
     host = target.host;
@@ -104,6 +114,17 @@
     { value: "require", label: "Require (encrypt, do not check the certificate)" },
     { value: "verifyFull", label: "Verify full (check the certificate and host)" },
   ];
+  // Redis has no TLS negotiation: a link is plain or TLS from its first byte, and TLS checks the certificate.
+  const REDIS_TLS_MODES: { value: TlsMode; label: string }[] = [
+    { value: "disable", label: "Off" },
+    { value: "verifyFull", label: "TLS (check the certificate and host)" },
+  ];
+  const tlsModes = $derived(engine === "redis" ? REDIS_TLS_MODES : TLS_MODES);
+
+  function pickEngine(next: NetworkEngine) {
+    engine = next;
+    if (next === "redis" && tls !== "verifyFull") tls = "disable";
+  }
 
   onMount(() => urlInput.focus());
 
@@ -113,7 +134,7 @@
     try {
       const config = await ipc.parseConnectionUrl(text);
       if (config.target.kind !== "network") return;
-      if (config.engine === "postgres" || config.engine === "mssql") engine = config.engine;
+      if (isNetworkEngine(config.engine)) engine = config.engine;
       host = config.target.host;
       port = config.target.port ? String(config.target.port) : "";
       database = config.target.database ?? "";
@@ -220,7 +241,7 @@
             class:engine-active={engine === id}
             role="radio"
             aria-checked={engine === id}
-            onclick={() => (engine = id as NetworkEngine)}>{entry.title}</button
+            onclick={() => pickEngine(id as NetworkEngine)}>{entry.title}</button
           >
         {/each}
       </div>
@@ -243,7 +264,7 @@
       />
     </label>
     <p class="mb-3 -mt-1 text-[11.5px] text-muted">
-      Paste a connection URL (Neon, Supabase, PostgreSQL or SQL Server) to fill the fields.
+      Paste a connection URL (Neon, Supabase, PostgreSQL, SQL Server or Redis) to fill the fields.
     </p>
 
     <div class="grid grid-cols-[1fr_96px] gap-x-3">
@@ -251,8 +272,13 @@
       <label class="field"><span>Port</span><input bind:value={port} placeholder={String(info.port)} inputmode="numeric" /></label>
     </div>
     <label class="field">
-      <span>Database</span>
-      <input bind:value={database} placeholder="optional: every database shows in the tree" spellcheck="false" />
+      <span>{engine === "redis" ? "Database number" : "Database"}</span>
+      <input
+        bind:value={database}
+        placeholder={engine === "redis" ? "0" : "optional: every database shows in the tree"}
+        inputmode={engine === "redis" ? "numeric" : undefined}
+        spellcheck="false"
+      />
     </label>
 
     {#if engine === "mssql"}
@@ -268,7 +294,7 @@
       <div class="grid grid-cols-2 gap-x-3">
         <label class="field">
           <span>User</span>
-          <input bind:value={user} placeholder={engine === "postgres" ? "postgres" : "sa"} spellcheck="false" />
+          <input bind:value={user} placeholder={engine === "postgres" ? "postgres" : engine === "redis" ? "optional (ACL user)" : "sa"} spellcheck="false" />
         </label>
         <label class="field">
           <span>Password</span>
@@ -283,7 +309,7 @@
     <label class="field">
       <span>Encryption</span>
       <select bind:value={tls}>
-        {#each TLS_MODES as mode (mode.value)}
+        {#each tlsModes as mode (mode.value)}
           <option value={mode.value}>{mode.label}</option>
         {/each}
       </select>
