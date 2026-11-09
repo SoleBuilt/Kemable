@@ -14,7 +14,7 @@ use paboable_core::engine::EngineInfo;
 use paboable_core::sql::{split, statement_at};
 use paboable_core::{CallOptions, DriverError};
 use paboable_storage::SavedConnection;
-use paboable_store::WindowRequest;
+use paboable_store::{CellRange, MAX_COPY_CELLS, WindowRequest};
 use serde::Serialize;
 use tauri::State;
 use tauri::ipc::{Channel, Response};
@@ -295,6 +295,39 @@ pub async fn fetch_window(
         max_chars,
     });
     Ok(Response::new(bytes))
+}
+
+/// A rectangle of cells as tab-separated text for the clipboard, built in
+/// the store under one lock. Refused past `MAX_COPY_CELLS`.
+#[tauri::command]
+pub async fn copy_range(
+    state: State<'_, Arc<AppState>>,
+    result: u64,
+    first_row: u64,
+    row_count: u64,
+    first_column: usize,
+    column_count: usize,
+    with_headers: bool,
+) -> CommandResult<String> {
+    let range = CellRange {
+        first_row,
+        row_count,
+        first_column,
+        column_count,
+    };
+    state
+        .result(result)?
+        .copy_tsv(range, with_headers)
+        .ok_or_else(|| DriverError::unsupported(format!("copying more than {MAX_COPY_CELLS} cells at once")))
+}
+
+/// Every value of one row, for the detail pane.
+#[tauri::command]
+pub async fn row_values(state: State<'_, Arc<AppState>>, result: u64, row: u64) -> CommandResult<Vec<Option<String>>> {
+    state
+        .result(result)?
+        .row_texts(row)
+        .ok_or_else(|| DriverError::not_found("row"))
 }
 
 #[tauri::command]

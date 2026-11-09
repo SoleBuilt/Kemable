@@ -371,6 +371,64 @@ mod tests {
     }
 
     #[test]
+    fn a_range_copies_as_tab_separated_text_spreadsheets_paste() {
+        let store = ResultStore::new(
+            vec![column("id", ValueKind::Int), column("note", ValueKind::Text)],
+            None,
+        );
+        let rows = [
+            Value::Int(1),
+            Value::Text("plain".into()),
+            Value::Int(2),
+            Value::Text("two\tcells \"quoted\"\nlines".into()),
+            Value::Int(3),
+            Value::Null,
+        ];
+        assert!(store.push_rows(&rows));
+        let all = crate::CellRange {
+            first_row: 0,
+            row_count: 3,
+            first_column: 0,
+            column_count: 2,
+        };
+        assert_eq!(
+            store.copy_tsv(all, true).unwrap(),
+            "id\tnote\r\n1\tplain\r\n2\t\"two\tcells \"\"quoted\"\"\nlines\"\r\n3\t\r\n"
+        );
+        // A range past the end is cut to what the set holds.
+        let tail = crate::CellRange {
+            first_row: 2,
+            row_count: 10,
+            first_column: 1,
+            column_count: 5,
+        };
+        assert_eq!(store.copy_tsv(tail, false).unwrap(), "\r\n");
+    }
+
+    #[test]
+    fn a_copy_past_the_cell_limit_is_refused() {
+        let store = ResultStore::new(vec![column("n", ValueKind::Int)], None);
+        let values: Vec<Value> = (0..=crate::MAX_COPY_CELLS as i64).map(Value::Int).collect();
+        assert!(store.push_rows(&values));
+        let everything = crate::CellRange {
+            first_row: 0,
+            row_count: u64::MAX,
+            first_column: 0,
+            column_count: 1,
+        };
+        // Refused before any text is built.
+        assert!(store.copy_tsv(everything, false).is_none());
+    }
+
+    #[test]
+    fn a_row_reads_whole_for_the_detail_pane() {
+        let store = ResultStore::new(vec![column("n", ValueKind::Int), column("t", ValueKind::Text)], None);
+        assert!(store.push_rows(&[Value::Int(7), Value::Null]));
+        assert_eq!(store.row_texts(0), Some(vec![Some("7".to_owned()), None]));
+        assert_eq!(store.row_texts(5), None);
+    }
+
+    #[test]
     fn bytes_show_as_hex_and_copy_in_full() {
         let store = ResultStore::new(vec![column("b", ValueKind::Bytes)], None);
         assert!(store.push_rows(&[Value::Bytes(vec![0xca, 0xfe, 0xba, 0xbe])]));

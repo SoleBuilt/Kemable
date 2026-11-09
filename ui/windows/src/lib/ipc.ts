@@ -81,6 +81,19 @@ export const ipc = {
   /** A cell's full value for copy, `null` for SQL NULL. */
   cellText: (result: number, row: number, column: number) => invoke<string | null>("cell_text", { result, row, column }),
 
+  /** A rectangle of cells as tab-separated text, as spreadsheets paste it. */
+  copyRange: (
+    result: number,
+    firstRow: number,
+    rowCount: number,
+    firstColumn: number,
+    columnCount: number,
+    withHeaders: boolean,
+  ) => invoke<string>("copy_range", { result, firstRow, rowCount, firstColumn, columnCount, withHeaders }),
+
+  /** Every value of one row, null for SQL NULL. */
+  rowValues: (result: number, row: number) => invoke<(string | null)[]>("row_values", { result, row }),
+
   releaseResult: (result: number) => invoke<void>("release_result", { result }),
 };
 
