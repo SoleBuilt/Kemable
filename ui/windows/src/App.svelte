@@ -1,0 +1,373 @@
+<script lang="ts">
+  import { open } from "@tauri-apps/plugin-dialog";
+  import { untrack } from "svelte";
+  import SqlEditor, { type RunRequest } from "./lib/editor/SqlEditor.svelte";
+  import { errorTitle } from "./lib/errors";
+  import DataGrid from "./lib/grid/DataGrid.svelte";
+  import type { GridCallbacks, GridSource } from "./lib/grid/engine";
+  import { asCoreError, ipc } from "./lib/ipc";
+  import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
+  import type { ColumnMeta, CoreError, ObjectInfo, OpenedConnection, RunEvent } from "./lib/types";
+
+  interface ResultSetView {
+    result: number;
+    statement: number;
+    columns: ColumnMeta[];
+    totalRows: number;
+    finished: boolean;
+    limited: boolean;
+  }
+
+  type Message =
+    | { kind: "command"; statement: number; rowsAffected: number | null }
+    | { kind: "notice"; statement: number; text: string }
+    | { kind: "error"; statement: number | null; error: CoreError };
+
+  let connection = $state.raw<OpenedConnection | null>(null);
+  let connectError: CoreError | null = $state(null);
+  let connecting = $state(false);
+
+  // Raw: a set is replaced, never mutated, so the grid gets plain objects.
+  let sets: ResultSetView[] = $state.raw([]);
+  let messages: Message[] = $state([]);
+  let activeTab: number | "messages" = $state(0);
+  let runId: number | null = $state(null);
+  let running = $state(false);
+  let elapsedMs: number | null = $state(null);
+  let refreshKey = $state(0);
+  let statements: string[] = [];
+
+  let editorShare = $state(0.42);
+  let sidebarWidth = $state(248);
+  let editor: SqlEditor | undefined = $state();
+
+  const grammar = $derived(connection?.engine.sqlGrammar ?? null);
+  const activeSet = $derived(typeof activeTab === "number" ? sets[activeTab] : undefined);
+  const activeResult = $derived(activeSet?.result ?? null);
+  // Only a change of set gives the grid a new source; row counts travel separately.
+  const gridSource: GridSource | null = $derived.by(() => {
+    const result = activeResult;
+    if (result === null) return null;
+    return untrack(() => {
+      const set = sets.find((candidate) => candidate.result === result);
+      return set ? { result, columns: set.columns } : null;
+    });
+  });
+  const gridRows = $derived(activeSet?.totalRows ?? 0);
+  const errorCount = $derived(messages.filter((message) => message.kind === "error").length);
+
+  const gridCallbacks: GridCallbacks = {
+    fetchWindow: ipc.fetchWindow,
+    copyCell: (result, row, column) => {
+      void ipc.cellText(result, row, column).then((text) => navigator.clipboard.writeText(text ?? "NULL"));
+    },
+  };
+
+  async function connectTo(path: string) {
+    connecting = true;
+    connectError = null;
+    try {
+      const opened = await ipc.connect({ engine: "sqlite", target: { kind: "file", path, readOnly: false } });
+      if (connection) void ipc.disconnect(connection.id);
+      clearResults();
+      connection = opened;
+      editor?.focus();
+    } catch (caught) {
+      connectError = asCoreError(caught);
+    } finally {
+      connecting = false;
+    }
+  }
+
+  async function openFile() {
+    const path = await open({
+      multiple: false,
+      directory: false,
+      filters: [
+        { name: "SQLite", extensions: ["db", "sqlite", "sqlite3", "db3", "s3db"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    if (typeof path === "string") await connectTo(path);
+  }
+
+  function clearResults() {
+    for (const set of sets) void ipc.releaseResult(set.result);
+    sets = [];
+    messages = [];
+    activeTab = 0;
+    elapsedMs = null;
+  }
+
+  async function startRun(request: RunRequest) {
+    if (!connection || running) return;
+    clearResults();
+    statements = [];
+    running = true;
+    try {
+      runId = await ipc.runQuery(connection.id, request.sql, request.cursor, onEvent);
+    } catch (caught) {
+      running = false;
+      messages = [{ kind: "error", statement: null, error: asCoreError(caught) }];
+      activeTab = "messages";
+    }
+  }
+
+  function updateSet(result: number, change: Partial<ResultSetView>) {
+    sets = sets.map((set) => (set.result === result ? { ...set, ...change } : set));
+  }
+
+  function onEvent(event: RunEvent) {
+    switch (event.type) {
+      case "statementStarted":
+        statements[event.index] = event.text;
+        break;
+      case "setStarted":
+        sets = [
+          ...sets,
+          {
+            result: event.result,
+            statement: event.statement,
+            columns: event.columns,
+            totalRows: 0,
+            finished: false,
+            limited: false,
+          },
+        ];
+        break;
+      case "rows":
+        updateSet(event.result, { totalRows: event.total });
+        break;
+      case "setFinished":
+        updateSet(event.result, { totalRows: event.total, finished: true, limited: event.limited });
+        break;
+      case "commandDone":
+        messages.push({ kind: "command", statement: event.statement, rowsAffected: event.rowsAffected });
+        break;
+      case "notice":
+        messages.push({ kind: "notice", statement: event.statement, text: event.text });
+        break;
+      case "statementFailed":
+        messages.push({ kind: "error", statement: event.statement, error: event.error });
+        break;
+      case "finished":
+        running = false;
+        runId = null;
+        elapsedMs = event.elapsedMs;
+        if (sets.length === 0 || event.failed) activeTab = "messages";
+        if (messages.some((message) => message.kind === "command")) refreshKey++;
+        break;
+    }
+  }
+
+  function stopRun() {
+    if (runId !== null) void ipc.cancelRun(runId);
+  }
+
+  function quote(name: string): string {
+    return grammar === "sqlServer" ? `[${name.replaceAll("]", "]]")}]` : `"${name.replaceAll('"', '""')}"`;
+  }
+
+  function openObject(object: ObjectInfo) {
+    if (object.kind !== "table" && object.kind !== "view" && object.kind !== "materializedView") return;
+    const name = object.schema ? `${quote(object.schema)}.${quote(object.name)}` : quote(object.name);
+    void startRun({ sql: `select * from ${name}`, cursor: null });
+  }
+
+  function runFromToolbar(mode: "statement" | "all") {
+    const request = editor?.request(mode);
+    if (request) void startRun(request);
+  }
+
+  function statementLabel(index: number | null): string {
+    if (index === null) return "";
+    const text = statements[index] ?? "";
+    return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+  }
+
+  function dragSplit(event: PointerEvent, axis: "x" | "y") {
+    const target = event.currentTarget as HTMLElement;
+    const container = target.parentElement;
+    if (!container) return;
+    target.setPointerCapture(event.pointerId);
+    const rect = container.getBoundingClientRect();
+    const move = (moveEvent: PointerEvent) => {
+      if (axis === "y") editorShare = Math.min(0.85, Math.max(0.12, (moveEvent.clientY - rect.top) / rect.height));
+      else sidebarWidth = Math.min(480, Math.max(160, moveEvent.clientX - rect.left));
+    };
+    const up = () => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", up);
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", up);
+  }
+
+  const numberFormat = new Intl.NumberFormat();
+</script>
+
+<div class="flex h-full flex-col">
+  <!-- Toolbar -->
+  <header class="flex h-10 shrink-0 items-center gap-1 border-b border-line bg-surface-2 px-2">
+    <button class="toolbar-button" onclick={openFile} disabled={connecting}>Open SQLite…</button>
+    <button class="toolbar-button" onclick={() => connectTo(":memory:")} disabled={connecting}>In memory</button>
+    {#if connection}
+      <div class="ml-2 flex min-w-0 items-center gap-2 text-[12px]">
+        <span class="size-2 shrink-0 rounded-full bg-success"></span>
+        <span class="truncate font-semibold">{connection.title}</span>
+        <span class="shrink-0 text-muted">{connection.engine.displayName} {connection.serverVersion ?? ""}</span>
+      </div>
+    {/if}
+    <div class="flex-1"></div>
+    <button
+      class="toolbar-button"
+      onclick={() => runFromToolbar("statement")}
+      disabled={!connection || running}
+      title="Run the statement under the cursor (Ctrl+Enter)">▶ Run</button
+    >
+    <button
+      class="toolbar-button"
+      onclick={() => runFromToolbar("all")}
+      disabled={!connection || running}
+      title="Run every statement (Ctrl+Shift+Enter or F5)">Run all</button
+    >
+    <button class="toolbar-button" onclick={stopRun} disabled={!running} title="Stop the running statement">■ Stop</button>
+  </header>
+
+  {#if connectError}
+    <div class="flex items-center gap-3 border-b border-line bg-surface px-3 py-2 text-[12px]">
+      <span class="font-semibold text-danger">{errorTitle(connectError)}</span>
+      <span class="min-w-0 flex-1 truncate text-muted">{connectError.message}</span>
+      <button class="toolbar-button" onclick={() => (connectError = null)}>Dismiss</button>
+    </div>
+  {/if}
+
+  <div class="flex min-h-0 flex-1">
+    <!-- Sidebar -->
+    <aside class="shrink-0 border-r border-line bg-surface-2" style:width="{sidebarWidth}px">
+      {#if connection}
+        <ObjectTree {connection} {refreshKey} onOpen={openObject} />
+      {:else}
+        <div class="p-4 text-[12.5px] leading-relaxed text-muted">
+          Open a SQLite file to start. Cloudflare D1's local databases are SQLite files under
+          <code class="text-fg">.wrangler/state/v3/d1</code>.
+        </div>
+      {/if}
+    </aside>
+    <div
+      class="w-1 shrink-0 cursor-col-resize hover:bg-accent/40"
+      role="separator"
+      aria-orientation="vertical"
+      onpointerdown={(event) => dragSplit(event, "x")}
+    ></div>
+
+    <!-- Editor and results -->
+    <main class="flex min-w-0 flex-1 flex-col">
+      <section class="min-h-0 border-b border-line" style:height="{editorShare * 100}%">
+        <SqlEditor
+          bind:this={editor}
+          {grammar}
+          initial={"select 1 as one, 'hello' as greeting;\n"}
+          onRun={(request) => void startRun(request)}
+        />
+      </section>
+      <div
+        class="h-1 shrink-0 cursor-row-resize hover:bg-accent/40"
+        role="separator"
+        aria-orientation="horizontal"
+        onpointerdown={(event) => dragSplit(event, "y")}
+      ></div>
+
+      <section class="flex min-h-0 flex-1 flex-col">
+        <nav class="flex h-8 shrink-0 items-end gap-0.5 border-b border-line bg-surface-2 px-2 text-[12px]">
+          {#each sets as set, index (set.result)}
+            <button class="result-tab" class:active={activeTab === index} onclick={() => (activeTab = index)}>
+              Result {index + 1}
+              <span class="text-muted">{numberFormat.format(set.totalRows)}{set.limited ? "+" : ""}</span>
+            </button>
+          {/each}
+          <button class="result-tab" class:active={activeTab === "messages"} onclick={() => (activeTab = "messages")}>
+            Messages
+            {#if errorCount > 0}<span class="text-danger">{errorCount}</span>{/if}
+          </button>
+        </nav>
+
+        <div class="min-h-0 flex-1">
+          {#if activeTab === "messages"}
+            <div class="h-full overflow-auto p-3 font-mono text-[12px] select-text">
+              {#each messages as message, index (index)}
+                <div class="mb-2">
+                  {#if message.kind === "error"}
+                    <div class="text-danger">{errorTitle(message.error)}: {message.error.message}</div>
+                  {:else if message.kind === "command"}
+                    <div>{message.rowsAffected === null ? "Done" : `${numberFormat.format(message.rowsAffected)} rows affected`}</div>
+                  {:else}
+                    <div class="text-muted">{message.text}</div>
+                  {/if}
+                  {#if message.statement !== null}
+                    <div class="truncate text-muted">{statementLabel(message.statement)}</div>
+                  {/if}
+                </div>
+              {:else}
+                <div class="text-muted">No messages.</div>
+              {/each}
+            </div>
+          {:else}
+            <DataGrid source={gridSource} totalRows={gridRows} callbacks={gridCallbacks} />
+          {/if}
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Status bar -->
+  <footer class="flex h-6 shrink-0 items-center gap-4 border-t border-line bg-surface-2 px-3 text-[11.5px] text-muted">
+    {#if running}
+      <span class="text-accent">Running…</span>
+    {:else if elapsedMs !== null}
+      <span>{numberFormat.format(elapsedMs)} ms</span>
+    {/if}
+    {#if activeSet}
+      <span>
+        {numberFormat.format(activeSet.totalRows)} rows{activeSet.finished ? "" : " so far"}
+        {#if activeSet.limited}<span class="text-danger"> · stopped at the row limit</span>{/if}
+      </span>
+    {/if}
+    <div class="flex-1"></div>
+    <span>Paboable</span>
+  </footer>
+</div>
+
+<style>
+  :global(.toolbar-button) {
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  :global(.toolbar-button:hover:not(:disabled)) {
+    background: var(--surface-3);
+  }
+  :global(.toolbar-button:disabled) {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+  .result-tab {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 5px 5px 0 0;
+    color: var(--text-muted);
+  }
+  .result-tab:hover {
+    color: var(--text);
+  }
+  .result-tab.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+</style>
