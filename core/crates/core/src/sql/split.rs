@@ -6,6 +6,10 @@
 //! | SQL Server | a `GO` line | the whole batch, `[...]` names, nested `/* */` |
 //! | SQLite | `;` | `[...]` and backtick names, a `CREATE TRIGGER ... BEGIN ... END` body |
 //!
+//! In the PostgreSQL grammar, a line that starts with `\` where a statement
+//! would start is a psql meta-command (`\c demo`): it runs to the end of its
+//! line and comes back as a [`StatementKind::Directive`].
+//!
 //! A statement holding only whitespace and comments is dropped. Ranges are
 //! byte offsets into the text and start at the first token, so a comment
 //! before a statement is not sent with it.
@@ -15,9 +19,19 @@ use serde::Serialize;
 use super::SqlGrammar;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StatementKind {
+    /// Text the engine runs.
+    Sql,
+    /// A client command the run handles itself, such as psql's `\c name`.
+    Directive,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct StatementSpan {
     pub start: usize,
     pub end: usize,
+    pub kind: StatementKind,
 }
 
 impl StatementSpan {
@@ -41,6 +55,21 @@ pub fn split(text: &str, grammar: SqlGrammar) -> Vec<StatementSpan> {
         {
             current.finish(&mut spans);
             i = next;
+            continue;
+        }
+
+        if grammar == SqlGrammar::Postgres && current.start.is_none() && bytes[i] == b'\\' && starts_line(bytes, i) {
+            let line_end = bytes[i..]
+                .iter()
+                .position(|&b| b == b'\n')
+                .map_or(len, |offset| i + offset);
+            let end = i + text.get(i..line_end).unwrap_or_default().trim_end().len();
+            spans.push(StatementSpan {
+                start: i,
+                end,
+                kind: StatementKind::Directive,
+            });
+            i = line_end;
             continue;
         }
 
@@ -151,6 +180,7 @@ impl Current {
             spans.push(StatementSpan {
                 start,
                 end: self.last_end,
+                kind: StatementKind::Sql,
             });
         }
         *self = Self::default();
@@ -167,6 +197,15 @@ fn has_block_body(words: &[String], grammar: SqlGrammar) -> bool {
         SqlGrammar::Postgres => words.iter().any(|w| w == "FUNCTION" || w == "PROCEDURE"),
         SqlGrammar::SqlServer => false,
     }
+}
+
+/// Whether only spaces and tabs come before `index` on its line.
+fn starts_line(bytes: &[u8], index: usize) -> bool {
+    bytes[..index]
+        .iter()
+        .rev()
+        .take_while(|&&b| b != b'\n')
+        .all(|&b| matches!(b, b' ' | b'\t' | b'\r'))
 }
 
 fn peek(bytes: &[u8], index: usize) -> u8 {
@@ -405,6 +444,32 @@ mod tests {
             texts("select 'Việt;Nam'; select đ", SqlGrammar::Sqlite),
             ["select 'Việt;Nam'", "select đ"]
         );
+    }
+
+    #[test]
+    fn psql_meta_commands_are_directives_that_end_at_their_line() {
+        let script = "create database demo;\n\\c demo  \r\ncreate table t (x int);\n  \\connect other\nselect 1";
+        let spans = split(script, SqlGrammar::Postgres);
+        let parts: Vec<_> = spans.iter().map(|span| (span.kind, span.text(script))).collect();
+        assert_eq!(
+            parts,
+            [
+                (StatementKind::Sql, "create database demo"),
+                (StatementKind::Directive, "\\c demo"),
+                (StatementKind::Sql, "create table t (x int)"),
+                (StatementKind::Directive, "\\connect other"),
+                (StatementKind::Sql, "select 1"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_backslash_inside_a_statement_or_another_grammar_is_text() {
+        assert_eq!(
+            texts("select 1\n\\c demo;", SqlGrammar::Postgres),
+            ["select 1\n\\c demo"]
+        );
+        assert_eq!(texts("\\c demo;", SqlGrammar::Sqlite), ["\\c demo"]);
     }
 
     #[test]

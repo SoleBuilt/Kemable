@@ -7,6 +7,7 @@
   import type { GridCallbacks, GridSource } from "./lib/grid/engine";
   import { asCoreError, ipc } from "./lib/ipc";
   import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
+  import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
   import PostgresDialog from "./lib/connect/PostgresDialog.svelte";
   import type { ColumnMeta, ConnectionConfig, CoreError, ObjectInfo, OpenedConnection, RunEvent } from "./lib/types";
 
@@ -22,7 +23,15 @@
   type Message =
     | { kind: "command"; statement: number; rowsAffected: number | null }
     | { kind: "notice"; statement: number; text: string }
+    | { kind: "switched"; statement: number; database: string }
     | { kind: "error"; statement: number | null; error: CoreError };
+
+  /**
+   * After `CREATE DATABASE x` succeeds, the rest of the script runs in x
+   * (decided 2026-11-09, docs/roadmap.md). Other clients stay put, so the
+   * switch is announced in Messages. A settings screen will let it be turned off.
+   */
+  const FOLLOW_CREATED_DATABASE = true;
 
   let connection = $state.raw<OpenedConnection | null>(null);
   let connectError: CoreError | null = $state(null);
@@ -37,6 +46,12 @@
   let elapsedMs: number | null = $state(null);
   let refreshKey = $state(0);
   let statements: string[] = [];
+  /** The database the editor runs in, for an engine with databases. */
+  let database: string | null = $state(null);
+  /** How many statements the last run sent, of how many the text holds. */
+  let ranCount: { ran: number; total: number } | null = $state(null);
+  let tree: ObjectTree | undefined = $state();
+  let picker: DatabasePicker | undefined = $state();
 
   let editorShare = $state(0.42);
   let sidebarWidth = $state(248);
@@ -72,6 +87,7 @@
       if (connection) void ipc.disconnect(connection.id);
       clearResults();
       connection = opened;
+      database = opened.database;
       editor?.focus();
       return null;
     } catch (caught) {
@@ -113,13 +129,25 @@
     elapsedMs = null;
   }
 
-  async function startRun(request: RunRequest) {
+  /** Runs `request`. One from the editor is marked there; one the app wrote (opening a table) is not. */
+  async function startRun(request: RunRequest, fromEditor = true) {
     if (!connection || running) return;
     clearResults();
     statements = [];
+    ranCount = null;
     running = true;
     try {
-      runId = await ipc.runQuery(connection.id, request.sql, request.cursor, onEvent);
+      const started = await ipc.runQuery(
+        connection.id,
+        database,
+        request.sql,
+        request.cursor,
+        FOLLOW_CREATED_DATABASE,
+        onEvent,
+      );
+      runId = started.run;
+      ranCount = { ran: started.ranges.length, total: started.scriptStatements };
+      if (fromEditor) editor?.showRan(request, started.ranges);
     } catch (caught) {
       running = false;
       messages = [{ kind: "error", statement: null, error: asCoreError(caught) }];
@@ -161,6 +189,10 @@
       case "notice":
         messages.push({ kind: "notice", statement: event.statement, text: event.text });
         break;
+      case "databaseChanged":
+        database = event.database;
+        messages.push({ kind: "switched", statement: event.statement, database: event.database });
+        break;
       case "statementFailed":
         messages.push({ kind: "error", statement: event.statement, error: event.error });
         break;
@@ -169,7 +201,7 @@
         runId = null;
         elapsedMs = event.elapsedMs;
         if (sets.length === 0 || event.failed) activeTab = "messages";
-        if (messages.some((message) => message.kind === "command")) refreshKey++;
+        if (messages.some((message) => message.kind === "command" || message.kind === "switched")) refreshKey++;
         break;
     }
   }
@@ -182,10 +214,37 @@
     return grammar === "sqlServer" ? `[${name.replaceAll("]", "]]")}]` : `"${name.replaceAll('"', '""')}"`;
   }
 
-  function openObject(object: ObjectInfo) {
+  /** Opens a table or view from the tree, in the database it belongs to. */
+  function openObject(object: ObjectInfo, inDatabase: string | null) {
     if (object.kind !== "table" && object.kind !== "view" && object.kind !== "materializedView") return;
+    if (running) return;
+    if (inDatabase !== null) database = inDatabase;
     const name = object.schema ? `${quote(object.schema)}.${quote(object.name)}` : quote(object.name);
-    void startRun({ sql: `select * from ${name}`, cursor: null });
+    void startRun({ sql: `select * from ${name}`, cursor: null, origin: 0 }, false);
+  }
+
+  function useDatabase(name: string) {
+    if (running) return;
+    database = name;
+    editor?.focus();
+  }
+
+  // App-wide keys. WebView2 reloads the page on F5 and Ctrl+R, which would
+  // drop every open connection, so those never reach it.
+  function onWindowKeydown(event: KeyboardEvent) {
+    if (event.defaultPrevented) return;
+    const ctrl = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+    if (ctrl && key === "k" && connection?.engine.hasDatabases) {
+      event.preventDefault();
+      void picker?.open();
+    } else if (ctrl && key === "r") {
+      event.preventDefault();
+      if (connection) void tree?.refresh();
+    } else if (event.key === "F5") {
+      event.preventDefault();
+      if (connection && !running) runFromToolbar("all");
+    }
   }
 
   function runFromToolbar(mode: "statement" | "all") {
@@ -220,6 +279,8 @@
   const numberFormat = new Intl.NumberFormat();
 </script>
 
+<svelte:window onkeydown={onWindowKeydown} />
+
 <div class="flex h-full flex-col">
   <!-- Toolbar -->
   <header class="flex h-10 shrink-0 items-center gap-1 border-b border-line bg-surface-2 px-2">
@@ -232,19 +293,22 @@
         <span class="truncate font-semibold">{connection.title}</span>
         <span class="shrink-0 text-muted">{connection.engine.displayName} {connection.serverVersion ?? ""}</span>
       </div>
+      {#if connection.engine.hasDatabases}
+        <DatabasePicker bind:this={picker} conn={connection.id} {database} onPick={useDatabase} />
+      {/if}
     {/if}
     <div class="flex-1"></div>
     <button
       class="toolbar-button"
       onclick={() => runFromToolbar("statement")}
       disabled={!connection || running}
-      title="Run the statement under the cursor (Ctrl+Enter)">▶ Run</button
+      title="Run only the statement under the cursor, or the selection (Ctrl+Enter)">▶ Run statement</button
     >
     <button
       class="toolbar-button"
       onclick={() => runFromToolbar("all")}
       disabled={!connection || running}
-      title="Run every statement (Ctrl+Shift+Enter or F5)">Run all</button
+      title="Run every statement in the editor (Ctrl+Shift+Enter or F5)">▶▶ Run all</button
     >
     <button class="toolbar-button" onclick={stopRun} disabled={!running} title="Stop the running statement">■ Stop</button>
   </header>
@@ -261,7 +325,14 @@
     <!-- Sidebar -->
     <aside class="shrink-0 border-r border-line bg-surface-2" style:width="{sidebarWidth}px">
       {#if connection}
-        <ObjectTree {connection} {refreshKey} onOpen={openObject} />
+        <ObjectTree
+          bind:this={tree}
+          {connection}
+          {database}
+          {refreshKey}
+          onOpen={openObject}
+          onUseDatabase={useDatabase}
+        />
       {:else}
         <div class="p-4 text-[12.5px] leading-relaxed text-muted">
           Open a SQLite file or connect to PostgreSQL (Neon and Supabase included) to start. Cloudflare D1's local
@@ -316,6 +387,8 @@
                     <div class="text-danger">{errorTitle(message.error)}: {message.error.message}</div>
                   {:else if message.kind === "command"}
                     <div>{message.rowsAffected === null ? "Done" : `${numberFormat.format(message.rowsAffected)} rows affected`}</div>
+                  {:else if message.kind === "switched"}
+                    <div class="text-accent">Switched to {message.database}; the statements after this run there.</div>
                   {:else}
                     <div class="text-muted">{message.text}</div>
                   {/if}
@@ -341,6 +414,16 @@
       <span class="text-accent">Running…</span>
     {:else if elapsedMs !== null}
       <span>{numberFormat.format(elapsedMs)} ms</span>
+    {/if}
+    {#if ranCount}
+      <span class:text-fg={ranCount.ran < ranCount.total}>
+        {ranCount.ran < ranCount.total
+          ? `Ran ${ranCount.ran} of ${ranCount.total} statements`
+          : `Ran ${ranCount.ran} ${ranCount.ran === 1 ? "statement" : "statements"}`}
+      </span>
+    {/if}
+    {#if connection?.engine.hasDatabases && database}
+      <span>in {database}</span>
     {/if}
     {#if activeSet}
       <span>

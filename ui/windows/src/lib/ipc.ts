@@ -5,10 +5,12 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   ConnectionConfig,
   CoreError,
+  DatabaseInfo,
   EngineInfo,
   ObjectInfo,
   OpenedConnection,
   RunEvent,
+  RunStarted,
   SchemaInfo,
 } from "./types";
 
@@ -22,19 +24,32 @@ export const ipc = {
 
   disconnect: (conn: number) => invoke<void>("disconnect", { conn }),
 
-  listSchemas: (conn: number) => invoke<SchemaInfo[]>("list_schemas", { conn }),
+  /** The databases this login may open, for an engine with databases. */
+  listDatabases: (conn: number) => invoke<DatabaseInfo[]>("list_databases", { conn }),
 
-  listObjects: (conn: number, schema: string | null) => invoke<ObjectInfo[]>("list_objects", { conn, schema }),
+  listSchemas: (conn: number, database: string | null) => invoke<SchemaInfo[]>("list_schemas", { conn, database }),
+
+  listObjects: (conn: number, database: string | null, schema: string | null) =>
+    invoke<ObjectInfo[]>("list_objects", { conn, database, schema }),
 
   /**
-   * Starts a run and returns its id at once. Events arrive on `onEvent` until
-   * one of type `finished`. `cursor` is a UTF-8 byte offset: with it, only the
-   * statement under the cursor runs; without it, every statement in `sql`.
+   * Starts a run in `database` (null: the one the connection opened on) and
+   * returns at once. Events arrive on `onEvent` until one of type `finished`.
+   * `cursor` is a UTF-8 byte offset: with it, only the statement under the
+   * cursor runs; without it, every statement in `sql`. With
+   * `followCreatedDatabase`, the statements after `CREATE DATABASE x` run in x.
    */
-  runQuery(conn: number, sql: string, cursor: number | null, onEvent: (event: RunEvent) => void) {
+  runQuery(
+    conn: number,
+    database: string | null,
+    sql: string,
+    cursor: number | null,
+    followCreatedDatabase: boolean,
+    onEvent: (event: RunEvent) => void,
+  ) {
     const channel = new Channel<RunEvent>();
     channel.onmessage = onEvent;
-    return invoke<number>("run_query", { conn, sql, cursor, onEvent: channel });
+    return invoke<RunStarted>("run_query", { conn, database, sql, cursor, followCreatedDatabase, onEvent: channel });
   },
 
   cancelRun: (run: number) => invoke<void>("cancel_run", { run }),

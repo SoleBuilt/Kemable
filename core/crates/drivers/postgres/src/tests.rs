@@ -552,6 +552,26 @@ async fn the_catalog_lists_schemas_tables_and_columns() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+async fn the_databases_this_login_may_open_are_listed_with_the_current_one() {
+    let conn = live().await;
+    let current = conn.current_database().expect("PostgreSQL reports its database");
+    let databases = conn.list_databases(CallOptions::default()).await.unwrap();
+    let marked: Vec<_> = databases
+        .iter()
+        .filter(|db| db.is_current)
+        .map(|db| db.name.as_str())
+        .collect();
+    assert_eq!(marked, [current.as_str()]);
+    // Templates take no connections from a client, so they are not listed.
+    assert!(
+        databases
+            .iter()
+            .all(|db| db.name != "template0" && db.name != "template1")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
 async fn a_wrong_password_is_an_auth_error() {
     let mut config = live_config();
     if let Target::Network { password, .. } = &mut config.target {

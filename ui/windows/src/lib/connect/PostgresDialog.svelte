@@ -135,7 +135,7 @@
     {#if error}
       <div class="mb-3 rounded border border-line bg-surface-2 p-2 text-[12px]">
         <div class="font-semibold text-danger">{errorTitle(error)}</div>
-        <div class="mt-1 break-words whitespace-pre-wrap text-muted select-text">{error.message}</div>
+        <div class="mt-1 wrap-break-word whitespace-pre-wrap text-muted select-text">{error.message}</div>
       </div>
     {/if}
 

@@ -38,6 +38,8 @@ Planned crates, in the order `docs/roadmap.md` gives: `drivers/mssql` (tiberius)
 
 `execute(statement, sink, options)` runs one statement, already split from its script, and streams rows into a `ResultSink`: `begin_set`, then `push_rows` in batches of `PUSH_BATCH_ROWS`, then `end_set`; or `command_done` for a statement without rows. `push_rows` returns `false` at the row limit and the driver stops reading.
 
+An engine whose server holds several databases sets `EngineInfo::has_databases` and answers `current_database` and `list_databases` (what the login may open, as the server's permissions decide). A `Connection` stays bound to one database: PostgreSQL cannot change a session's database, so the app opens one connection per database in use (`ui/windows/src-tauri/src/state.rs`, `OpenServer`). After a run's statement, `paboable_core::sql::database_change` says whether it moved the run (`CREATE DATABASE x`, SQL Server's `USE x`, psql's `\c x`, which the PostgreSQL grammar splits off as a `StatementKind::Directive`).
+
 Methods a data model does not use return `driver.unsupported`. Key-value, document and queue engines will add their own methods with that default, as the first engine of each model lands (`docs/decisions/0004-engines.md`).
 
 ## SQL scripts

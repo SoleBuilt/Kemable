@@ -1,21 +1,110 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
+use paboable_core::config::{ConnectionConfig, Target};
 use paboable_core::connection::Connection;
+use paboable_core::driver::Driver;
+use paboable_core::engine::EngineInfo;
 use paboable_core::registry::DriverRegistry;
-use paboable_core::{DriverError, Result};
+use paboable_core::{CallOptions, DriverError, Result};
 use paboable_store::ResultStore;
 use tokio_util::sync::CancellationToken;
+
+/// Neon wakes a suspended compute in a few seconds; leave room for it.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// What the app holds open. The UI names each thing by an id from one
 /// counter, so an id is never reused within a launch.
 pub struct AppState {
     pub registry: DriverRegistry,
     ids: AtomicU64,
-    connections: Mutex<HashMap<u64, Arc<dyn Connection>>>,
+    servers: Mutex<HashMap<u64, Arc<OpenServer>>>,
     results: Mutex<HashMap<u64, Arc<ResultStore>>>,
     runs: Mutex<HashMap<u64, CancellationToken>>,
+}
+
+/// A connection the user opened: one server, and a session per database
+/// in use on it. PostgreSQL binds a session to one database, so each
+/// database the tree expands or a run uses gets its own, opened on first use.
+/// An engine without databases (SQLite) has one session, under `home`.
+pub struct OpenServer {
+    pub driver: Arc<dyn Driver>,
+    pub engine: &'static EngineInfo,
+    config: ConnectionConfig,
+    /// The database the first session opened on; empty for an engine without databases.
+    pub home: String,
+    sessions: tokio::sync::Mutex<HashMap<String, Arc<dyn Connection>>>,
+}
+
+impl OpenServer {
+    pub fn new(driver: Arc<dyn Driver>, config: ConnectionConfig, first: Arc<dyn Connection>) -> Self {
+        let engine = first.engine();
+        let home = if engine.has_databases {
+            first.current_database().unwrap_or_default()
+        } else {
+            String::new()
+        };
+        Self {
+            driver,
+            engine,
+            config,
+            sessions: tokio::sync::Mutex::new(HashMap::from([(home.clone(), first)])),
+            home,
+        }
+    }
+
+    /// The session on `database`, opened now if it is not open yet. `None`,
+    /// an empty name, or an engine without databases means the home session.
+    pub async fn session(&self, database: Option<&str>) -> Result<Arc<dyn Connection>> {
+        let key = match database {
+            Some(name) if self.engine.has_databases && !name.is_empty() => name.to_owned(),
+            _ => self.home.clone(),
+        };
+        // One lock across the open, so two callers asking for the same
+        // database at once share one session instead of racing to open two.
+        let mut sessions = self.sessions.lock().await;
+        if let Some(session) = sessions.get(&key) {
+            return Ok(Arc::clone(session));
+        }
+        let config = with_database(&self.config, &key);
+        let session = self
+            .driver
+            .connect(&config, CallOptions::default().with_timeout(CONNECT_TIMEOUT))
+            .await?;
+        sessions.insert(key, Arc::clone(&session));
+        Ok(session)
+    }
+
+    pub async fn close(&self) {
+        let sessions: Vec<_> = self.sessions.lock().await.drain().map(|(_, session)| session).collect();
+        for session in sessions {
+            let _ = session.close().await;
+        }
+    }
+
+    /// Closes the app's own session on `database`, so a `DROP DATABASE` is
+    /// not refused because Paboable itself is still connected to it. The home
+    /// session stays: the tree and the database list go through it.
+    pub async fn close_session(&self, database: &str) {
+        if database == self.home {
+            return;
+        }
+        let session = self.sessions.lock().await.remove(database);
+        if let Some(session) = session {
+            let _ = session.close().await;
+        }
+    }
+}
+
+/// The same server, pointed at another database.
+fn with_database(config: &ConnectionConfig, database: &str) -> ConnectionConfig {
+    let mut config = config.clone();
+    if let Target::Network { database: target, .. } = &mut config.target {
+        *target = Some(database.to_owned());
+    }
+    config
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -29,7 +118,7 @@ impl AppState {
         Self {
             registry,
             ids: AtomicU64::new(1),
-            connections: Mutex::default(),
+            servers: Mutex::default(),
             results: Mutex::default(),
             runs: Mutex::default(),
         }
@@ -39,21 +128,21 @@ impl AppState {
         self.ids.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub fn add_connection(&self, connection: Arc<dyn Connection>) -> u64 {
+    pub fn add_server(&self, server: Arc<OpenServer>) -> u64 {
         let id = self.next_id();
-        lock(&self.connections).insert(id, connection);
+        lock(&self.servers).insert(id, server);
         id
     }
 
-    pub fn connection(&self, id: u64) -> Result<Arc<dyn Connection>> {
-        lock(&self.connections)
+    pub fn server(&self, id: u64) -> Result<Arc<OpenServer>> {
+        lock(&self.servers)
             .get(&id)
             .cloned()
             .ok_or_else(|| DriverError::not_found("connection"))
     }
 
-    pub fn remove_connection(&self, id: u64) -> Option<Arc<dyn Connection>> {
-        lock(&self.connections).remove(&id)
+    pub fn remove_server(&self, id: u64) -> Option<Arc<OpenServer>> {
+        lock(&self.servers).remove(&id)
     }
 
     pub fn add_result(&self, store: Arc<ResultStore>) -> u64 {

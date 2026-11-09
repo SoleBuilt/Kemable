@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use paboable_core::catalog::{ColumnInfo, ColumnMeta, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
+use paboable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
 use paboable_core::config::{ConnectionConfig, Target};
 use paboable_core::connection::Connection;
 use paboable_core::engine::EngineInfo;
@@ -68,6 +68,7 @@ pub struct PostgresConnection {
     tls: Tls,
     mode: StatementMode,
     version: String,
+    database: String,
     notices: NoticeSlot,
     tasks: Vec<JoinHandle<()>>,
 }
@@ -144,13 +145,21 @@ impl PostgresConnection {
             tls,
             mode: StatementMode::for_target(host, port, &config.options),
             version: String::new(),
+            database: String::new(),
             notices,
             tasks: vec![editor_task, catalog_task],
         };
         let rows = connection
-            .catalog_rows("select current_setting('server_version')", &[], &options)
+            .catalog_rows(
+                "select current_setting('server_version'), current_database()::text",
+                &[],
+                &options,
+            )
             .await?;
-        connection.version = rows.first().and_then(|row| row.try_get(0).ok()).unwrap_or_default();
+        if let Some(row) = rows.first() {
+            connection.version = row.try_get(0).unwrap_or_default();
+            connection.database = row.try_get(1).unwrap_or_default();
+        }
         Ok(connection)
     }
 
@@ -311,6 +320,14 @@ where
     }
 }
 
+/// What this login may open: not templates, accepting connections, and
+/// granted CONNECT (directly, through a role, or through PUBLIC).
+const DATABASES: &str = "\
+select d.datname::text, d.datname = current_database()
+from pg_database d
+where not d.datistemplate and d.datallowconn and has_database_privilege(d.datname, 'CONNECT')
+order by d.datname";
+
 const SCHEMAS: &str = "\
 select n.nspname::text, n.nspname = current_schema()
 from pg_namespace n
@@ -359,6 +376,22 @@ impl Connection for PostgresConnection {
 
     fn server_version(&self) -> Option<String> {
         Some(self.version.clone())
+    }
+
+    fn current_database(&self) -> Option<String> {
+        Some(self.database.clone())
+    }
+
+    async fn list_databases(&self, options: CallOptions) -> Result<Vec<DatabaseInfo>> {
+        let rows = self.catalog_rows(DATABASES, &[], &options).await?;
+        rows.iter()
+            .map(|row| {
+                Ok(DatabaseInfo {
+                    name: read(row, 0)?,
+                    is_current: read(row, 1)?,
+                })
+            })
+            .collect()
     }
 
     async fn ping(&self, options: CallOptions) -> Result<()> {

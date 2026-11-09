@@ -32,6 +32,8 @@ export interface EngineInfo {
   defaultPort: number | null;
   sqlGrammar: SqlGrammar | null;
   live: boolean;
+  /** The server holds databases the tree lists and a run picks between. */
+  hasDatabases: boolean;
 }
 
 export type Target =
@@ -57,7 +59,27 @@ export interface OpenedConnection {
   id: number;
   engine: EngineInfo;
   serverVersion: string | null;
+  /** The database the connection opened on, for an engine with databases. */
+  database: string | null;
   title: string;
+}
+
+export interface DatabaseInfo {
+  name: string;
+  isCurrent: boolean;
+}
+
+export interface ByteRange {
+  start: number;
+  end: number;
+}
+
+export interface RunStarted {
+  run: number;
+  /** The UTF-8 byte ranges of the statements the run sends. */
+  ranges: ByteRange[];
+  /** How many statements the whole text holds. */
+  scriptStatements: number;
 }
 
 export interface SchemaInfo {
@@ -107,5 +129,6 @@ export type RunEvent =
   | { type: "setFinished"; result: number; total: number; limited: boolean }
   | { type: "commandDone"; statement: number; rowsAffected: number | null }
   | { type: "notice"; statement: number; text: string }
+  | { type: "databaseChanged"; statement: number; database: string }
   | { type: "statementFailed"; statement: number; error: CoreError }
   | { type: "finished"; elapsedMs: number; cancelled: boolean; failed: boolean };

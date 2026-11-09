@@ -6,6 +6,9 @@ mod commands;
 mod run;
 mod state;
 
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 
 use paboable_core::registry::DriverRegistry;
@@ -30,6 +33,7 @@ pub fn run() {
             commands::parse_connection_url,
             commands::connect,
             commands::disconnect,
+            commands::list_databases,
             commands::list_schemas,
             commands::list_objects,
             commands::fetch_columns,

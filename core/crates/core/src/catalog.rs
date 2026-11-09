@@ -4,6 +4,14 @@ use crate::value::ValueKind;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DatabaseInfo {
+    pub name: String,
+    /// The database this connection's session is on.
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SchemaInfo {
     pub name: String,
     /// The schema a name without one resolves to.
