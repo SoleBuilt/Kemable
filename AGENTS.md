@@ -9,7 +9,7 @@ Read the guide of the folder you work in before editing it: `core/AGENTS.md` or 
 - `core/`: the Rust crates with no UI. `core/ARCHITECTURE.md` has the crates, the graph and the driver contract.
 - `ui/windows/`: the Windows app. `src/` is the Svelte UI, `src-tauri/` the Rust crate that turns UI commands into core calls.
 - `ui/apple/`, `ui/linux/`: not started. Each will own its UI and call the same core.
-- `docs/decisions/`: the decisions (ADRs) that hold for the whole repo. `docs/roadmap.md`: the phases and the engines.
+- `docs/decisions/`: the decisions (ADRs) that hold for the whole repo. `docs/roadmap.md`: the phases and the engines. `docs/testing/`: the manual checks for each phase, in Vietnamese for the person who runs them; a feature that adds something only a person can check adds its steps there.
 - `scripts/verify.mjs`: the one check every change passes (`node scripts/verify.mjs` from any shell; `scripts/verify.sh` calls it from bash).
 - `.claude/rules/`: path-scoped rules, loaded when a matching file is read. `.claude/skills/`: `verify`, `add-driver`, `fix-issue`.
 - `Cargo.toml` at the top is the workspace for every Rust crate, the Tauri app's included.
