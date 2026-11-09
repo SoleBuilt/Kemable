@@ -6,6 +6,7 @@
   import DataGrid from "./lib/grid/DataGrid.svelte";
   import type { CellRect, GridCallbacks, GridSource, SortKey } from "./lib/grid/engine";
   import RowDetail from "./lib/grid/RowDetail.svelte";
+  import TableBar, { PAGE_SIZES } from "./lib/grid/TableBar.svelte";
   import { asCoreError, ipc } from "./lib/ipc";
   import HistoryList from "./lib/sidebar/HistoryList.svelte";
   import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
@@ -17,14 +18,50 @@
   import type {
     ColumnMeta,
     ConnectionConfig,
+    ColumnInfo,
     CoreError,
+    Filter,
     HistoryEntry,
     ObjectInfo,
     OpenedConnection,
     RunEvent,
     SavedConnection,
     SavedQuery,
+    TableRef,
   } from "./lib/types";
+
+  /**
+   * A table opened from the tree: one page at a time, filtered and sorted on
+   * the server (docs/decisions/0006-table-browsing.md).
+   */
+  interface TableTab {
+    database: string | null;
+    table: TableRef;
+    title: string;
+    /** Column names, in table order; filled from the first page when the catalog gave none. */
+    columns: string[];
+    /** The primary key, which breaks ties so a row is on one page only. */
+    key: string[];
+    filters: Filter[];
+    matchAny: boolean;
+    sort: { column: string; descending: boolean }[];
+    offset: number;
+    limit: number;
+    count: number | "counting" | null;
+    pageSql: string;
+    countSql: string;
+  }
+
+  const PAGE_SIZE_KEY = "paboable.pageSize";
+
+  function readPageSize(): number {
+    try {
+      const value = Number(localStorage.getItem(PAGE_SIZE_KEY));
+      return PAGE_SIZES.includes(value) ? value : 1_000;
+    } catch {
+      return 1_000;
+    }
+  }
 
   interface ResultSetView {
     result: number;
@@ -105,6 +142,18 @@
   /** The save dialog: a new query or the one being edited. */
   let saving: SavedQuery | null = $state(null);
 
+  let tableTab = $state.raw<TableTab | null>(null);
+  let filtersOpen = $state(false);
+  let tableBar: TableBar | undefined = $state();
+  let pageSize = $state(readPageSize());
+  /** The run going now reads a page of `tableTab`. */
+  let pageRun = false;
+  /** Count the table's rows once the page run ends. */
+  let countAfterPage = false;
+  /** Bumped when the filters change, so a count for the old ones is dropped. */
+  let countGeneration = 0;
+  const rowsOnPage = $derived(tableTab && !running ? (sets[0]?.totalRows ?? 0) : null);
+
   const grammar = $derived(connection?.engine.sqlGrammar ?? null);
   const activeSet = $derived(typeof activeTab === "number" ? sets[activeTab] : undefined);
   const activeResult = $derived(activeSet?.result ?? null);
@@ -160,6 +209,7 @@
       const opened = await opening();
       if (connection) void ipc.disconnect(connection.id);
       clearResults();
+      tableTab = null;
       connection = opened;
       database = opened.database;
       editor?.focus();
@@ -180,6 +230,7 @@
     if (!connection || running) return;
     void ipc.disconnect(connection.id);
     clearResults();
+    tableTab = null;
     connection = null;
     database = null;
   }
@@ -257,7 +308,7 @@
   /** The last run, for Fetch All. */
   let lastRun: { request: RunRequest; database: string | null } | null = null;
   /** A sort that runs the statement again: its keys go to the set that run starts. */
-  let pendingSort: { keys: SortKey[]; original: string } | null = null;
+  let pendingSort: { keys: SortKey[]; original: string | null } | null = null;
 
   /**
    * Runs `request`. One from the editor is marked there; one the app wrote
@@ -267,9 +318,14 @@
   async function startRun(
     request: RunRequest,
     fromEditor = true,
-    overrides: { inDatabase?: string | null; rowLimit?: number | null; record?: boolean } = {},
+    overrides: { inDatabase?: string | null; rowLimit?: number | null; record?: boolean; tablePage?: boolean } = {},
   ) {
     if (!connection || running) return;
+    pageRun = overrides.tablePage === true;
+    if (!pageRun) {
+      tableTab = null;
+      filtersOpen = false;
+    }
     clearResults();
     statements = [];
     ranCount = null;
@@ -335,6 +391,16 @@
       keys = [...set.sort, { column, descending: false }];
     }
 
+    // A table tab sorts the whole table on the server, from its first page.
+    if (tableTab) {
+      const sort = keys.flatMap((key) => {
+        const name = set.columns[key.column]?.name;
+        return name === undefined ? [] : [{ column: name, descending: key.descending }];
+      });
+      void loadPage({ ...tableTab, sort, offset: 0 }, false);
+      return;
+    }
+
     // Unsorting what the server sorted runs the statement it came from.
     if (keys.length === 0 && set.sortedBy === "server" && set.original) {
       void startRun({ sql: set.original, cursor: null, origin: 0 }, false, { inDatabase: lastRun?.database });
@@ -368,6 +434,15 @@
         statements[event.index] = event.text;
         break;
       case "setStarted":
+        if (pageRun && tableTab) {
+          const tab = tableTab;
+          const sort = tab.sort.flatMap((key) => {
+            const column = event.columns.findIndex((meta) => meta.name === key.column);
+            return column < 0 ? [] : [{ column, descending: key.descending }];
+          });
+          if (tab.columns.length === 0) tableTab = { ...tab, columns: event.columns.map((meta) => meta.name) };
+          pendingSort = sort.length > 0 ? { keys: sort, original: null } : null;
+        }
         sets = [
           ...sets,
           {
@@ -407,6 +482,13 @@
         runId = null;
         pendingSort = null;
         if (recording) historyKey++;
+        if (pageRun && tableTab && countAfterPage && !event.failed && !event.cancelled) {
+          const rows = sets[0]?.totalRows ?? 0;
+          // A first page that is not full holds the whole table: nothing to count.
+          if (tableTab.offset === 0 && rows < tableTab.limit) tableTab = { ...tableTab, count: rows };
+          else void countTable();
+        }
+        countAfterPage = false;
         elapsedMs = event.elapsedMs;
         if (sets.length === 0 || event.failed) activeTab = "messages";
         if (messages.some((message) => message.kind === "command" || message.kind === "switched")) refreshKey++;
@@ -418,17 +500,97 @@
     if (runId !== null) void ipc.cancelRun(runId);
   }
 
-  function quote(name: string): string {
-    return grammar === "sqlServer" ? `[${name.replaceAll("]", "]]")}]` : `"${name.replaceAll('"', '""')}"`;
+  /** Opens a table or view from the tree as a table tab, in the database it belongs to. */
+  async function openObject(object: ObjectInfo, inDatabase: string | null) {
+    if (object.kind !== "table" && object.kind !== "view" && object.kind !== "materializedView") return;
+    if (running || !connection) return;
+    if (inDatabase !== null) database = inDatabase;
+    const table: TableRef = { schema: object.schema, name: object.name };
+    let columns: ColumnInfo[] = [];
+    try {
+      columns = await ipc.fetchColumns(connection.id, database, table);
+    } catch {
+      // The page still opens; without the catalog it has no key, and its columns come from the page.
+    }
+    const key = columns
+      .filter((column) => column.primaryKey !== null)
+      .sort((a, b) => (a.primaryKey ?? 0) - (b.primaryKey ?? 0))
+      .map((column) => column.name);
+    filtersOpen = false;
+    await loadPage(
+      {
+        database,
+        table,
+        title: object.schema ? `${object.schema}.${object.name}` : object.name,
+        columns: columns.map((column) => column.name),
+        key,
+        filters: [],
+        matchAny: false,
+        sort: [],
+        offset: 0,
+        limit: pageSize,
+        count: null,
+        pageSql: "",
+        countSql: "",
+      },
+      true,
+    );
   }
 
-  /** Opens a table or view from the tree, in the database it belongs to. */
-  function openObject(object: ObjectInfo, inDatabase: string | null) {
-    if (object.kind !== "table" && object.kind !== "view" && object.kind !== "materializedView") return;
-    if (running) return;
-    if (inDatabase !== null) database = inDatabase;
-    const name = object.schema ? `${quote(object.schema)}.${quote(object.name)}` : quote(object.name);
-    void startRun({ sql: `select * from ${name}`, cursor: null, origin: 0 }, false);
+  /** Reads one page of a table tab; with `recount`, counts the rows its filters match after. */
+  async function loadPage(next: TableTab, recount: boolean) {
+    if (!connection || running) return;
+    let statements;
+    try {
+      statements = await ipc.browseStatements(connection.id, {
+        table: next.table,
+        filters: next.filters,
+        matchAny: next.matchAny,
+        sort: next.sort,
+        key: next.key,
+        offset: next.offset,
+        limit: next.limit,
+      });
+    } catch (caught) {
+      note(`Not filtered: ${asCoreError(caught).message}`);
+      return;
+    }
+    if (recount) countGeneration++;
+    tableTab = { ...next, pageSql: statements.page, countSql: statements.count, count: recount ? null : next.count };
+    countAfterPage = recount;
+    await startRun({ sql: statements.page, cursor: null, origin: 0 }, false, {
+      inDatabase: next.database,
+      rowLimit: null,
+      tablePage: true,
+    });
+  }
+
+  async function countTable() {
+    const tab = tableTab;
+    if (!tab || !connection) return;
+    const generation = ++countGeneration;
+    tableTab = { ...tab, count: "counting" };
+    try {
+      const total = await ipc.countRows(connection.id, tab.database, tab.countSql);
+      if (generation === countGeneration && tableTab) tableTab = { ...tableTab, count: total };
+    } catch (caught) {
+      if (generation === countGeneration && tableTab) {
+        tableTab = { ...tableTab, count: null };
+        note(`Not counted: ${asCoreError(caught).message}`);
+      }
+    }
+  }
+
+  function pageTo(offset: number) {
+    if (tableTab && offset >= 0) void loadPage({ ...tableTab, offset }, false);
+  }
+
+  function copyPageSql() {
+    if (!tableTab) return;
+    navigator.clipboard.writeText(tableTab.pageSql).then(
+      () => note("Copied the page's SQL"),
+      (caught: unknown) => note(`Not copied: ${String(caught)}`),
+    );
   }
 
   /** Runs a statement from the history in the database it ran in, when it ran here. */
@@ -484,6 +646,18 @@
     } else if (ctrl && event.shiftKey && key === "d") {
       event.preventDefault();
       if (!saving) saveFromEditor();
+    } else if (ctrl && key === "f" && tableTab) {
+      // The editor's own Ctrl+F (search) prevents the default, so it never gets here.
+      event.preventDefault();
+      void tableBar?.focusFilters();
+    } else if (event.altKey && (event.key === "PageDown" || event.key === "PageUp") && tableTab) {
+      event.preventDefault();
+      if (running) return;
+      if (event.key === "PageUp") {
+        if (tableTab.offset > 0) pageTo(Math.max(0, tableTab.offset - tableTab.limit));
+      } else if (rowsOnPage !== null && rowsOnPage >= tableTab.limit) {
+        pageTo(tableTab.offset + tableTab.limit);
+      }
     } else if (ctrl && event.altKey && key === "i") {
       event.preventDefault();
       detailOpen = !detailOpen;
@@ -678,6 +852,40 @@
       ></div>
 
       <section class="flex min-h-0 flex-1 flex-col">
+        {#if tableTab}
+          {@const tab = tableTab}
+          <!-- Made again for each table, so its draft filters start from that table's. -->
+          {#key `${tab.database}\u0000${tab.title}`}
+            <TableBar
+              bind:this={tableBar}
+              title={tab.title}
+              columns={tab.columns}
+              filters={tab.filters}
+              matchAny={tab.matchAny}
+              offset={tab.offset}
+              limit={tab.limit}
+              {rowsOnPage}
+              count={tab.count}
+              busy={running}
+              open={filtersOpen}
+              onApply={(filters, matchAny) => void loadPage({ ...tab, filters, matchAny, offset: 0 }, true)}
+              onPage={pageTo}
+              onLimit={(limit) => {
+                pageSize = limit;
+                try {
+                  localStorage.setItem(PAGE_SIZE_KEY, String(limit));
+                } catch {
+                  // Not remembered, still used.
+                }
+                void loadPage({ ...tab, limit, offset: Math.floor(tab.offset / limit) * limit }, false);
+              }}
+              onRefresh={() => void loadPage(tab, true)}
+              onCount={() => void countTable()}
+              onCopySql={copyPageSql}
+              onToggle={() => (filtersOpen = !filtersOpen)}
+            />
+          {/key}
+        {/if}
         <nav class="flex h-8 shrink-0 items-end gap-0.5 border-b border-line bg-surface-2 px-2 text-[12px]">
           {#each sets as set, index (set.result)}
             <button class="result-tab" class:active={activeTab === index} onclick={() => (activeTab = index)}>

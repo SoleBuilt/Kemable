@@ -3,6 +3,9 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
+  BrowseQuery,
+  BrowseStatements,
+  ColumnInfo,
   ConnectionConfig,
   CoreError,
   DatabaseInfo,
@@ -16,6 +19,7 @@ import type {
   SavedQuery,
   SchemaInfo,
   SortOutcome,
+  TableRef,
 } from "./types";
 
 export const ipc = {
@@ -48,6 +52,17 @@ export const ipc = {
 
   listObjects: (conn: number, database: string | null, schema: string | null) =>
     invoke<ObjectInfo[]>("list_objects", { conn, database, schema }),
+
+  /** A table's columns, with its primary key. */
+  fetchColumns: (conn: number, database: string | null, table: TableRef) =>
+    invoke<ColumnInfo[]>("fetch_columns", { conn, database, table }),
+
+  /** The page and count statements a table tab runs. */
+  browseStatements: (conn: number, query: BrowseQuery) => invoke<BrowseStatements>("browse_statements", { conn, query }),
+
+  /** Runs a count statement; gives up after 30 s. */
+  countRows: (conn: number, database: string | null, sql: string) =>
+    invoke<number>("count_rows", { conn, database, sql }),
 
   /**
    * Starts a run in `database` (null: the one the connection opened on) and

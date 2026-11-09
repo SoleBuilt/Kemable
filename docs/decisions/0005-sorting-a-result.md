@@ -34,7 +34,7 @@ Naming the column in an `ORDER BY` is not always safe:
 
 Opening a table runs `SELECT * FROM <schema>.<table>` written by the core, and a header click writes it again with `ORDER BY <quoted column>` and the page (`LIMIT`/`OFFSET` on PostgreSQL and SQLite, `OFFSET ... FETCH` on SQL Server). The column names come from the catalog, so they are always safe. A sort shows the table as it is now.
 
-Paging comes with Phase 2's table browsing (`docs/roadmap.md`). Until then a table tab holds the first rows up to the row cap, and its sort is written by `sorted_statement` like any other `SELECT *`, which names every column safely.
+Paging, filters and the count are in `docs/decisions/0006-table-browsing.md`: the page statement carries the sort, with the primary key after it to break ties, and a sort goes back to the first page.
 
 ### A query result: run again when the column can be named, else sort the rows held
 

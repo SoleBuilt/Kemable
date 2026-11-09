@@ -69,6 +69,8 @@ pub fn run() {
             commands::copy_range,
             commands::row_values,
             commands::release_result,
+            commands::browse_statements,
+            commands::count_rows,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

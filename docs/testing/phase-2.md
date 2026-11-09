@@ -59,3 +59,48 @@ Lưu trong `queries.json` cạnh `connections.json`.
   **Đúng:** hộp thoại đóng, con trỏ về editor.
 - [ ] Chuyển qua lại giữa Objects, Queries, History.
   **Đúng:** cây ở Objects giữ nguyên các nút đã mở.
+
+## 3. Duyệt bảng (table tab): phân trang, lọc, sort trên server
+
+Dùng `demo_sales` (PostgreSQL) và một bảng bất kỳ ở SQL Server. Bảng `order_items` có khoảng 10.000 dòng, hợp để thử phân trang.
+
+- [ ] Double-click `order_items` ở tab **Objects**.
+  **Đúng:** trên kết quả có thanh bảng: nút **Filter**, tên `public.order_items`, ghi `1–1,000 of …` rồi ngay sau đó `of 10,000` (hoặc số dòng thật). Grid hiện 1.000 dòng, xếp theo khóa chính (`id` tăng dần).
+- [ ] Bấm **▶** (hoặc **Alt+PageDown**), rồi **◀** (**Alt+PageUp**), **⏭**, **⏮**.
+  **Đúng:** ghi `1,001–2,000`, quay lại `1–1,000`; ⏭ tới trang cuối (ví dụ `10,001–10,0xx`), ⏮ về đầu. Không dòng nào lặp giữa hai trang liền nhau.
+- [ ] Đổi **/ page** sang `100`.
+  **Đúng:** mỗi trang 100 dòng; tắt mở lại app thì vẫn nhớ 100.
+- [ ] Bấm tiêu đề cột `quantity` (hoặc cột số bất kỳ) một lần, hai lần, ba lần.
+  **Đúng:** lần 1 tăng dần, lần 2 giảm dần, lần 3 bỏ sort; mỗi lần quay về trang 1, và dòng đầu của trang 1 là giá trị lớn/nhỏ nhất **của cả bảng**, không chỉ của trang đang xem. Status bar ghi "sorted by the server".
+- [ ] Nhấn **Ctrl+F** khi grid hoặc sidebar đang được chọn (không phải trong editor).
+  **Đúng:** khung lọc mở, con trỏ ở ô giá trị đầu. (Trong editor, Ctrl+F vẫn là tìm chữ của editor.)
+- [ ] Lọc `customers`: cột `full_name` (hoặc cột tên), **contains**, gõ một phần tên viết thường, nhấn **Enter**.
+  **Đúng:** chỉ còn các dòng có chữ đó, không phân biệt hoa thường; nút ghi **Filter (1)**; tổng đếm lại.
+- [ ] Thêm filter thứ hai bằng **+ Add filter**, chọn **Match any**, Apply.
+  **Đúng:** kết quả là hợp của hai điều kiện; đổi lại **Match all** thì là giao.
+- [ ] Thử từng loại: `=`, `≠`, `>`, `≤`, **in** (`1, 2, 3`), **between** (hai ô from/to), **is NULL**, **is not NULL**, **starts with**, **ends with**, **does not contain**.
+  **Đúng:** mỗi loại cho kết quả đúng nghĩa của nó.
+- [ ] Gõ giá trị có ký tự đặc biệt: `%`, `_`, `'`, ví dụ contains `50%` hoặc `=` `O'Brien`.
+  **Đúng:** tìm đúng chữ đó, `%` và `_` không thành ký tự đại diện; không có lỗi cú pháp.
+- [ ] Chọn cột **SQL condition…**, gõ `quantity > 5 and unit_price < 100` (đổi tên cột theo bảng), Enter.
+  **Đúng:** lọc theo đúng điều kiện. Gõ `1=1; drop table x` thì status bar báo lỗi "Not filtered…" và không chạy gì.
+- [ ] Lọc cột số bằng chữ, ví dụ `id` `=` `abc` trên PostgreSQL.
+  **Đúng:** tab Messages hiện lỗi của server (kiểu dữ liệu sai); thanh bảng và các filter vẫn còn để sửa.
+- [ ] Bấm **Clear** trong khung lọc.
+  **Đúng:** bỏ hết filter, về trang 1, đếm lại tổng.
+- [ ] Bấm **Copy SQL**, dán vào editor và chạy.
+  **Đúng:** câu `SELECT * FROM ... WHERE ... ORDER BY ... LIMIT ... OFFSET ...` chạy ra đúng trang đang xem. Trên SQL Server là `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY`.
+- [ ] Bấm **Refresh** sau khi chèn thêm một dòng vào bảng bằng editor.
+  **Đúng:** tổng tăng 1, dòng mới hiện ra ở đúng vị trí.
+- [ ] Mở một bảng nhỏ (ít hơn 1 trang, ví dụ `categories`).
+  **Đúng:** tổng hiện ngay (không có bước "of …"), nút ▶ và ⏭ bị mờ.
+- [ ] Mở một view.
+  **Đúng:** vẫn phân trang được; thứ tự khi chưa sort có thể không cố định (view không có khóa chính).
+- [ ] Chạy một câu bất kỳ từ editor khi đang ở table tab.
+  **Đúng:** thanh bảng biến mất, kết quả là của câu vừa chạy.
+- [ ] Mở bảng, kiểm tra tab **History**.
+  **Đúng:** không có câu nào của table tab trong lịch sử.
+- [ ] Làm lại các bước chính trên **SQL Server** và trên một file **SQLite**.
+  **Đúng:** như trên.
+
+Test tự động cho phần này: `a_table_tab_pages_and_filters_on_sqlite` chạy trong `node scripts/verify.mjs`; bản PostgreSQL và SQL Server chạy cùng các test live ở cuối `docs/testing/phase-1.md`.

@@ -5,13 +5,17 @@
 //! engine that has them; `None` means the database the connection opened on.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use paboable_core::catalog::{ColumnInfo, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
+use paboable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
 use paboable_core::config::{ConnectionConfig, Secret, Target};
 use paboable_core::engine::EngineInfo;
-use paboable_core::sql::{SortColumn, sorted_statement, split, statement_at};
+use paboable_core::sink::ResultSink;
+use paboable_core::sql::{
+    BrowseQuery, SortColumn, count_statement, page_statement, sorted_statement, split, statement_at,
+};
+use paboable_core::value::Value;
 use paboable_core::{CallOptions, DriverError};
 use paboable_storage::SavedConnection;
 use paboable_storage::history::{HistoryEntry, HistoryQuery};
@@ -478,4 +482,84 @@ pub async fn cell_text(
 pub async fn release_result(state: State<'_, Arc<AppState>>, result: u64) -> CommandResult<()> {
     state.remove_result(result);
     Ok(())
+}
+
+/// How long a table tab's row count may take before it gives up: a count
+/// reads the whole table, and the page is already on screen without it.
+const COUNT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The statements a table tab runs (docs/decisions/0006-table-browsing.md).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowseStatements {
+    page: String,
+    count: String,
+}
+
+#[tauri::command]
+pub async fn browse_statements(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    query: BrowseQuery,
+) -> CommandResult<BrowseStatements> {
+    let server = state.server(conn)?;
+    let grammar = server
+        .engine
+        .sql_grammar
+        .ok_or_else(|| DriverError::unsupported("this engine does not run SQL"))?;
+    Ok(BrowseStatements {
+        page: page_statement(grammar, &query)?,
+        count: count_statement(grammar, &query)?,
+    })
+}
+
+/// Runs a count statement and returns its one number.
+#[tauri::command]
+pub async fn count_rows(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    sql: String,
+) -> CommandResult<u64> {
+    let session = state.server(conn)?.session(database.as_deref()).await?;
+    let sink = Arc::new(CountSink::default());
+    session
+        .execute(
+            &sql,
+            Arc::clone(&sink) as Arc<dyn ResultSink>,
+            CallOptions::default().with_timeout(COUNT_TIMEOUT),
+        )
+        .await?;
+    let count = *sink.count.lock().unwrap_or_else(PoisonError::into_inner);
+    count.ok_or_else(|| DriverError::internal("the count returned no number"))
+}
+
+/// Keeps the first value of a one-row result, as a count.
+#[derive(Default)]
+struct CountSink {
+    count: Mutex<Option<u64>>,
+}
+
+impl ResultSink for CountSink {
+    fn begin_set(&self, _columns: Vec<ColumnMeta>) {}
+
+    fn push_rows(&self, values: &[Value]) -> bool {
+        let count = match values.first() {
+            Some(Value::Int(value)) => u64::try_from(*value).ok(),
+            Some(Value::UInt(value)) => Some(*value),
+            Some(Value::Decimal(text)) => text.parse().ok(),
+            _ => None,
+        };
+        let mut slot = self.count.lock().unwrap_or_else(PoisonError::into_inner);
+        if slot.is_none() {
+            *slot = count;
+        }
+        false
+    }
+
+    fn end_set(&self) {}
+
+    fn command_done(&self, _rows_affected: Option<u64>) {}
+
+    fn notice(&self, _text: &str) {}
 }
