@@ -1,0 +1,16 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(scripts/verify.sh:*)",
+            "Bash(cargo test:*)",
+            "Bash(cargo clippy:*)",
+            "Bash(cargo fmt:*)",
+            "Bash(cargo check:*)",
+            "Bash(pnpm check)",
+            "Bash(pnpm build)",
+            "Bash(git status:*)",
+            "Bash(git diff:*)",
+            "Bash(git log:*)"
+        ]
+    }
+}
