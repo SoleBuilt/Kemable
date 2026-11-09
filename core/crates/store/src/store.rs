@@ -231,16 +231,91 @@ impl ResultStore {
     /// The text copy writes for a cell: the full value, `None` for null, and
     /// `0x` hex for bytes.
     pub fn cell_text(&self, row: u64, column: usize) -> Option<Option<String>> {
-        Some(match self.cell(row, column)? {
-            CellValue::Null => None,
-            CellValue::Text { text, .. } => Some(text),
-            CellValue::Bytes(bytes) => {
-                let mut out = String::with_capacity(bytes.len() * 2 + 2);
-                hex_preview(&bytes, usize::MAX, &mut out);
-                Some(out)
-            }
-        })
+        cell_text_in(&self.read(), row, column)
     }
+
+    /// Every value of `row`, as `cell_text` gives them, for the detail pane.
+    pub fn row_texts(&self, row: u64) -> Option<Vec<Option<String>>> {
+        let inner = self.read();
+        (0..self.columns.len())
+            .map(|column| cell_text_in(&inner, row, column))
+            .collect()
+    }
+
+    /// The cells of `range` as tab-separated text, as spreadsheets paste it:
+    /// rows end with CRLF, a NULL is an empty field, and a field holding a
+    /// tab, a line break or a quote is quoted with its quotes doubled. With
+    /// `headers`, the column names come first. `None` when the range holds
+    /// more than [`MAX_COPY_CELLS`] cells.
+    pub fn copy_tsv(&self, range: CellRange, headers: bool) -> Option<String> {
+        let inner = self.read();
+        let first_row = range.first_row.min(inner.total_rows);
+        let rows = range.row_count.min(inner.total_rows - first_row);
+        let first_column = range.first_column.min(self.columns.len());
+        let columns = range.column_count.min(self.columns.len() - first_column);
+        if rows.saturating_mul(columns as u64) > MAX_COPY_CELLS {
+            return None;
+        }
+        let mut out = String::new();
+        if headers {
+            let names = self.columns[first_column..first_column + columns]
+                .iter()
+                .map(|column| Some(column.name.clone()));
+            push_tsv_row(&mut out, names);
+        }
+        for row in first_row..first_row + rows {
+            let cells =
+                (first_column..first_column + columns).map(|column| cell_text_in(&inner, row, column).flatten());
+            push_tsv_row(&mut out, cells);
+        }
+        Some(out)
+    }
+}
+
+/// The most cells one copy takes, so selecting everything in a huge result
+/// does not build gigabytes of text.
+pub const MAX_COPY_CELLS: u64 = 2_000_000;
+
+/// A rectangle of cells, rows and columns from their first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CellRange {
+    pub first_row: u64,
+    pub row_count: u64,
+    pub first_column: usize,
+    pub column_count: usize,
+}
+
+fn cell_text_in(inner: &Inner, row: u64, column: usize) -> Option<Option<String>> {
+    let (chunk, local) = inner.locate(row)?;
+    let data = inner.chunks[chunk].columns.get(column)?;
+    if data.is_null(local) {
+        return Some(None);
+    }
+    let bytes = data.bytes(local);
+    if kind_from_u8(data.kinds.get(local).copied().unwrap_or(0)) == ValueKind::Bytes {
+        let mut out = String::with_capacity(bytes.len() * 2 + 2);
+        hex_preview(bytes, usize::MAX, &mut out);
+        Some(Some(out))
+    } else {
+        Some(Some(String::from_utf8_lossy(bytes).into_owned()))
+    }
+}
+
+fn push_tsv_row(out: &mut String, cells: impl Iterator<Item = Option<String>>) {
+    for (index, cell) in cells.enumerate() {
+        if index > 0 {
+            out.push('\t');
+        }
+        let Some(text) = cell else { continue };
+        if text.contains(['\t', '\n', '\r', '"']) {
+            out.push('"');
+            out.push_str(&text.replace('"', "\"\""));
+            out.push('"');
+        } else {
+            out.push_str(&text);
+        }
+    }
+    out.push_str("\r\n");
 }
 
 pub(crate) fn kind_from_u8(byte: u8) -> ValueKind {

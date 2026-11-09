@@ -23,7 +23,9 @@ The grid is `GridEngine` (`engine.ts`): one canvas laid over a native scroll con
 - NULL is drawn as `NULL` in the muted colour. The core never sends that word.
 - **Sorting is the core's.** A header click asks the owner to sort (ascending, descending, unsorted; Shift adds a key); the grid only draws the arrow. The owner runs the statement again or asks the core for a sorted view (`docs/decisions/0005-sorting-a-result.md`). The grid never reorders rows itself.
 - Colours come from the CSS tokens through `readTheme()`, re-read when the system scheme changes. No colour is written in this folder.
-- Keys: arrows, Ctrl+arrows, Tab, Page Up/Down, Home/End, Ctrl+Home/End, Ctrl+C (the full value through `cell_text`).
+- **A selection is an anchor, a focus (the cell cursor) and a mode**: cells, rows, columns or all. Click a cell, drag or Shift+click for cells; the row numbers for rows; Ctrl+click a header for columns (a plain header click is the sort's); the corner or Ctrl+A for all. The grid reports every change through `selectionChanged`.
+- Keys: arrows, Ctrl+arrows, Tab, Page Up/Down, Home/End, Ctrl+Home/End move the cursor; with Shift they extend the selection; Escape collapses it.
+- **Copy is the core's.** Ctrl+C copies the selection as tab-separated text built by `ResultStore::copy_tsv` (CRLF rows, NULL as an empty field, quoting as spreadsheets read it); Ctrl+Shift+C adds the column names. Never assemble copied text from windows: they are cut at the character cap.
 - Svelte state never reaches the draw loop: `DataGrid.svelte` passes plain objects (`$state.raw` in the owner), so no proxy is read per cell.
 
 ## Checking a change

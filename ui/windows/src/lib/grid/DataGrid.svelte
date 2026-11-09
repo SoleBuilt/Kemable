@@ -15,6 +15,11 @@
   let canvas: HTMLCanvasElement;
   let engine: GridEngine | null = $state(null);
 
+  /** Moves the cell cursor, for the detail pane's field list. */
+  export function focusCell(row: number, column: number) {
+    engine?.focusCell({ row, column });
+  }
+
   onMount(() => {
     const created = new GridEngine(scroller, spacer, canvas, callbacks);
     const observer = new ResizeObserver(() => created.resize(scroller.clientWidth, scroller.clientHeight));

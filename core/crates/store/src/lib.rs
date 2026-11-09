@@ -4,5 +4,5 @@
 mod store;
 pub mod window;
 
-pub use store::{CHUNK_ROWS, CellValue, ResultStore, StoreState};
+pub use store::{CHUNK_ROWS, CellRange, CellValue, MAX_COPY_CELLS, ResultStore, StoreState};
 pub use window::{WindowReader, WindowRequest};

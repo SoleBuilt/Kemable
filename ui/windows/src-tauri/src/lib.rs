@@ -56,6 +56,8 @@ pub fn run() {
             commands::cancel_run,
             commands::fetch_window,
             commands::cell_text,
+            commands::copy_range,
+            commands::row_values,
             commands::release_result,
         ])
         .run(tauri::generate_context!());

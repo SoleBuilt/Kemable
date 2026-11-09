@@ -4,7 +4,8 @@
   import SqlEditor, { type RunRequest } from "./lib/editor/SqlEditor.svelte";
   import { errorTitle } from "./lib/errors";
   import DataGrid from "./lib/grid/DataGrid.svelte";
-  import type { GridCallbacks, GridSource } from "./lib/grid/engine";
+  import type { CellRect, GridCallbacks, GridSource } from "./lib/grid/engine";
+  import RowDetail from "./lib/grid/RowDetail.svelte";
   import { asCoreError, ipc } from "./lib/ipc";
   import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
@@ -81,10 +82,35 @@
   const gridRows = $derived(activeSet?.totalRows ?? 0);
   const errorCount = $derived(messages.filter((message) => message.kind === "error").length);
 
+  /** The grid's cell cursor and selection, for the detail pane and the status bar. */
+  let cursor: { result: number; row: number; column: number } | null = $state(null);
+  let selected: CellRect | null = $state(null);
+  let detailOpen = $state(false);
+  let grid: DataGrid | undefined = $state();
+  /** A short note in the status bar, such as a copy's outcome. */
+  let statusNote: string | null = $state(null);
+  let noteTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function note(text: string) {
+    statusNote = text;
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => (statusNote = null), 2500);
+  }
+
   const gridCallbacks: GridCallbacks = {
     fetchWindow: ipc.fetchWindow,
-    copyCell: (result, row, column) => {
-      void ipc.cellText(result, row, column).then((text) => navigator.clipboard.writeText(text ?? "NULL"));
+    copy: (result, rect, withHeaders) => {
+      ipc
+        .copyRange(result, rect.firstRow, rect.rowCount, rect.firstColumn, rect.columnCount, withHeaders)
+        .then((text) => navigator.clipboard.writeText(text))
+        .then(
+          () => note(`Copied ${numberFormat.format(rect.rowCount * rect.columnCount)} cells${withHeaders ? " with column names" : ""}`),
+          (caught: unknown) => note(`Not copied: ${asCoreError(caught).message}`),
+        );
+    },
+    selectionChanged: (result, focus, rect) => {
+      cursor = focus ? { result, row: focus.row, column: focus.column } : null;
+      selected = rect;
     },
   };
 
@@ -290,6 +316,9 @@
     } else if (ctrl && key === "r") {
       event.preventDefault();
       if (connection) void tree?.refresh();
+    } else if (ctrl && event.altKey && key === "i") {
+      event.preventDefault();
+      detailOpen = !detailOpen;
     } else if (event.key === "F5") {
       event.preventDefault();
       if (connection && !running) runFromToolbar("all");
@@ -438,6 +467,12 @@
               <span class="text-muted">{numberFormat.format(set.totalRows)}{set.limited ? "+" : ""}</span>
             </button>
           {/each}
+          <button
+            class="result-tab ml-auto"
+            class:active={detailOpen}
+            onclick={() => (detailOpen = !detailOpen)}
+            title="Show the selected row's fields (Ctrl+Alt+I)">Row detail</button
+          >
           <button class="result-tab" class:active={activeTab === "messages"} onclick={() => (activeTab = "messages")}>
             Messages
             {#if errorCount > 0}<span class="text-danger">{errorCount}</span>{/if}
@@ -467,7 +502,24 @@
               {/each}
             </div>
           {:else}
-            <DataGrid source={gridSource} totalRows={gridRows} callbacks={gridCallbacks} />
+            <div class="flex h-full">
+              <div class="min-w-0 flex-1">
+                <DataGrid bind:this={grid} source={gridSource} totalRows={gridRows} callbacks={gridCallbacks} />
+              </div>
+              {#if detailOpen && gridSource}
+                <aside class="w-80 shrink-0 border-l border-line">
+                  <RowDetail
+                    result={gridSource.result}
+                    columns={gridSource.columns}
+                    row={cursor?.result === gridSource.result ? cursor.row : null}
+                    column={cursor?.result === gridSource.result ? cursor.column : null}
+                    onPickColumn={(column) => {
+                      if (cursor) grid?.focusCell(cursor.row, column);
+                    }}
+                  />
+                </aside>
+              {/if}
+            </div>
           {/if}
         </div>
       </section>
@@ -490,6 +542,12 @@
     {/if}
     {#if connection?.engine.hasDatabases && database}
       <span>in {database}</span>
+    {/if}
+    {#if selected && selected.rowCount * selected.columnCount > 1}
+      <span>{numberFormat.format(selected.rowCount)} × {numberFormat.format(selected.columnCount)} selected</span>
+    {/if}
+    {#if statusNote}
+      <span class="text-fg">{statusNote}</span>
     {/if}
     {#if activeSet}
       <span>
