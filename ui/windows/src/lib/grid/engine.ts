@@ -53,6 +53,14 @@ export interface GridCallbacks {
   copy: (result: number, rect: CellRect, withHeaders: boolean) => void;
   /** The cell cursor or the selection moved; null when nothing is selected. */
   selectionChanged: (result: number, focus: Cell | null, rect: CellRect | null) => void;
+  /** A plain header click: sort by `column`; with Shift, as one more key. */
+  sortRequested: (column: number, additive: boolean) => void;
+}
+
+/** One key of the sort the header shows. */
+export interface SortKey {
+  column: number;
+  descending: boolean;
 }
 
 /** What a selection spans: a rectangle of cells, whole rows, whole columns, or everything. */
@@ -108,6 +116,7 @@ export class GridEngine {
   private frame = 0;
   private theme: Theme;
   private selection: Selection | null = null;
+  private sortKeys: SortKey[] = [];
   /** What a pointer drag is extending, while the button is down. */
   private dragging: SelectionMode | null = null;
   private resizing: { column: number; startX: number; startWidth: number } | null = null;
@@ -503,6 +512,18 @@ export class GridEngine {
       context.clip();
       context.fillStyle = theme.text;
       context.fillText(source.columns[column]?.name ?? "", x + CELL_PADDING, HEADER_HEIGHT / 2);
+      const keyIndex = this.sortKeys.findIndex((key) => key.column === column);
+      const key = this.sortKeys[keyIndex];
+      if (key) {
+        const label = `${key.descending ? "▼" : "▲"}${this.sortKeys.length > 1 ? keyIndex + 1 : ""}`;
+        const labelWidth = context.measureText(label).width + CELL_PADDING;
+        context.fillStyle = theme.surface2;
+        context.fillRect(x + columnWidth - labelWidth - CELL_PADDING / 2, 1, labelWidth + CELL_PADDING / 2, HEADER_HEIGHT - 2);
+        context.fillStyle = theme.accent;
+        context.textAlign = "right";
+        context.fillText(label, x + columnWidth - CELL_PADDING, HEADER_HEIGHT / 2);
+        context.textAlign = "left";
+      }
       context.restore();
     }
     context.strokeStyle = theme.border;
@@ -543,9 +564,12 @@ export class GridEngine {
       mode = "rows";
       cell = { row: hit.row, column: this.selection?.focus.column ?? 0 };
     } else if (hit.area === "header" && ctrl) {
-      // A plain header click is the sort's (docs/decisions/0005-sorting-a-result.md).
       mode = "columns";
       cell = { row: this.selection?.focus.row ?? 0, column: hit.column };
+    } else if (hit.area === "header" && this.source) {
+      // docs/decisions/0005-sorting-a-result.md: the owner decides how.
+      this.callbacks.sortRequested(hit.column, event.shiftKey);
+      return;
     } else if (hit.area === "corner") {
       this.select({ anchor: { row: 0, column: 0 }, focus: { row: 0, column: 0 }, mode: "all" });
       return;
@@ -712,6 +736,20 @@ export class GridEngine {
       this.select({ anchor: focus, focus, mode: "cells" });
     }
     this.reveal(focus);
+  }
+
+  /** The sort the header shows; drawing only, the rows come in order from the core. */
+  setSortKeys(keys: SortKey[]): void {
+    this.sortKeys = keys;
+    this.scheduleDraw();
+  }
+
+  /** Reads the rows again (after a sort in the core), keeping widths, scroll and selection. */
+  reload(): void {
+    this.generation++;
+    this.blocks.clear();
+    this.pending.clear();
+    this.scheduleDraw();
   }
 
   /** Moves the cell cursor to `cell`, as a click there would, and scrolls it into view. */

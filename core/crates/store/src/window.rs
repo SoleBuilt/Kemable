@@ -72,11 +72,17 @@ pub(crate) fn pack(columns: &[ColumnMeta], inner: &Inner, request: WindowRequest
         let mut row = first_row;
         let end = first_row + rows as u64;
         while row < end {
-            let Some((chunk_index, local)) = inner.locate(row) else {
+            let Some((chunk_index, local)) = inner.locate_display(row) else {
                 break;
             };
             let chunk = &inner.chunks[chunk_index];
-            let take = (chunk.rows - local).min(usize::try_from(end - row).unwrap_or(usize::MAX));
+            // In arrival order a run of rows sits together in a chunk; sorted,
+            // each display row is looked up on its own.
+            let take = if inner.order.is_some() {
+                1
+            } else {
+                (chunk.rows - local).min(usize::try_from(end - row).unwrap_or(usize::MAX))
+            };
             let data = &chunk.columns[column];
             for index in local..local + take {
                 let cell = cell_kinds.len();
@@ -403,6 +409,94 @@ mod tests {
             column_count: 5,
         };
         assert_eq!(store.copy_tsv(tail, false).unwrap(), "\r\n");
+    }
+
+    fn texts_of(store: &ResultStore, column: u32) -> Vec<String> {
+        let bytes = store.fetch_window(WindowRequest {
+            first_column: column,
+            column_count: 1,
+            ..request(0, 100)
+        });
+        let window = WindowReader::new(&bytes).unwrap();
+        (0..window.row_count)
+            .map(|row| {
+                if window.is_null(row, 0) {
+                    "NULL".to_owned()
+                } else {
+                    window.text(row, 0).to_owned()
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_sort_reorders_what_windows_and_copies_read_and_clearing_it_restores_arrival() {
+        let store = ResultStore::new(vec![column("n", ValueKind::Int), column("tag", ValueKind::Text)], None);
+        let rows = [
+            Value::Int(3),
+            Value::Text("c".into()),
+            Value::Null,
+            Value::Text("null".into()),
+            Value::Int(1),
+            Value::Text("a".into()),
+            Value::Int(3),
+            Value::Text("c2".into()),
+        ];
+        assert!(store.push_rows(&rows));
+
+        store.sort(&[crate::SortKey {
+            column: 0,
+            descending: false,
+        }]);
+        assert_eq!(texts_of(&store, 1), ["null", "a", "c", "c2"]);
+        // Descending is the comparison reversed: NULL last, ties still in arrival order.
+        store.sort(&[crate::SortKey {
+            column: 0,
+            descending: true,
+        }]);
+        assert_eq!(texts_of(&store, 1), ["c", "c2", "a", "null"]);
+        let first = crate::CellRange {
+            first_row: 0,
+            row_count: 1,
+            first_column: 0,
+            column_count: 2,
+        };
+        assert_eq!(store.copy_tsv(first, false).unwrap(), "3\tc\r\n");
+        assert_eq!(store.row_texts(3), Some(vec![None, Some("null".to_owned())]));
+
+        store.sort(&[]);
+        assert_eq!(texts_of(&store, 1), ["c", "null", "a", "c2"]);
+        assert!(store.sort_keys().is_empty());
+    }
+
+    #[test]
+    fn a_second_key_breaks_ties_and_rows_arriving_later_follow() {
+        let store = ResultStore::new(vec![column("g", ValueKind::Int), column("name", ValueKind::Text)], None);
+        let rows = [
+            Value::Int(2),
+            Value::Text("item10".into()),
+            Value::Int(1),
+            Value::Text("b".into()),
+            Value::Int(2),
+            Value::Text("item2".into()),
+        ];
+        assert!(store.push_rows(&rows));
+        let keys = [
+            crate::SortKey {
+                column: 0,
+                descending: false,
+            },
+            crate::SortKey {
+                column: 1,
+                descending: false,
+            },
+        ];
+        store.sort(&keys);
+        assert_eq!(texts_of(&store, 1), ["b", "item2", "item10"]);
+        assert_eq!(store.sort_keys(), keys);
+
+        assert!(store.push_rows(&[Value::Int(0), Value::Text("late".into())]));
+        assert_eq!(texts_of(&store, 1), ["b", "item2", "item10", "late"]);
     }
 
     #[test]

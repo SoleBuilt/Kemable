@@ -4,7 +4,7 @@
   import SqlEditor, { type RunRequest } from "./lib/editor/SqlEditor.svelte";
   import { errorTitle } from "./lib/errors";
   import DataGrid from "./lib/grid/DataGrid.svelte";
-  import type { CellRect, GridCallbacks, GridSource } from "./lib/grid/engine";
+  import type { CellRect, GridCallbacks, GridSource, SortKey } from "./lib/grid/engine";
   import RowDetail from "./lib/grid/RowDetail.svelte";
   import { asCoreError, ipc } from "./lib/ipc";
   import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
@@ -28,6 +28,27 @@
     totalRows: number;
     finished: boolean;
     limited: boolean;
+    /** The sort the header shows. */
+    sort: SortKey[];
+    /** Who sorted it: the server (the statement ran again) or the core. */
+    sortedBy: "server" | "core" | null;
+    /** For a set the server sorted: the statement it was written from, run again for "unsorted". */
+    original: string | null;
+  }
+
+  /** The row caps on offer; null keeps every row. */
+  const ROW_CAPS: (number | null)[] = [1_000, 10_000, 100_000, 500_000, 1_000_000, null];
+  const ROW_CAP_KEY = "paboable.rowCap";
+
+  function readRowCap(): number | null {
+    try {
+      const saved = localStorage.getItem(ROW_CAP_KEY);
+      if (saved === "none") return null;
+      const value = Number(saved);
+      return ROW_CAPS.includes(value) ? value : 500_000;
+    } catch {
+      return 500_000;
+    }
   }
 
   type Message =
@@ -42,6 +63,8 @@
    * switch is announced in Messages. A settings screen will let it be turned off.
    */
   const FOLLOW_CREATED_DATABASE = true;
+  /** One empty sort, so the grid's prop does not change on every row count update. */
+  const NO_SORT: SortKey[] = [];
 
   let connection = $state.raw<OpenedConnection | null>(null);
   let connectError: CoreError | null = $state(null);
@@ -112,6 +135,7 @@
       cursor = focus ? { result, row: focus.row, column: focus.column } : null;
       selected = rect;
     },
+    sortRequested: (column, additive) => void sortBy(column, additive),
   };
 
   /** Opens a connection in place of the current one. Resolves to the error, or null. */
@@ -205,19 +229,48 @@
   }
 
   /** Runs `request`. One from the editor is marked there; one the app wrote (opening a table) is not. */
-  async function startRun(request: RunRequest, fromEditor = true) {
+  /** The row cap each result set stops at; remembered across launches. */
+  let rowCap: number | null = $state(readRowCap());
+  $effect(() => {
+    const value = rowCap === null ? "none" : String(rowCap);
+    try {
+      localStorage.setItem(ROW_CAP_KEY, value);
+    } catch {
+      // Without storage the cap still applies; it is just not remembered.
+    }
+  });
+
+  /** The last run, for Fetch All. */
+  let lastRun: { request: RunRequest; database: string | null } | null = null;
+  /** A sort that runs the statement again: its keys go to the set that run starts. */
+  let pendingSort: { keys: SortKey[]; original: string } | null = null;
+
+  /**
+   * Runs `request`. One from the editor is marked there; one the app wrote
+   * (opening a table, a sort) is not. `inDatabase` and `rowLimit` override the
+   * editor's database and the row cap, for a sort that must match its original.
+   */
+  async function startRun(
+    request: RunRequest,
+    fromEditor = true,
+    overrides: { inDatabase?: string | null; rowLimit?: number | null } = {},
+  ) {
     if (!connection || running) return;
     clearResults();
     statements = [];
     ranCount = null;
     running = true;
+    const runDatabase = overrides.inDatabase !== undefined ? overrides.inDatabase : database;
+    const rowLimit = request.unlimited ? null : overrides.rowLimit !== undefined ? overrides.rowLimit : rowCap;
+    lastRun = { request, database: runDatabase };
     try {
       const started = await ipc.runQuery(
         connection.id,
-        database,
+        runDatabase,
         request.sql,
         request.cursor,
         FOLLOW_CREATED_DATABASE,
+        rowLimit,
         onEvent,
       );
       runId = started.run;
@@ -225,8 +278,64 @@
       if (fromEditor) editor?.showRan(request, started.ranges);
     } catch (caught) {
       running = false;
+      pendingSort = null;
       messages = [{ kind: "error", statement: null, error: asCoreError(caught) }];
       activeTab = "messages";
+    }
+  }
+
+  /** Runs the last run again without a row cap, keeping a server sort's arrows. */
+  function fetchAll() {
+    if (!lastRun || running) return;
+    const set = activeSet;
+    if (set?.sortedBy === "server" && set.original) pendingSort = { keys: set.sort, original: set.original };
+    void startRun({ ...lastRun.request, unlimited: true }, false, { inDatabase: lastRun.database });
+  }
+
+  /**
+   * A header click (docs/decisions/0005-sorting-a-result.md): ascending, then
+   * descending, then unsorted; with Shift the column becomes one more key.
+   */
+  async function sortBy(column: number, additive: boolean) {
+    const set = activeSet;
+    if (!set || running || !connection) return;
+    const current = set.sort.find((key) => key.column === column);
+    const next: SortKey | null = !current
+      ? { column, descending: false }
+      : !current.descending
+        ? { column, descending: true }
+        : null;
+    let keys: SortKey[];
+    if (!additive) {
+      keys = next ? [next] : [];
+    } else if (current) {
+      keys = next
+        ? set.sort.map((key) => (key.column === column ? next : key))
+        : set.sort.filter((key) => key.column !== column);
+    } else {
+      keys = [...set.sort, { column, descending: false }];
+    }
+
+    // Unsorting what the server sorted runs the statement it came from.
+    if (keys.length === 0 && set.sortedBy === "server" && set.original) {
+      void startRun({ sql: set.original, cursor: null, origin: 0 }, false, { inDatabase: lastRun?.database });
+      return;
+    }
+    try {
+      const outcome = await ipc.sortResult(set.result, keys);
+      if (outcome.kind === "rerun") {
+        pendingSort = { keys, original: set.original ?? outcome.statement };
+        void startRun({ sql: outcome.sql, cursor: null, origin: 0 }, false, {
+          inDatabase: outcome.database,
+          rowLimit: outcome.rowLimit,
+        });
+      } else {
+        updateSet(set.result, { sort: keys, sortedBy: keys.length > 0 ? "core" : null });
+        grid?.reload();
+        if (keys.length > 0 && outcome.limited) note("Sorted only the rows loaded: this result stopped at the row cap");
+      }
+    } catch (caught) {
+      note(`Not sorted: ${asCoreError(caught).message}`);
     }
   }
 
@@ -249,6 +358,9 @@
             totalRows: 0,
             finished: false,
             limited: false,
+            sort: pendingSort?.keys ?? [],
+            sortedBy: pendingSort ? "server" : null,
+            original: pendingSort?.original ?? null,
           },
         ];
         break;
@@ -274,6 +386,7 @@
       case "finished":
         running = false;
         runId = null;
+        pendingSort = null;
         elapsedMs = event.elapsedMs;
         if (sets.length === 0 || event.failed) activeTab = "messages";
         if (messages.some((message) => message.kind === "command" || message.kind === "switched")) refreshKey++;
@@ -395,6 +508,16 @@
       disabled={!connection || running}
       title="Run every statement in the editor (Ctrl+Shift+Enter or F5)">▶▶ Run all</button
     >
+    <select
+      class="toolbar-select"
+      bind:value={rowCap}
+      title="The most rows a result keeps. Ctrl+Alt+Enter runs the statement with no limit."
+      aria-label="Row limit"
+    >
+      {#each ROW_CAPS as cap (cap ?? "none")}
+        <option value={cap}>{cap === null ? "No limit" : `Limit ${numberFormat.format(cap)}`}</option>
+      {/each}
+    </select>
     <button class="toolbar-button" onclick={stopRun} disabled={!running} title="Stop the running statement">■ Stop</button>
   </header>
 
@@ -504,7 +627,13 @@
           {:else}
             <div class="flex h-full">
               <div class="min-w-0 flex-1">
-                <DataGrid bind:this={grid} source={gridSource} totalRows={gridRows} callbacks={gridCallbacks} />
+                <DataGrid
+                  bind:this={grid}
+                  source={gridSource}
+                  totalRows={gridRows}
+                  sortKeys={activeSet?.sort ?? NO_SORT}
+                  callbacks={gridCallbacks}
+                />
               </div>
               {#if detailOpen && gridSource}
                 <aside class="w-80 shrink-0 border-l border-line">
@@ -552,7 +681,14 @@
     {#if activeSet}
       <span>
         {numberFormat.format(activeSet.totalRows)} rows{activeSet.finished ? "" : " so far"}
-        {#if activeSet.limited}<span class="text-danger"> · stopped at the row limit</span>{/if}
+        {#if activeSet.limited}
+          <span class="text-danger"> · stopped at the row limit</span>
+          <button class="ml-1 rounded px-1.5 text-accent hover:bg-surface-3" onclick={fetchAll} disabled={running}
+            >Fetch all</button
+          >
+        {/if}
+        {#if activeSet.sortedBy === "server"}<span> · sorted by the server</span>{/if}
+        {#if activeSet.sortedBy === "core"}<span> · sorted in Paboable</span>{/if}
       </span>
     {/if}
     <div class="flex-1"></div>
@@ -611,6 +747,15 @@
   }
   :global(.toolbar-button:hover:not(:disabled)) {
     background: var(--surface-3);
+  }
+  .toolbar-select {
+    height: 26px;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 12px;
   }
   :global(.toolbar-button:disabled) {
     color: var(--text-muted);

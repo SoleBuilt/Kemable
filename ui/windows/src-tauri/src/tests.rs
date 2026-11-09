@@ -39,6 +39,7 @@ async fn run_script(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &st
         grammar,
         statements,
         follow_created_database: true,
+        row_limit: Some(500_000),
         cancel: CancellationToken::new(),
         channel,
     };
@@ -148,5 +149,81 @@ async fn a_sql_server_script_follows_create_database_and_use() {
         })
         .collect();
     assert_eq!(answers, [Some(created.clone()), Some("1".to_owned())]);
+    server.close().await;
+}
+
+/// The first row's cells of each result set the events started.
+fn first_rows(state: &AppState, events: &[Json]) -> Vec<Vec<Option<String>>> {
+    of_type(events, "setStarted")
+        .iter()
+        .map(|event| {
+            state
+                .result(event["result"].as_u64().unwrap())
+                .unwrap()
+                .row_texts(0)
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+async fn a_sorted_statement_runs_on_postgres_and_orders_before_the_limit() {
+    use paboable_core::sql::{SortColumn, sorted_statement};
+    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
+    let driver = state.registry.get("postgres").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first));
+
+    // m descending, then n: the LIMIT now takes the five rows that order first.
+    let original = "select g as n, g % 3 as m from generate_series(1, 9) g limit 5 -- five rows";
+    let keys = [
+        SortColumn {
+            column: 1,
+            descending: true,
+        },
+        SortColumn {
+            column: 0,
+            descending: false,
+        },
+    ];
+    let sql =
+        sorted_statement(original, SqlGrammar::Postgres, &["n".into(), "m".into()], &keys).expect("it can run again");
+    let events = run_script(&state, &server, &sql, SqlGrammar::Postgres).await;
+    assert!(of_type(&events, "statementFailed").is_empty(), "{sql}\n{events:#?}");
+    assert_eq!(
+        first_rows(&state, &events),
+        [vec![Some("2".to_owned()), Some("2".to_owned())]]
+    );
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+async fn a_sorted_statement_runs_on_sql_server_with_top_and_option() {
+    use paboable_core::sql::{SortColumn, sorted_statement};
+    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
+    let driver = state.registry.get("mssql").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first));
+
+    let original =
+        "SELECT TOP 3 n, n % 2 AS parity FROM (VALUES (1), (2), (3), (4)) AS v(n) ORDER BY n OPTION (RECOMPILE)";
+    let keys = [SortColumn {
+        column: 0,
+        descending: true,
+    }];
+    let sql = sorted_statement(original, SqlGrammar::SqlServer, &["n".into(), "parity".into()], &keys)
+        .expect("it can run again");
+    let events = run_script(&state, &server, &sql, SqlGrammar::SqlServer).await;
+    assert!(of_type(&events, "statementFailed").is_empty(), "{sql}\n{events:#?}");
+    assert_eq!(
+        first_rows(&state, &events),
+        [vec![Some("4".to_owned()), Some("0".to_owned())]]
+    );
     server.close().await;
 }

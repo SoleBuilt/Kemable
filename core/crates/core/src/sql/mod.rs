@@ -1,9 +1,11 @@
 //! Reading SQL scripts the way each engine's own client does.
 
 mod database_change;
+mod sorted;
 mod split;
 
 pub use database_change::{DatabaseChange, database_change};
+pub use sorted::{SortColumn, sorted_statement};
 pub use split::{StatementKind, StatementSpan, split, statement_at};
 
 use serde::{Deserialize, Serialize};

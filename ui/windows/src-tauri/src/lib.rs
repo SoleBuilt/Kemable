@@ -54,6 +54,7 @@ pub fn run() {
             commands::fetch_columns,
             commands::run_query,
             commands::cancel_run,
+            commands::sort_result,
             commands::fetch_window,
             commands::cell_text,
             commands::copy_range,
