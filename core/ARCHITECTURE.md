@@ -56,6 +56,7 @@ Methods a data model does not use return `driver.unsupported`. Key-value, docume
 - A `ResultStore` keeps each column in chunks of 65,536 rows: a kind byte, a raw `i64`, a null bit and the display text (or a binary value's bytes) per cell. Appending never copies rows already held.
 - A grid asks for one window (first row, row count, first column, column count, character cap) and gets one packed buffer. Rows and the row count come from one read lock, so a window is one snapshot.
 - The full value of a cell, for copy and the detail view, comes from `ResultStore::cell`; a window carries display text cut at its cap.
+- Sorting (`docs/decisions/0005-sorting-a-result.md`): `sql::sorted_statement` writes the statement again with `ORDER BY` when the column can be named or numbered; otherwise `ResultStore::sorted` gives a row order over the same chunks, by `value::order`, and windows read through it.
 
 ## Values
 

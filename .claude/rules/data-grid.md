@@ -21,6 +21,7 @@ The grid is `GridEngine` (`engine.ts`): one canvas laid over a native scroll con
 
 - Numbers align right, everything else left, by each cell's own kind (SQLite mixes kinds in a column).
 - NULL is drawn as `NULL` in the muted colour. The core never sends that word.
+- **Sorting is the core's.** A header click asks the owner to sort (ascending, descending, unsorted; Shift adds a key); the grid only draws the arrow. The owner runs the statement again or asks the core for a sorted view (`docs/decisions/0005-sorting-a-result.md`). The grid never reorders rows itself.
 - Colours come from the CSS tokens through `readTheme()`, re-read when the system scheme changes. No colour is written in this folder.
 - Keys: arrows, Ctrl+arrows, Tab, Page Up/Down, Home/End, Ctrl+Home/End, Ctrl+C (the full value through `cell_text`).
 - Svelte state never reaches the draw loop: `DataGrid.svelte` passes plain objects (`$state.raw` in the owner), so no proxy is read per cell.
