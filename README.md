@@ -37,4 +37,5 @@ node scripts/verify.mjs
 - `core/ARCHITECTURE.md`: kiến trúc core
 - `docs/decisions/`: các quyết định kiến trúc (ADR)
 - `docs/roadmap.md`: lộ trình và danh sách engine
+- `docs/testing/`: danh sách kiểm thử thủ công theo từng phase (`phase-1.md`)
 - `.claude/rules/`, `.claude/skills/`: rule theo đường dẫn và các skill `verify`, `add-driver`, `fix-issue`
