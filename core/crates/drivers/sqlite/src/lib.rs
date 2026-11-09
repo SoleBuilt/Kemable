@@ -26,6 +26,7 @@ pub static INFO: EngineInfo = EngineInfo {
     default_port: None,
     sql_grammar: Some(SqlGrammar::Sqlite),
     live: false,
+    has_databases: false,
 };
 
 /// How long a statement waits on another process's lock before it fails.

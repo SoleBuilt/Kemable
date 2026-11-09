@@ -10,4 +10,5 @@ paths:
 - **The table in `split.rs`'s module docs is the spec.** A grammar change updates the table and adds a test per row it touches.
 - **A statement that is only whitespace and comments is dropped.** A comment before a statement is not part of its range.
 - **Unclosed quotes, comments and dollar quotes run to the end of the text.** The engine reports the error; the splitter never guesses where it ends.
+- **Client commands are directives, not SQL.** psql's `\c name` at the start of a line where a statement would start comes back as `StatementKind::Directive`; the run handles it (`database_change.rs`) and never sends it. A directive the run cannot handle fails the run with `driver.unsupported`.
 - **Never add a grammar without a test** for each of: semicolons inside quotes, comments, the grammar's own quoting, and multi-byte text.

@@ -1,8 +1,10 @@
 //! Reading SQL scripts the way each engine's own client does.
 
+mod database_change;
 mod split;
 
-pub use split::{StatementSpan, split, statement_at};
+pub use database_change::{DatabaseChange, database_change};
+pub use split::{StatementKind, StatementSpan, split, statement_at};
 
 use serde::{Deserialize, Serialize};
 

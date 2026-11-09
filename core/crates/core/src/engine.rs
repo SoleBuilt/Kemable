@@ -39,4 +39,7 @@ pub struct EngineInfo {
     pub sql_grammar: Option<SqlGrammar>,
     /// Whether the engine can push changes as they happen (the Live tab).
     pub live: bool,
+    /// Whether a server holds several databases a login can list and open.
+    /// The UI then shows them at the top of the tree and runs in one of them.
+    pub has_databases: bool,
 }

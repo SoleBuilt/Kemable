@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::catalog::{ColumnInfo, ObjectInfo, SchemaInfo, TableRef};
+use crate::catalog::{ColumnInfo, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
 use crate::engine::EngineInfo;
 use crate::sink::{ExecOutcome, ResultSink};
-use crate::{CallOptions, Result};
+use crate::{CallOptions, DriverError, Result};
 
 /// A live connection to one engine.
 ///
@@ -19,7 +19,18 @@ pub trait Connection: Send + Sync {
     fn server_version(&self) -> Option<String>;
 
     /// A cheap round trip that proves the link is up.
+    /// The database the session is on, for an engine with databases.
+    fn current_database(&self) -> Option<String> {
+        None
+    }
+
     async fn ping(&self, options: CallOptions) -> Result<()>;
+
+    /// The databases this login may open, for an engine with databases
+    /// (`EngineInfo::has_databases`). The server's permissions decide the list.
+    async fn list_databases(&self, _options: CallOptions) -> Result<Vec<DatabaseInfo>> {
+        Err(DriverError::unsupported("this engine has no databases to list"))
+    }
 
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>>;
 

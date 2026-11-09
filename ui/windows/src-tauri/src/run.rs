@@ -1,4 +1,4 @@
-//! A run: the statements of one script, executed in order on one connection,
+//! A run: the statements of one script, executed in order on one server,
 //! with what they return streamed to the UI.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use paboable_core::catalog::ColumnMeta;
 use paboable_core::connection::Connection;
 use paboable_core::sink::ResultSink;
+use paboable_core::sql::{DatabaseChange, SqlGrammar, StatementKind, database_change};
 use paboable_core::value::Value;
 use paboable_core::{CallOptions, DriverError};
 use paboable_store::ResultStore;
@@ -15,7 +16,7 @@ use serde::Serialize;
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
 
-use crate::state::AppState;
+use crate::state::{AppState, OpenServer};
 
 /// The most rows one result set keeps. Past it the driver stops reading and
 /// the set reports `limited`.
@@ -57,6 +58,12 @@ pub enum RunEvent {
     Notice {
         statement: usize,
         text: String,
+    },
+    /// The statements after `statement` run in `database`: it was created
+    /// and followed, or a directive or `USE` switched to it.
+    DatabaseChanged {
+        statement: usize,
+        database: String,
     },
     StatementFailed {
         statement: usize,
@@ -165,10 +172,20 @@ impl ResultSink for RunSink {
     }
 }
 
+pub struct Statement {
+    pub text: String,
+    pub kind: StatementKind,
+}
+
 pub struct Run {
     pub id: u64,
-    pub connection: Arc<dyn Connection>,
-    pub statements: Vec<String>,
+    pub server: Arc<OpenServer>,
+    /// The database the run starts in; `None` for the home database.
+    pub database: Option<String>,
+    pub grammar: SqlGrammar,
+    pub statements: Vec<Statement>,
+    /// After `CREATE DATABASE x` succeeds, run the rest of the script in `x`.
+    pub follow_created_database: bool,
     pub cancel: CancellationToken,
     pub channel: Channel<RunEvent>,
 }
@@ -179,31 +196,68 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
     let started = Instant::now();
     let sink = Arc::new(RunSink {
         state: Arc::clone(&state),
-        channel: run.channel,
+        channel: run.channel.clone(),
         statement: AtomicUsize::new(0),
         open: Mutex::new(None),
     });
+    let mut database = run.database.clone();
     let mut failed = false;
 
-    for (index, text) in run.statements.iter().enumerate() {
+    for (index, statement) in run.statements.iter().enumerate() {
         if run.cancel.is_cancelled() {
             break;
         }
         sink.statement.store(index, Ordering::Relaxed);
+        let text = statement.text.as_str();
         sink.send(RunEvent::StatementStarted {
             index,
             text: text.chars().take(STATEMENT_PREVIEW_CHARS).collect(),
         });
-        let options = CallOptions::new(run.cancel.child_token());
-        let shared: Arc<dyn ResultSink> = sink.clone();
-        if let Err(error) = run.connection.execute(text, shared, options).await {
-            sink.close_open_set();
-            sink.send(RunEvent::StatementFailed {
-                statement: index,
-                error,
-            });
-            failed = true;
-            break;
+
+        let outcome = match statement.kind {
+            StatementKind::Directive => directive(&run.server, text, &mut database),
+            StatementKind::Sql => {
+                // The server refuses to drop a database someone is connected
+                // to; when that someone is this app, step out of it first.
+                if run.server.engine.has_databases
+                    && let Some(DatabaseChange::Dropped(name)) = database_change(text, run.grammar)
+                    && database.as_deref() != Some(name.as_str())
+                {
+                    run.server.close_session(&name).await;
+                }
+                let shared: Arc<dyn ResultSink> = sink.clone();
+                statement_in(&run, text, &database, shared, run.cancel.child_token())
+                    .await
+                    .map(|()| follow(&run, text, &mut database))
+            }
+        };
+        match outcome {
+            Ok(Some(target)) => {
+                // Open the session now, so a database that cannot be reached
+                // fails here, where the switch is, and not on the next statement.
+                if let Err(error) = run.server.session(Some(&target)).await {
+                    sink.send(RunEvent::StatementFailed {
+                        statement: index,
+                        error,
+                    });
+                    failed = true;
+                    break;
+                }
+                sink.send(RunEvent::DatabaseChanged {
+                    statement: index,
+                    database: target,
+                });
+            }
+            Ok(None) => {}
+            Err(error) => {
+                sink.close_open_set();
+                sink.send(RunEvent::StatementFailed {
+                    statement: index,
+                    error,
+                });
+                failed = true;
+                break;
+            }
         }
     }
 
@@ -213,4 +267,43 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
         cancelled: run.cancel.is_cancelled(),
         failed,
     });
+}
+
+async fn statement_in(
+    run: &Run,
+    text: &str,
+    database: &Option<String>,
+    sink: Arc<dyn ResultSink>,
+    cancel: CancellationToken,
+) -> Result<(), DriverError> {
+    let session: Arc<dyn Connection> = run.server.session(database.as_deref()).await?;
+    session.execute(text, sink, CallOptions::new(cancel)).await.map(drop)
+}
+
+/// The database a successful statement moves the run to, if any.
+fn follow(run: &Run, text: &str, database: &mut Option<String>) -> Option<String> {
+    if !run.server.engine.has_databases {
+        return None;
+    }
+    let target = match database_change(text, run.grammar)? {
+        DatabaseChange::Created(name) if run.follow_created_database => name,
+        DatabaseChange::Used(name) => name,
+        _ => return None,
+    };
+    *database = Some(target.clone());
+    Some(target)
+}
+
+/// A client command. `\c name` moves the run to `name`; any other is refused,
+/// since nothing would run it.
+fn directive(server: &OpenServer, text: &str, database: &mut Option<String>) -> Result<Option<String>, DriverError> {
+    match database_change(text, SqlGrammar::Postgres) {
+        Some(DatabaseChange::Connect(name)) if server.engine.has_databases => {
+            *database = Some(name.clone());
+            Ok(Some(name))
+        }
+        _ => Err(DriverError::unsupported(format!(
+            "{text} is a psql command Paboable does not run"
+        ))),
+    }
 }

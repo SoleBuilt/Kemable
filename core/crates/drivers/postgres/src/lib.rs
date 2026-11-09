@@ -31,6 +31,7 @@ pub static INFO: EngineInfo = EngineInfo {
     default_port: Some(5432),
     sql_grammar: Some(SqlGrammar::Postgres),
     live: true,
+    has_databases: true,
 };
 
 pub struct PostgresDriver;

@@ -98,3 +98,17 @@ body {
 button {
   cursor: default;
 }
+
+/* A statement a run just sent fades from the selection colour (SqlEditor showRan). */
+@keyframes ran-fade {
+  from {
+    background-color: var(--selection);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.cm-ran {
+  animation: ran-fade 1.4s ease-out forwards;
+}

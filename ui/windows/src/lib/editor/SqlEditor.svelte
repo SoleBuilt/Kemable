@@ -3,6 +3,8 @@
   export interface RunRequest {
     sql: string;
     cursor: number | null;
+    /** Where `sql` starts in the editor, in UTF-16 units: 0 for the whole text, the selection start for a selection. */
+    origin: number;
   }
 </script>
 
@@ -10,12 +12,12 @@
   import { indentWithTab } from "@codemirror/commands";
   import { MSSQL, PostgreSQL, SQLite, sql, type SQLDialect } from "@codemirror/lang-sql";
   import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-  import { Compartment, EditorState, Prec } from "@codemirror/state";
-  import { EditorView, keymap } from "@codemirror/view";
+  import { Compartment, EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
+  import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
   import { tags } from "@lezer/highlight";
   import { basicSetup } from "codemirror";
   import { onMount } from "svelte";
-  import type { SqlGrammar } from "../types";
+  import type { ByteRange, SqlGrammar } from "../types";
 
   interface Props {
     grammar: SqlGrammar | null;
@@ -29,6 +31,7 @@
   let view: EditorView | null = null;
   const language = new Compartment();
   const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
 
   const DIALECTS: Record<SqlGrammar, SQLDialect> = {
     postgres: PostgreSQL,
@@ -74,12 +77,12 @@
     if (!view) return null;
     const state = view.state;
     const selection = state.selection.main;
-    if (!selection.empty) return { sql: state.sliceDoc(selection.from, selection.to), cursor: null };
+    if (!selection.empty) return { sql: state.sliceDoc(selection.from, selection.to), cursor: null, origin: selection.from };
     const text = state.doc.toString();
     if (text.trim() === "") return null;
-    if (mode === "all") return { sql: text, cursor: null };
+    if (mode === "all") return { sql: text, cursor: null, origin: 0 };
     // The core splits in UTF-8 bytes; CodeMirror counts UTF-16 units.
-    return { sql: text, cursor: encoder.encode(text.slice(0, selection.head)).length };
+    return { sql: text, cursor: encoder.encode(text.slice(0, selection.head)).length, origin: 0 };
   }
 
   function run(mode: "statement" | "all"): boolean {
@@ -90,6 +93,42 @@
 
   export function focus(): void {
     view?.focus();
+  }
+
+  // The statements a run sent, marked for a moment so it is plain what ran.
+  const setRan = StateEffect.define<{ from: number; to: number }[]>();
+  const ranMark = Decoration.mark({ class: "cm-ran" });
+  const ranField = StateField.define<DecorationSet>({
+    create: () => Decoration.none,
+    update(marks, transaction) {
+      let next = marks.map(transaction.changes);
+      for (const effect of transaction.effects) {
+        if (effect.is(setRan)) {
+          next = Decoration.set(
+            effect.value.filter((range) => range.to > range.from).map((range) => ranMark.range(range.from, range.to)),
+            true,
+          );
+        }
+      }
+      return next;
+    },
+    provide: (field) => EditorView.decorations.from(field),
+  });
+  let ranTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Marks what a run sent: `ranges` are UTF-8 byte ranges into `request.sql`. */
+  export function showRan(request: RunRequest, ranges: ByteRange[]): void {
+    if (!view) return;
+    const bytes = encoder.encode(request.sql);
+    const units = (byte: number) => decoder.decode(bytes.subarray(0, byte)).length;
+    const length = view.state.doc.length;
+    const marks = ranges.map((range) => ({
+      from: Math.min(length, request.origin + units(range.start)),
+      to: Math.min(length, request.origin + units(range.end)),
+    }));
+    view.dispatch({ effects: setRan.of(marks) });
+    clearTimeout(ranTimer);
+    ranTimer = setTimeout(() => view?.dispatch({ effects: setRan.of([]) }), 1400);
   }
 
   onMount(() => {
@@ -110,6 +149,7 @@
           language.of(languageFor(grammar)),
           syntaxHighlighting(highlight),
           theme,
+          ranField,
         ],
       }),
     });
