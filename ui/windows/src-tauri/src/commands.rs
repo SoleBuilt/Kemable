@@ -14,6 +14,8 @@ use paboable_core::engine::EngineInfo;
 use paboable_core::sql::{SortColumn, sorted_statement, split, statement_at};
 use paboable_core::{CallOptions, DriverError};
 use paboable_storage::SavedConnection;
+use paboable_storage::history::{HistoryEntry, HistoryQuery};
+use paboable_storage::queries::SavedQuery;
 use paboable_store::{CellRange, MAX_COPY_CELLS, SortKey, WindowRequest};
 use serde::Serialize;
 use tauri::State;
@@ -35,6 +37,8 @@ pub struct OpenedConnection {
     engine: EngineInfo,
     server_version: Option<String>,
     title: String,
+    /// The saved connection it was opened from, if any.
+    saved_id: Option<String>,
     /// The database the connection opened on, for an engine with databases.
     database: Option<String>,
 }
@@ -53,10 +57,15 @@ pub async fn parse_connection_url(url: String) -> CommandResult<ConnectionConfig
 #[tauri::command]
 pub async fn connect(state: State<'_, Arc<AppState>>, config: ConnectionConfig) -> CommandResult<OpenedConnection> {
     let title = title_of(&config.target);
-    open_server(&state, config, title).await
+    open_server(&state, config, title, None).await
 }
 
-async fn open_server(state: &AppState, config: ConnectionConfig, title: String) -> CommandResult<OpenedConnection> {
+async fn open_server(
+    state: &AppState,
+    config: ConnectionConfig,
+    title: String,
+    saved_id: Option<String>,
+) -> CommandResult<OpenedConnection> {
     let driver = state
         .registry
         .get(&config.engine)
@@ -66,12 +75,13 @@ async fn open_server(state: &AppState, config: ConnectionConfig, title: String) 
         .connect(&config, CallOptions::default().with_timeout(CONNECT_TIMEOUT))
         .await?;
     let server_version = first.server_version();
-    let server = Arc::new(OpenServer::new(driver, config, first));
+    let server = Arc::new(OpenServer::new(driver, config, first, title.clone()));
     let opened = OpenedConnection {
         id: 0,
         engine: server.engine.clone(),
         server_version,
         title,
+        saved_id,
         database: server.engine.has_databases.then(|| server.home.clone()),
     };
     let id = state.add_server(server);
@@ -115,7 +125,7 @@ pub async fn connect_saved(
     {
         *target = Secret::new(password);
     }
-    let opened = open_server(&state, config, saved.name).await?;
+    let opened = open_server(&state, config, saved.name, Some(id.clone())).await?;
     // A failure to record the time is not worth failing the connection for.
     let _ = library.with(|library, _| library.touch(&id));
     Ok(opened)
@@ -220,6 +230,7 @@ pub async fn run_query(
     cursor: Option<usize>,
     follow_created_database: bool,
     row_limit: Option<u64>,
+    record_history: bool,
     on_event: Channel<RunEvent>,
 ) -> CommandResult<RunStarted> {
     let server = state.server(conn)?;
@@ -259,6 +270,7 @@ pub async fn run_query(
         statements,
         follow_created_database,
         row_limit,
+        record: record_history,
         cancel,
         channel: on_event,
     };
@@ -337,6 +349,54 @@ pub async fn sort_result(
     Ok(SortOutcome::Sorted {
         limited: store.state().limited,
     })
+}
+
+/// The query history, newest first, filtered by text and connection.
+#[tauri::command]
+pub async fn history_search(state: State<'_, Arc<AppState>>, query: HistoryQuery) -> CommandResult<Vec<HistoryEntry>> {
+    let history = state
+        .history
+        .get()
+        .cloned()
+        .ok_or_else(|| DriverError::not_found("query history"))?;
+    tauri::async_runtime::spawn_blocking(move || history.search(&query))
+        .await
+        .map_err(|error| DriverError::internal(error.to_string()))?
+}
+
+#[tauri::command]
+pub async fn history_delete(state: State<'_, Arc<AppState>>, id: Option<i64>) -> CommandResult<()> {
+    let history = state
+        .history
+        .get()
+        .cloned()
+        .ok_or_else(|| DriverError::not_found("query history"))?;
+    match id {
+        Some(id) => history.delete(id),
+        None => history.clear(),
+    }
+}
+
+/// The saved queries a connection shows: its own and the global ones.
+#[tauri::command]
+pub async fn list_queries(
+    library: State<'_, Library>,
+    connection_id: Option<String>,
+) -> CommandResult<Vec<SavedQuery>> {
+    library.with_queries(|queries| queries.list(connection_id.as_deref()))
+}
+
+#[tauri::command]
+pub async fn save_query(library: State<'_, Library>, query: SavedQuery) -> CommandResult<SavedQuery> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX));
+    library.with_queries(|queries| queries.save(query, now))
+}
+
+#[tauri::command]
+pub async fn delete_query(library: State<'_, Library>, id: String) -> CommandResult<()> {
+    library.with_queries(|queries| queries.delete(&id))
 }
 
 #[tauri::command]

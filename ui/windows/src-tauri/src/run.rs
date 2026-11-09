@@ -88,6 +88,8 @@ struct RunSink {
     /// What a set started now came from; updated before each statement.
     origin: Mutex<ResultOrigin>,
     row_limit: Option<u64>,
+    /// Rows the current statement returned, or affected, for the history.
+    rows: Mutex<Option<i64>>,
 }
 
 impl RunSink {
@@ -115,6 +117,9 @@ impl RunSink {
     fn finish(&self, set: OpenSet) {
         set.store.finish();
         let state = set.store.state();
+        let mut rows = self.rows.lock().unwrap_or_else(PoisonError::into_inner);
+        *rows = Some(rows.unwrap_or(0) + i64::try_from(state.total_rows).unwrap_or(i64::MAX));
+        drop(rows);
         self.send(RunEvent::SetFinished {
             result: set.id,
             total: state.total_rows,
@@ -158,6 +163,10 @@ impl ResultSink for RunSink {
     }
 
     fn command_done(&self, rows_affected: Option<u64>) {
+        if let Some(affected) = rows_affected {
+            *self.rows.lock().unwrap_or_else(PoisonError::into_inner) =
+                Some(i64::try_from(affected).unwrap_or(i64::MAX));
+        }
         self.send(RunEvent::CommandDone {
             statement: self.statement(),
             rows_affected,
@@ -188,6 +197,8 @@ pub struct Run {
     pub follow_created_database: bool,
     /// The most rows a set keeps; `None` keeps every row.
     pub row_limit: Option<u64>,
+    /// Record each statement in the query history (a run from the editor).
+    pub record: bool,
     pub cancel: CancellationToken,
     pub channel: Channel<RunEvent>,
 }
@@ -209,6 +220,7 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
             row_limit: run.row_limit,
         }),
         row_limit: run.row_limit,
+        rows: Mutex::new(None),
     });
     let mut database = run.database.clone();
     let mut failed = false;
@@ -229,6 +241,9 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
             text: text.chars().take(STATEMENT_PREVIEW_CHARS).collect(),
         });
 
+        *sink.rows.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        let statement_started = Instant::now();
+        let ran_in = database.clone();
         let outcome = match statement.kind {
             StatementKind::Directive => directive(&run.server, text, &mut database),
             StatementKind::Sql => {
@@ -246,6 +261,18 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
                     .map(|()| follow(&run, text, &mut database))
             }
         };
+        if run.record && statement.kind == StatementKind::Sql {
+            let rows = *sink.rows.lock().unwrap_or_else(PoisonError::into_inner);
+            record(
+                &state,
+                &run,
+                text,
+                ran_in,
+                statement_started,
+                rows,
+                outcome.as_ref().err(),
+            );
+        }
         match outcome {
             Ok(Some(target)) => {
                 // Open the session now, so a database that cannot be reached
@@ -321,4 +348,43 @@ fn directive(server: &OpenServer, text: &str, database: &mut Option<String>) -> 
             "{text} is a psql command Paboable does not run"
         ))),
     }
+}
+
+/// Adds one statement to the query history, off the async workers. A history
+/// that cannot be written is not a reason to fail the run.
+fn record(
+    state: &AppState,
+    run: &Run,
+    statement: &str,
+    database: Option<String>,
+    started: Instant,
+    rows: Option<i64>,
+    error: Option<&DriverError>,
+) {
+    use paboable_storage::history::{HistoryEntry, Outcome};
+    let Some(history) = state.history.get().cloned() else {
+        return;
+    };
+    let ran_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX));
+    let entry = HistoryEntry {
+        id: 0,
+        ran_at,
+        connection: run.server.title.clone(),
+        engine: run.server.engine.id.to_owned(),
+        database,
+        statement: statement.to_owned(),
+        duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX),
+        rows,
+        outcome: match error {
+            None => Outcome::Succeeded,
+            Some(error) if error.code == paboable_core::ErrorCode::Cancelled => Outcome::Cancelled,
+            Some(_) => Outcome::Failed,
+        },
+        error: error.map(|error| error.message.clone()),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = history.record(&entry);
+    });
 }

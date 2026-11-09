@@ -6,6 +6,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use paboable_core::config::Secret;
 use paboable_core::{DriverError, ErrorCode, Result};
+use paboable_storage::queries::SavedQueries;
 use paboable_storage::{ConnectionLibrary, SecretVault};
 
 /// The name Credential Manager lists Paboable's secrets under ("Generic
@@ -51,6 +52,7 @@ impl SecretVault for CredentialVault {
 /// saving at once cannot interleave their read-modify-write.
 pub struct Library {
     library: ConnectionLibrary,
+    queries: SavedQueries,
     vault: CredentialVault,
     lock: Mutex<()>,
 }
@@ -59,9 +61,16 @@ impl Library {
     pub fn in_folder(folder: &Path) -> Self {
         Self {
             library: ConnectionLibrary::in_folder(folder),
+            queries: SavedQueries::in_folder(folder),
             vault: CredentialVault,
             lock: Mutex::new(()),
         }
+    }
+
+    /// Runs `work` with the saved queries, one change at a time.
+    pub fn with_queries<T>(&self, work: impl FnOnce(&SavedQueries) -> Result<T>) -> Result<T> {
+        let _guard: MutexGuard<'_, ()> = self.lock.lock().unwrap_or_else(PoisonError::into_inner);
+        work(&self.queries)
     }
 
     /// Runs `work` with the library and vault, one change at a time.

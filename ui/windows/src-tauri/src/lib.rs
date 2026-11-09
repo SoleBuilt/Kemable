@@ -37,6 +37,10 @@ pub fn run() {
             // %APPDATA%\dev.paboable.app, the folder Windows keeps per user.
             let folder = app.path().app_data_dir()?;
             app.manage(Library::in_folder(&folder));
+            // Without a history the app still runs; the History tab says so.
+            if let Ok(history) = paboable_storage::history::QueryHistory::open(&folder) {
+                let _ = app.state::<Arc<AppState>>().history.set(Arc::new(history));
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -55,6 +59,11 @@ pub fn run() {
             commands::run_query,
             commands::cancel_run,
             commands::sort_result,
+            commands::history_search,
+            commands::history_delete,
+            commands::list_queries,
+            commands::save_query,
+            commands::delete_query,
             commands::fetch_window,
             commands::cell_text,
             commands::copy_range,

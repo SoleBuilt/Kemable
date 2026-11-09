@@ -7,7 +7,10 @@
   import type { CellRect, GridCallbacks, GridSource, SortKey } from "./lib/grid/engine";
   import RowDetail from "./lib/grid/RowDetail.svelte";
   import { asCoreError, ipc } from "./lib/ipc";
+  import HistoryList from "./lib/sidebar/HistoryList.svelte";
   import ObjectTree from "./lib/sidebar/ObjectTree.svelte";
+  import QueryList from "./lib/sidebar/QueryList.svelte";
+  import SaveQueryDialog from "./lib/sidebar/SaveQueryDialog.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
   import ConnectDialog, { type ConnectRequest, type NetworkEngine } from "./lib/connect/ConnectDialog.svelte";
   import SavedList from "./lib/connect/SavedList.svelte";
@@ -15,10 +18,12 @@
     ColumnMeta,
     ConnectionConfig,
     CoreError,
+    HistoryEntry,
     ObjectInfo,
     OpenedConnection,
     RunEvent,
     SavedConnection,
+    SavedQuery,
   } from "./lib/types";
 
   interface ResultSetView {
@@ -89,6 +94,16 @@
   let editorShare = $state(0.42);
   let sidebarWidth = $state(248);
   let editor: SqlEditor | undefined = $state();
+
+  /** What the sidebar shows while connected. */
+  let sidebarTab: "objects" | "queries" | "history" = $state("objects");
+  /** Bumped after a run that went to the history, and after a save. */
+  let historyKey = $state(0);
+  let queriesKey = $state(0);
+  /** Whether the run in progress goes to the history. */
+  let recording = false;
+  /** The save dialog: a new query or the one being edited. */
+  let saving: SavedQuery | null = $state(null);
 
   const grammar = $derived(connection?.engine.sqlGrammar ?? null);
   const activeSet = $derived(typeof activeTab === "number" ? sets[activeTab] : undefined);
@@ -228,7 +243,6 @@
     elapsedMs = null;
   }
 
-  /** Runs `request`. One from the editor is marked there; one the app wrote (opening a table) is not. */
   /** The row cap each result set stops at; remembered across launches. */
   let rowCap: number | null = $state(readRowCap());
   $effect(() => {
@@ -253,7 +267,7 @@
   async function startRun(
     request: RunRequest,
     fromEditor = true,
-    overrides: { inDatabase?: string | null; rowLimit?: number | null } = {},
+    overrides: { inDatabase?: string | null; rowLimit?: number | null; record?: boolean } = {},
   ) {
     if (!connection || running) return;
     clearResults();
@@ -263,6 +277,9 @@
     const runDatabase = overrides.inDatabase !== undefined ? overrides.inDatabase : database;
     const rowLimit = request.unlimited ? null : overrides.rowLimit !== undefined ? overrides.rowLimit : rowCap;
     lastRun = { request, database: runDatabase };
+    // What a person ran goes to the history; what the app wrote for them does not.
+    const record = overrides.record ?? fromEditor;
+    recording = record;
     try {
       const started = await ipc.runQuery(
         connection.id,
@@ -271,6 +288,7 @@
         request.cursor,
         FOLLOW_CREATED_DATABASE,
         rowLimit,
+        record,
         onEvent,
       );
       runId = started.run;
@@ -279,6 +297,7 @@
     } catch (caught) {
       running = false;
       pendingSort = null;
+      if (record) historyKey++;
       messages = [{ kind: "error", statement: null, error: asCoreError(caught) }];
       activeTab = "messages";
     }
@@ -387,6 +406,7 @@
         running = false;
         runId = null;
         pendingSort = null;
+        if (recording) historyKey++;
         elapsedMs = event.elapsedMs;
         if (sets.length === 0 || event.failed) activeTab = "messages";
         if (messages.some((message) => message.kind === "command" || message.kind === "switched")) refreshKey++;
@@ -411,6 +431,38 @@
     void startRun({ sql: `select * from ${name}`, cursor: null, origin: 0 }, false);
   }
 
+  /** Runs a statement from the history in the database it ran in, when it ran here. */
+  function runEntry(entry: HistoryEntry) {
+    if (!connection || running) return;
+    const here = entry.connection === connection.title && connection.engine.hasDatabases;
+    if (here && entry.database) database = entry.database;
+    editor?.insert(entry.statement);
+    void startRun({ sql: entry.statement, cursor: null, origin: 0 }, false, { record: true });
+  }
+
+  function runSaved(query: SavedQuery) {
+    if (!connection || running) return;
+    editor?.insert(query.sql);
+    void startRun({ sql: query.sql, cursor: null, origin: 0 }, false, { record: true });
+  }
+
+  /** Ctrl+Shift+D: keeps the editor's text, or its selection, as a named query. */
+  function saveFromEditor() {
+    const sql = editor?.text().trim() ?? "";
+    if (sql === "") {
+      note("Nothing to save: the editor is empty");
+      return;
+    }
+    const firstLine = sql.split("\n")[0] ?? "";
+    saving = {
+      id: "",
+      name: firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine,
+      sql,
+      connectionId: connection?.savedId ?? null,
+      updatedAt: 0,
+    };
+  }
+
   function useDatabase(name: string) {
     if (running) return;
     database = name;
@@ -429,6 +481,9 @@
     } else if (ctrl && key === "r") {
       event.preventDefault();
       if (connection) void tree?.refresh();
+    } else if (ctrl && event.shiftKey && key === "d") {
+      event.preventDefault();
+      if (!saving) saveFromEditor();
     } else if (ctrl && event.altKey && key === "i") {
       event.preventDefault();
       detailOpen = !detailOpen;
@@ -498,6 +553,12 @@
     <div class="flex-1"></div>
     <button
       class="toolbar-button"
+      onclick={saveFromEditor}
+      disabled={saving !== null}
+      title="Keep the editor's text, or the selection, as a named query (Ctrl+Shift+D)">Save query</button
+    >
+    <button
+      class="toolbar-button"
       onclick={() => runFromToolbar("statement")}
       disabled={!connection || running}
       title="Run only the statement under the cursor, or the selection (Ctrl+Enter)">▶ Run statement</button
@@ -533,14 +594,48 @@
     <!-- Sidebar -->
     <aside class="shrink-0 border-r border-line bg-surface-2" style:width="{sidebarWidth}px">
       {#if connection}
-        <ObjectTree
-          bind:this={tree}
-          {connection}
-          {database}
-          {refreshKey}
-          onOpen={openObject}
-          onUseDatabase={useDatabase}
-        />
+        <div class="flex h-full flex-col">
+          <nav class="flex h-8 shrink-0 items-end gap-0.5 border-b border-line px-2 text-[12px]">
+            <button class="result-tab" class:active={sidebarTab === "objects"} onclick={() => (sidebarTab = "objects")}
+              >Objects</button
+            >
+            <button class="result-tab" class:active={sidebarTab === "queries"} onclick={() => (sidebarTab = "queries")}
+              >Queries</button
+            >
+            <button class="result-tab" class:active={sidebarTab === "history"} onclick={() => (sidebarTab = "history")}
+              >History</button
+            >
+          </nav>
+          <div class="min-h-0 flex-1">
+            <!-- The tree stays mounted so its expanded nodes survive a tab switch. -->
+            <div class="h-full" class:hidden={sidebarTab !== "objects"}>
+              <ObjectTree
+                bind:this={tree}
+                {connection}
+                {database}
+                {refreshKey}
+                onOpen={openObject}
+                onUseDatabase={useDatabase}
+              />
+            </div>
+            {#if sidebarTab === "queries"}
+              <QueryList
+                connectionId={connection.savedId}
+                refreshKey={queriesKey}
+                onInsert={(sql) => editor?.insert(sql)}
+                onRun={runSaved}
+                onEdit={(query) => (saving = query)}
+              />
+            {:else if sidebarTab === "history"}
+              <HistoryList
+                connection={connection.title}
+                refreshKey={historyKey}
+                onInsert={(sql) => editor?.insert(sql)}
+                onRun={runEntry}
+              />
+            {/if}
+          </div>
+        </div>
       {:else}
         <div class="flex h-full flex-col">
           <div class="min-h-0 flex-1">
@@ -703,6 +798,21 @@
     onConnect={connectNetwork}
     onSaved={() => savedKey++}
     onClose={() => (connectDialog = null)}
+  />
+{/if}
+
+{#if saving}
+  <SaveQueryDialog
+    query={saving}
+    connectionId={connection?.savedId ?? null}
+    onSaved={() => {
+      queriesKey++;
+      note("Query saved");
+    }}
+    onClose={() => {
+      saving = null;
+      editor?.focus();
+    }}
   />
 {/if}
 

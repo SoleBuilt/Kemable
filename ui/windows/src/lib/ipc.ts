@@ -7,11 +7,13 @@ import type {
   CoreError,
   DatabaseInfo,
   EngineInfo,
+  HistoryEntry,
   ObjectInfo,
   OpenedConnection,
   RunEvent,
   RunStarted,
   SavedConnection,
+  SavedQuery,
   SchemaInfo,
   SortOutcome,
 } from "./types";
@@ -62,6 +64,7 @@ export const ipc = {
     cursor: number | null,
     followCreatedDatabase: boolean,
     rowLimit: number | null,
+    recordHistory: boolean,
     onEvent: (event: RunEvent) => void,
   ) {
     const channel = new Channel<RunEvent>();
@@ -73,9 +76,24 @@ export const ipc = {
       cursor,
       followCreatedDatabase,
       rowLimit,
+      recordHistory,
       onEvent: channel,
     });
   },
+
+  /** The query history, newest first. */
+  historySearch: (query: { text: string; connection: string | null; before: number | null; limit: number | null }) =>
+    invoke<HistoryEntry[]>("history_search", { query }),
+
+  /** Deletes one history entry, or every one when `id` is null. */
+  historyDelete: (id: number | null) => invoke<void>("history_delete", { id }),
+
+  /** The saved queries a connection shows: its own and the global ones. */
+  listQueries: (connectionId: string | null) => invoke<SavedQuery[]>("list_queries", { connectionId }),
+
+  saveQuery: (query: SavedQuery) => invoke<SavedQuery>("save_query", { query }),
+
+  deleteQuery: (id: string) => invoke<void>("delete_query", { id }),
 
   /** Sorts a result: by running it again with ORDER BY, or in the core. No keys clears the core's sort. */
   sortResult: (result: number, keys: { column: number; descending: boolean }[]) =>
