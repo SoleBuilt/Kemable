@@ -228,3 +228,157 @@ async fn a_sorted_statement_runs_on_sql_server_with_top_and_option() {
     );
     server.close().await;
 }
+
+/// The same table on each engine, read through the statements a table tab
+/// writes (docs/decisions/0006-table-browsing.md). The expected rows are
+/// worked out here, so a wrong page or count on any engine fails.
+async fn browse_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, grammar: SqlGrammar) {
+    use paboable_core::catalog::TableRef;
+    use paboable_core::sql::{BrowseQuery, BrowseSort, Filter, FilterOp, count_statement, page_statement};
+
+    let name = format!("paboable_browse_{}", std::process::id());
+    let code = |id: u32| {
+        if id == 7 {
+            "50%_off".to_owned()
+        } else {
+            format!("C-{id:02}")
+        }
+    };
+    let total = |id: u32| (id * 37) % 100;
+    let rows: Vec<String> = (1..=25)
+        .map(|id| {
+            let note = if id % 5 == 0 {
+                "NULL".to_owned()
+            } else {
+                format!("'n{id}'")
+            };
+            format!("({id}, '{}', {}, {note})", code(id), total(id))
+        })
+        .collect();
+    let text_type = if grammar == SqlGrammar::SqlServer {
+        "nvarchar(50)"
+    } else {
+        "varchar(50)"
+    };
+    let setup = format!(
+        "create table {name} (id int primary key, code {text_type} not null, total decimal(10, 2) not null, note {text_type});\n\
+         insert into {name} values {};",
+        rows.join(", ")
+    );
+    let events = run_script(state, server, &setup, grammar).await;
+    assert!(of_type(&events, "statementFailed").is_empty(), "{events:#?}");
+
+    let query = |filters: Vec<Filter>| BrowseQuery {
+        table: TableRef {
+            schema: None,
+            name: name.clone(),
+        },
+        filters,
+        match_any: false,
+        sort: Vec::new(),
+        key: vec!["id".into()],
+        offset: 0,
+        limit: 100,
+    };
+    let filter = |column: &str, op: FilterOp, value: &str, second: &str| Filter {
+        column: column.into(),
+        op,
+        value: value.into(),
+        second: second.into(),
+    };
+    let count = |browse: BrowseQuery| {
+        let sql = count_statement(grammar, &browse).expect("a count statement");
+        async move {
+            let events = run_script(state, server, &sql, grammar).await;
+            assert!(of_type(&events, "statementFailed").is_empty(), "{sql}\n{events:#?}");
+            first_rows(state, &events)[0][0].clone().unwrap_or_default()
+        }
+    };
+
+    let cases: Vec<(Vec<Filter>, usize)> = vec![
+        (vec![filter("code", FilterOp::Contains, "%_", "")], 1),
+        (vec![filter("code", FilterOp::Contains, "c-1", "")], 10),
+        (vec![filter("note", FilterOp::IsNull, "", "")], 5),
+        (vec![filter("id", FilterOp::Equals, "7", "")], 1),
+        (vec![filter("id", FilterOp::In, "3, 4, 99", "")], 2),
+        (vec![filter("code", FilterOp::Equals, "O'x", "")], 0),
+        (vec![filter("", FilterOp::Raw, "id % 2 = 0 -- even", "")], 12),
+        (
+            vec![
+                filter("total", FilterOp::Between, "20", "40"),
+                filter("code", FilterOp::StartsWith, "C-1", ""),
+            ],
+            (10..=19).filter(|id| (20..=40).contains(&total(*id))).count(),
+        ),
+    ];
+    for (filters, expected) in cases {
+        let shown = format!("{filters:?}");
+        assert_eq!(count(query(filters)).await, expected.to_string(), "{grammar:?} {shown}");
+    }
+
+    // The second page of five, by total descending, ties broken by id.
+    let mut order: Vec<u32> = (1..=25).collect();
+    order.sort_by_key(|id| (std::cmp::Reverse(total(*id)), *id));
+    let mut page = query(Vec::new());
+    page.sort = vec![BrowseSort {
+        column: "total".into(),
+        descending: true,
+    }];
+    page.offset = 5;
+    page.limit = 5;
+    let sql = page_statement(grammar, &page).expect("a page statement");
+    let events = run_script(state, server, &sql, grammar).await;
+    assert!(of_type(&events, "statementFailed").is_empty(), "{sql}\n{events:#?}");
+    let finished = of_type(&events, "setFinished");
+    assert_eq!(finished[0]["total"], 5, "{grammar:?}");
+    let first = first_rows(state, &events)[0][0].clone();
+    assert_eq!(first, Some(order[5].to_string()), "{grammar:?}\n{sql}");
+
+    run_script(state, server, &format!("drop table {name};"), grammar).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_table_tab_pages_and_filters_on_sqlite() {
+    use paboable_core::config::{ConnectionConfig, Target};
+    use paboable_driver_sqlite::SqliteDriver;
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
+    let driver = state.registry.get("sqlite").cloned().unwrap();
+    let config = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: ":memory:".into(),
+            read_only: false,
+        },
+        options: Default::default(),
+    };
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    browse_checks(&state, &server, SqlGrammar::Sqlite).await;
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+async fn a_table_tab_pages_and_filters_on_postgres() {
+    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
+    let driver = state.registry.get("postgres").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    browse_checks(&state, &server, SqlGrammar::Postgres).await;
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+async fn a_table_tab_pages_and_filters_on_sql_server() {
+    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
+    let driver = state.registry.get("mssql").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    browse_checks(&state, &server, SqlGrammar::SqlServer).await;
+    server.close().await;
+}

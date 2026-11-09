@@ -183,3 +183,62 @@ export interface SavedQuery {
   connectionId: string | null;
   updatedAt: number;
 }
+
+export interface TableRef {
+  schema: string | null;
+  name: string;
+}
+
+/** A table's column as the catalog describes it. */
+export interface ColumnInfo {
+  ordinal: number;
+  name: string;
+  typeName: string;
+  nullable: boolean;
+  default: string | null;
+  /** Position in the primary key, from 1. */
+  primaryKey: number | null;
+}
+
+export type FilterOp =
+  | "equals"
+  | "notEquals"
+  | "contains"
+  | "notContains"
+  | "startsWith"
+  | "endsWith"
+  | "greater"
+  | "greaterOrEqual"
+  | "less"
+  | "lessOrEqual"
+  | "in"
+  | "between"
+  | "isNull"
+  | "isNotNull"
+  | "raw";
+
+/** One condition of a table tab; `raw` takes `value` as SQL and ignores `column`. */
+export interface Filter {
+  column: string;
+  op: FilterOp;
+  value: string;
+  /** The upper end of `between`. */
+  second: string;
+}
+
+/** One page of a table (docs/decisions/0006-table-browsing.md). */
+export interface BrowseQuery {
+  table: TableRef;
+  filters: Filter[];
+  matchAny: boolean;
+  sort: { column: string; descending: boolean }[];
+  /** The primary key's columns, which break ties. */
+  key: string[];
+  offset: number;
+  limit: number;
+}
+
+export interface BrowseStatements {
+  page: string;
+  count: string;
+}
