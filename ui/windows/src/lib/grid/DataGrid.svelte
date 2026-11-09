@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import { GridEngine, type GridCallbacks, type GridSource, type SortKey } from "./engine";
+  import { type CellBox, type EditOverlay, GridEngine, type GridCallbacks, type GridSource, type SortKey } from "./engine";
 
   interface Props {
     source: GridSource | null;
@@ -8,9 +8,11 @@
     /** The sort the header shows. */
     sortKeys: SortKey[];
     callbacks: GridCallbacks;
+    /** Unsaved edits drawn over the rows; null when there are none. */
+    edits?: EditOverlay | null;
   }
 
-  let { source, totalRows, sortKeys, callbacks }: Props = $props();
+  let { source, totalRows, sortKeys, callbacks, edits = null }: Props = $props();
 
   let scroller: HTMLDivElement;
   let spacer: HTMLDivElement;
@@ -25,6 +27,16 @@
   /** Moves the cell cursor, for the detail pane's field list. */
   export function focusCell(row: number, column: number) {
     engine?.focusCell({ row, column });
+  }
+
+  /** Where a cell is drawn, scrolled into view, for an editor laid over it. */
+  export function cellBox(row: number, column: number): CellBox | null {
+    return engine?.cellBox({ row, column }) ?? null;
+  }
+
+  /** Gives the keyboard back to the grid, after an editor closes. */
+  export function focus() {
+    scroller.focus();
   }
 
   onMount(() => {
@@ -58,6 +70,13 @@
   });
 
   $effect(() => {
+    // On a new engine too: the grid mounts again after the Messages tab.
+    const current = engine;
+    const overlay = edits;
+    untrack(() => current?.setEdits(overlay));
+  });
+
+  $effect(() => {
     const rows = totalRows;
     untrack(() => engine?.setTotalRows(rows));
   });
@@ -78,6 +97,7 @@
     onpointermove={(event) => engine?.pointerMove(event)}
     onpointerup={(event) => engine?.pointerUp(event)}
     onkeydown={(event) => engine?.keyDown(event)}
+    ondblclick={(event) => engine?.doubleClick(event)}
   >
     <div bind:this={spacer}></div>
   </div>

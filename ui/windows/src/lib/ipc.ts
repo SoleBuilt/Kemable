@@ -9,6 +9,7 @@ import type {
   CompletionReply,
   ConnectionConfig,
   CoreError,
+  EditRequest,
   DatabaseInfo,
   EngineInfo,
   HistoryEntry,
@@ -78,6 +79,13 @@ export const ipc = {
   /** Reads a key into a result set, up to `rowLimit` rows. */
   readKey: (conn: number, database: string | null, key: string, rowLimit: number | null) =>
     invoke<KeyRead>("read_key", { conn, database, key, rowLimit }),
+
+  /** The statements saving `request` would run, for the preview. */
+  editPreview: (conn: number, request: EditRequest) => invoke<string[]>("edit_preview", { conn, request }),
+
+  /** Runs previewed edit statements in one transaction, all or none. */
+  applyEdits: (conn: number, database: string | null, statements: string[]) =>
+    invoke<void>("apply_edits", { conn, database, statements }),
 
   /** Runs a count statement; gives up after 30 s. */
   countRows: (conn: number, database: string | null, sql: string) =>

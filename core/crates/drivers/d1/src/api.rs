@@ -141,6 +141,16 @@ impl Api {
         serde_json::from_value(envelope.result).map_err(bad_reply)
     }
 
+    /// Runs `statements` as one batch, which D1 runs as one transaction.
+    pub async fn batch(&self, id: &str, statements: &[String]) -> Result<Vec<RawResult>, DriverError> {
+        let batch: Vec<Json> = statements.iter().map(|sql| serde_json::json!({ "sql": sql })).collect();
+        let url = format!("{}/{id}/raw", self.root);
+        let envelope = self
+            .send(self.client.post(url).json(&serde_json::json!({ "batch": batch })))
+            .await?;
+        serde_json::from_value(envelope.result).map_err(bad_reply)
+    }
+
     async fn send(&self, request: reqwest::RequestBuilder) -> Result<Envelope, DriverError> {
         let response = request
             .bearer_auth(self.token.expose())

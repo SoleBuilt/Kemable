@@ -60,6 +60,7 @@ Methods a data model does not use return `driver.unsupported`. Each data model a
 - The full value of a cell, for copy and the detail view, comes from `ResultStore::cell`; a window carries display text cut at its cap.
 - Sorting (`docs/decisions/0005-sorting-a-result.md`): `sql::sorted_statement` writes the statement again with `ORDER BY` when the column can be named or numbered; otherwise `ResultStore::sort` sets a row order over the same chunks, by `paboable_store::order`, and windows, copies and row reads go through it.
 - Table tabs (`docs/decisions/0006-table-browsing.md`): `sql::page_statement` and `sql::count_statement` write one page of a table and the count of the rows its filters match, with every name quoted and every value a literal.
+- Editing rows (`docs/decisions/0010-editing-rows.md`): `sql::edit_statement` writes one statement per row, naming it by its key's values (`sql::value_literal`); `Connection::apply_edits` runs them in one transaction, each changing exactly one row, else `edit.row_gone` and nothing saved.
 - Autocomplete (`docs/decisions/0007-autocomplete.md`): `sql::completion_context` reads the clause, the word typed, its qualifier and the tables in scope; `lookups` names the catalog reads it needs and `completions` builds the items. `sql/lex.rs` is the lexer it shares with the sort, read strictly there and tolerantly here.
 
 ## Values

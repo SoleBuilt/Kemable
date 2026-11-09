@@ -3,7 +3,9 @@
 mod browse;
 mod completion;
 mod database_change;
+mod edit;
 mod lex;
+mod literal;
 mod sorted;
 mod split;
 
@@ -13,6 +15,8 @@ pub use completion::{
     completions,
 };
 pub use database_change::{DatabaseChange, database_change};
+pub use edit::{NewValue, RowEdit, edit_statement};
+pub use literal::{typed as typed_literal, value_literal};
 pub use sorted::{SortColumn, sorted_statement};
 pub use split::{StatementKind, StatementSpan, split, statement_at};
 
@@ -27,6 +31,22 @@ pub enum SqlGrammar {
     Postgres,
     SqlServer,
     Sqlite,
+}
+
+/// A name quoted for `grammar`.
+pub fn quote_name(grammar: SqlGrammar, name: &str) -> String {
+    match grammar {
+        SqlGrammar::SqlServer => quote_ident_bracket(name),
+        SqlGrammar::Postgres | SqlGrammar::Sqlite => quote_ident(name),
+    }
+}
+
+/// A table's name, with its schema when it has one, quoted for `grammar`.
+pub fn table_name(grammar: SqlGrammar, table: &crate::catalog::TableRef) -> String {
+    match &table.schema {
+        Some(schema) => format!("{}.{}", quote_name(grammar, schema), quote_name(grammar, &table.name)),
+        None => quote_name(grammar, &table.name),
+    }
 }
 
 /// Quotes an identifier with double quotes, as PostgreSQL and SQLite read it.

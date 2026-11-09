@@ -69,6 +69,20 @@ fn answer(method: &str, path: &str, authorized: bool, body: &Json) -> Option<(u1
     if !path.contains(SHOP) {
         return Some((404, failure(7404, "Database not found")));
     }
+    // A batch: an edit whose row is gone makes its guard fail, as SQLite does.
+    if let Some(batch) = body["batch"].as_array() {
+        let gone = batch
+            .iter()
+            .any(|item| item["sql"].as_str().is_some_and(|sql| sql.contains("= 99")));
+        if gone {
+            return Some((400, failure(7500, "D1_ERROR: malformed JSON: SQLITE_ERROR")));
+        }
+        let results: Vec<Json> = batch
+            .iter()
+            .map(|_| json!({ "results": { "columns": [], "rows": [] }, "success": true }))
+            .collect();
+        return Some((200, envelope(Json::Array(results))));
+    }
     let sql = body["sql"].as_str().unwrap_or_default();
     let meta = json!({ "changes": 0, "duration": 0.25, "rows_read": 2, "rows_written": 0 });
     Some(match sql {
@@ -549,4 +563,32 @@ async fn the_real_api_runs_a_round_trip() {
         .execute(&format!("drop table {table}"), Arc::new(Keep::default()), options())
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn edits_go_as_one_batch_with_a_guard_after_each_statement() {
+    let (base, seen) = serve().await;
+    let connection = D1Driver
+        .connect(&config(&base, "good-token", Some("shop")), options())
+        .await
+        .unwrap();
+    let edits = ["UPDATE \"items\" SET \"name\" = 'a' WHERE \"id\" = 1".to_owned()];
+    connection.apply_edits(&edits, options()).await.unwrap();
+    let batch = seen
+        .lock()
+        .unwrap()
+        .last()
+        .map(|(_, _, body)| body["batch"].clone())
+        .unwrap();
+    assert_eq!(batch.as_array().map(Vec::len), Some(2));
+    assert_eq!(batch[0]["sql"], edits[0]);
+    assert!(batch[1]["sql"].as_str().unwrap_or_default().contains("changes() = 1"));
+
+    let gone = ["DELETE FROM \"items\" WHERE \"id\" = 99".to_owned()];
+    let code = connection
+        .apply_edits(&gone, options())
+        .await
+        .err()
+        .map(|error| error.code);
+    assert_eq!(code, Some(ErrorCode::RowGone));
 }

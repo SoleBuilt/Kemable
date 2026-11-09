@@ -41,6 +41,31 @@ pub enum CellValue {
     Bytes(Vec<u8>),
 }
 
+impl CellValue {
+    /// The value again, as far as a SQL literal needs it: numbers, booleans
+    /// and decimals come back as themselves; kinds the store keeps only as text
+    /// (UUIDs, dates, times) come back as that text, which a literal writes the
+    /// same way (`paboable_core::sql::value_literal`).
+    pub fn into_value(self) -> Value {
+        match self {
+            Self::Null => Value::Null,
+            Self::Bytes(bytes) => Value::Bytes(bytes),
+            Self::Text { kind, text } => match kind {
+                ValueKind::Bool => Value::Bool(text == "true"),
+                ValueKind::Int => text.parse().map_or(Value::Decimal(text), Value::Int),
+                ValueKind::UInt => text.parse().map_or(Value::Decimal(text), Value::UInt),
+                ValueKind::Float | ValueKind::Float32 => match text.parse::<f64>() {
+                    Ok(number) if number.is_finite() => Value::Float(number),
+                    _ => Value::Text(text),
+                },
+                ValueKind::Decimal => Value::Decimal(text),
+                ValueKind::Json => Value::Json(text),
+                _ => Value::Text(text),
+            },
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Inner {
     pub(crate) chunks: Vec<Chunk>,
@@ -414,5 +439,33 @@ pub(crate) fn kind_from_u8(byte: u8) -> ValueKind {
         14 => ValueKind::Other,
         15 => ValueKind::Float32,
         _ => ValueKind::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cell_comes_back_as_the_value_its_literal_needs() {
+        let text = |kind, text: &str| CellValue::Text {
+            kind,
+            text: text.to_owned(),
+        };
+        assert_eq!(text(ValueKind::Int, "-7").into_value(), Value::Int(-7));
+        assert_eq!(
+            text(ValueKind::UInt, "18446744073709551615").into_value(),
+            Value::UInt(u64::MAX)
+        );
+        assert_eq!(text(ValueKind::Bool, "true").into_value(), Value::Bool(true));
+        assert_eq!(text(ValueKind::Float, "0.1").into_value(), Value::Float(0.1));
+        assert_eq!(text(ValueKind::Float, "NaN").into_value(), Value::Text("NaN".into()));
+        assert_eq!(
+            text(ValueKind::Decimal, "1.50").into_value(),
+            Value::Decimal("1.50".into())
+        );
+        assert_eq!(text(ValueKind::Uuid, "abc").into_value(), Value::Text("abc".into()));
+        assert_eq!(CellValue::Bytes(vec![1]).into_value(), Value::Bytes(vec![1]));
+        assert_eq!(CellValue::Null.into_value(), Value::Null);
     }
 }

@@ -24,7 +24,7 @@ use paboable_core::engine::{DataModel, EngineInfo, TargetKind};
 use paboable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
 use paboable_core::sql::{SqlGrammar, quote_ident};
 use paboable_core::value::{Value, ValueKind};
-use paboable_core::{CallOptions, DriverError, Result};
+use paboable_core::{CallOptions, DriverError, ErrorCode, Result};
 use serde_json::Value as Json;
 
 use crate::api::{Api, CLOUDFLARE_API, RawResult};
@@ -39,6 +39,12 @@ pub static INFO: EngineInfo = EngineInfo {
     live: false,
     has_databases: true,
 };
+
+/// Fails, and with it the batch, unless the statement before it changed one row:
+/// `json` refuses text that is not JSON.
+const ROW_GUARD: &str = "SELECT CASE WHEN changes() = 1 THEN 1 ELSE json('paboable: the row is gone') END";
+/// What SQLite says when the guard fails.
+const ROW_GUARD_ERROR: &str = "malformed JSON";
 
 pub struct D1Driver;
 
@@ -309,6 +315,26 @@ impl Connection for D1Connection {
             sink.end_set();
         }
         Ok(outcome)
+    }
+
+    /// One batch, which D1 runs as one transaction. D1 cannot be asked to roll
+    /// back from outside, so a guard after each statement fails the batch when
+    /// the statement changed another number of rows than one.
+    async fn apply_edits(&self, statements: &[String], options: CallOptions) -> Result<()> {
+        let database = self.database()?;
+        let mut batch = Vec::with_capacity(statements.len() * 2);
+        for statement in statements {
+            batch.push(statement.clone());
+            batch.push(ROW_GUARD.to_owned());
+        }
+        match options.run(self.api.batch(&database.id, &batch)).await {
+            Ok(_) => Ok(()),
+            Err(error) if error.message.contains(ROW_GUARD_ERROR) => Err(DriverError::new(
+                ErrorCode::RowGone,
+                "a statement changed another number of rows than one",
+            )),
+            Err(error) => Err(error),
+        }
     }
 
     async fn close(&self) -> Result<()> {

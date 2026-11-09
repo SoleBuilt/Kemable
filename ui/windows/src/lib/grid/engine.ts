@@ -55,6 +55,32 @@ export interface GridCallbacks {
   selectionChanged: (result: number, focus: Cell | null, rect: CellRect | null) => void;
   /** A plain header click: sort by `column`; with Shift, as one more key. */
   sortRequested: (column: number, additive: boolean) => void;
+  /**
+   * Double-click, F2, Enter or a typed character on a cell: the owner opens
+   * an editor there, starting from `typed` or, when null, the cell's value.
+   */
+  editRequested?: (cell: Cell, typed: string | null) => void;
+  /** Delete on a selection: the owner marks its rows. */
+  deleteRequested?: (firstRow: number, rowCount: number) => void;
+}
+
+/**
+ * Unsaved edits the grid draws over the rows (docs/decisions/0010-editing-rows.md).
+ * Rows from `baseRows` on are new rows; their cells come only from here.
+ */
+export interface EditOverlay {
+  baseRows: number;
+  /** A cell's new text, null for NULL; undefined when it is not edited. */
+  cell(row: number, column: number): string | null | undefined;
+  deleted(row: number): boolean;
+}
+
+/** Where a cell is drawn, relative to the grid's box. */
+export interface CellBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 /** One key of the sort the header shows. */
@@ -84,6 +110,8 @@ interface Theme {
   selection: string;
   line: string;
   stripe: string;
+  edited: string;
+  deleted: string;
 }
 
 export interface Cell {
@@ -117,6 +145,7 @@ export class GridEngine {
   private theme: Theme;
   private selection: Selection | null = null;
   private sortKeys: SortKey[] = [];
+  private edits: EditOverlay | null = null;
   /** What a pointer drag is extending, while the button is down. */
   private dragging: SelectionMode | null = null;
   private resizing: { column: number; startX: number; startWidth: number } | null = null;
@@ -217,6 +246,11 @@ export class GridEngine {
     return Math.max(0, this.viewHeight - HEADER_HEIGHT);
   }
 
+  /** The rows the result holds: the rest are new rows from the edits. */
+  private get dataRows(): number {
+    return Math.min(this.totalRows, this.edits?.baseRows ?? this.totalRows);
+  }
+
   private get rowsPixels(): number {
     return this.totalRows * ROW_HEIGHT;
   }
@@ -293,20 +327,21 @@ export class GridEngine {
 
   private ensureBlocks(firstRow: number, endRow: number): void {
     const source = this.source;
-    if (!source || this.totalRows === 0) return;
+    const dataRows = this.dataRows;
+    if (!source || dataRows === 0) return;
     // One block of read-ahead each way, so a scroll rarely shows an empty row.
     const first = Math.max(0, Math.floor(firstRow / BLOCK_ROWS) - 1);
     const last = Math.floor(Math.max(endRow - 1, 0) / BLOCK_ROWS) + 1;
     for (let block = first; block <= last; block++) {
       const start = block * BLOCK_ROWS;
-      if (start >= this.totalRows) break;
+      if (start >= dataRows) break;
       const window = this.blocks.get(block);
       if (window) {
         // Re-insert to mark it recently used.
         this.blocks.delete(block);
         this.blocks.set(block, window);
       }
-      const wanted = Math.min(BLOCK_ROWS, this.totalRows - start);
+      const wanted = Math.min(BLOCK_ROWS, dataRows - start);
       // A block read while rows were still arriving is read again once more came.
       if ((!window || window.rowCount < wanted) && !this.pending.has(block)) this.request(source, block);
     }
@@ -419,9 +454,24 @@ export class GridEngine {
       context.rect(clipLeft, HEADER_HEIGHT, x + columnWidth - CELL_PADDING / 2 - clipLeft, this.bodyHeight);
       context.clip();
       for (let row = firstRow; row < endRow; row++) {
+        const y = firstY + (row - firstRow) * ROW_HEIGHT + ROW_HEIGHT / 2;
+        const edits = this.edits;
+        if (edits) {
+          const edited = edits.cell(row, column);
+          const added = row >= edits.baseRows;
+          if (edited !== undefined || added) {
+            if (edited !== undefined) {
+              context.fillStyle = theme.edited;
+              context.fillRect(x, y - ROW_HEIGHT / 2, columnWidth, ROW_HEIGHT);
+            }
+            context.textAlign = "left";
+            context.fillStyle = edited === undefined || edited === null ? theme.muted : theme.text;
+            context.fillText(edited === undefined ? "DEFAULT" : (edited ?? "NULL"), x + CELL_PADDING, y);
+            continue;
+          }
+        }
         const window = this.windowFor(row);
         if (!window) continue;
-        const y = firstY + (row - firstRow) * ROW_HEIGHT + ROW_HEIGHT / 2;
         if (window.isNull(row, column)) {
           context.fillStyle = theme.muted;
           context.textAlign = "left";
@@ -438,6 +488,23 @@ export class GridEngine {
         }
       }
       context.restore();
+    }
+
+    // Rows marked for delete.
+    if (this.edits) {
+      const right = Math.min(width, originX + this.dataWidth);
+      for (let row = firstRow; row < endRow; row++) {
+        if (!this.edits.deleted(row)) continue;
+        const y = firstY + (row - firstRow) * ROW_HEIGHT;
+        context.fillStyle = theme.deleted;
+        context.fillRect(this.gutterWidth, y, right - this.gutterWidth, ROW_HEIGHT);
+        context.strokeStyle = theme.muted;
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(this.gutterWidth, Math.round(y + ROW_HEIGHT / 2) + 0.5);
+        context.lineTo(right, Math.round(y + ROW_HEIGHT / 2) + 0.5);
+        context.stroke();
+      }
     }
 
     // Grid lines.
@@ -487,7 +554,8 @@ export class GridEngine {
       }
       if (y + ROW_HEIGHT / 2 < HEADER_HEIGHT) continue;
       context.fillStyle = selected ? theme.text : theme.muted;
-      context.fillText(String(row + 1), this.gutterWidth - CELL_PADDING, y + ROW_HEIGHT / 2);
+      const label = this.edits && row >= this.edits.baseRows ? "*" : String(row + 1);
+      context.fillText(label, this.gutterWidth - CELL_PADDING, y + ROW_HEIGHT / 2);
     }
 
     // Header, marked where the selection spans the column.
@@ -682,6 +750,25 @@ export class GridEngine {
       event.preventDefault();
       return;
     }
+    const focused = this.selection?.focus;
+    if (focused && this.callbacks.editRequested && !ctrl && !event.altKey) {
+      if (event.key === "F2" || event.key === "Enter") {
+        this.callbacks.editRequested(focused, null);
+        event.preventDefault();
+        return;
+      }
+      if (event.key.length === 1 && event.key !== " ") {
+        this.callbacks.editRequested(focused, event.key);
+        event.preventDefault();
+        return;
+      }
+    }
+    if (event.key === "Delete" && this.callbacks.deleteRequested) {
+      const rect = this.selectionRect();
+      if (rect) this.callbacks.deleteRequested(rect.firstRow, rect.rowCount);
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Escape" && this.selection) {
       const focus = this.selection.focus;
       this.select({ anchor: focus, focus, mode: "cells" });
@@ -736,6 +823,27 @@ export class GridEngine {
       this.select({ anchor: focus, focus, mode: "cells" });
     }
     this.reveal(focus);
+  }
+
+  /** A double-click on a cell asks to edit it. */
+  doubleClick(event: MouseEvent): void {
+    const hit = this.hit(event.clientX, event.clientY);
+    if (hit.area !== "cell" || !this.callbacks.editRequested) return;
+    this.callbacks.editRequested({ row: hit.row, column: hit.column }, null);
+  }
+
+  /** The unsaved edits to draw; null when there are none. */
+  setEdits(edits: EditOverlay | null): void {
+    this.edits = edits;
+    this.scheduleDraw();
+  }
+
+  /** Where `cell` is drawn now, scrolled into view first; for an editor laid over it. */
+  cellBox(cell: Cell): CellBox {
+    this.reveal(cell);
+    const left = this.gutterWidth + (this.lefts[cell.column] ?? 0) - this.scroller.scrollLeft;
+    const top = HEADER_HEIGHT + cell.row * ROW_HEIGHT - this.rowsTop();
+    return { left, top, width: this.widths[cell.column] ?? MIN_WIDTH, height: ROW_HEIGHT };
   }
 
   /** The sort the header shows; drawing only, the rows come in order from the core. */
@@ -794,6 +902,8 @@ function readTheme(): Theme {
     selection: read("--selection"),
     line: read("--grid-line"),
     stripe: read("--grid-stripe"),
+    edited: read("--grid-edited"),
+    deleted: read("--grid-deleted"),
   };
 }
 

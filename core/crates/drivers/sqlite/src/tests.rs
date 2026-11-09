@@ -195,3 +195,62 @@ async fn opening_a_file_that_is_not_a_database_fails_to_connect() {
     assert_eq!(error.code, ErrorCode::Connect);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// The rows of `sql`, each as its cells' text.
+async fn texts(conn: &Arc<dyn Connection>, sql: &str) -> Vec<Vec<Option<String>>> {
+    let (sink, result) = run(conn, sql).await;
+    result.expect("the query runs");
+    let store = sink.store.lock().unwrap().clone().expect("a result set");
+    (0..store.state().total_rows)
+        .map(|row| store.row_texts(row).unwrap_or_default())
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn edits_are_saved_together_or_not_at_all() {
+    let conn = memory().await;
+    run(&conn, "create table t (id integer primary key, name text)")
+        .await
+        .1
+        .unwrap();
+    run(&conn, "insert into t values (1, 'a'), (2, 'b')").await.1.unwrap();
+
+    let saved = [
+        "UPDATE \"t\" SET \"name\" = 'A' WHERE \"id\" = 1".to_owned(),
+        "DELETE FROM \"t\" WHERE \"id\" = 2".to_owned(),
+        "INSERT INTO \"t\" (\"name\") VALUES ('c')".to_owned(),
+    ];
+    conn.apply_edits(&saved, CallOptions::default()).await.unwrap();
+    assert_eq!(
+        texts(&conn, "select id, name from t order by id").await,
+        [
+            vec![Some("1".to_owned()), Some("A".to_owned())],
+            vec![Some("2".to_owned()), Some("c".to_owned())]
+        ]
+    );
+
+    // The second names a row that is gone: the first is rolled back with it.
+    let refused = [
+        "UPDATE \"t\" SET \"name\" = 'changed' WHERE \"id\" = 1".to_owned(),
+        "UPDATE \"t\" SET \"name\" = 'x' WHERE \"id\" = 5".to_owned(),
+    ];
+    let error = conn.apply_edits(&refused, CallOptions::default()).await.err().unwrap();
+    assert_eq!(error.code, ErrorCode::RowGone);
+    assert_eq!(error.message, "statement 2 changed 0 rows");
+    assert_eq!(
+        texts(&conn, "select name from t where id = 1").await,
+        [vec![Some("A".to_owned())]]
+    );
+
+    // A failing statement rolls back too, and the session takes the next run.
+    let failing = [
+        "DELETE FROM \"t\" WHERE \"id\" = 1".to_owned(),
+        "INSERT INTO \"t\" (\"id\", \"name\") VALUES (2, 'duplicate')".to_owned(),
+    ];
+    let error = conn.apply_edits(&failing, CallOptions::default()).await.err().unwrap();
+    assert_eq!(error.code, ErrorCode::Query);
+    assert_eq!(
+        texts(&conn, "select count(*) from t").await,
+        [vec![Some("2".to_owned())]]
+    );
+}

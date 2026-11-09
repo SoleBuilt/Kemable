@@ -43,6 +43,14 @@ pub trait Connection: Send + Sync {
     /// it returns into `sink`. A cancel stops the statement on the server.
     async fn execute(&self, statement: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome>;
 
+    /// Saves a table tab's edits (`docs/decisions/0010-editing-rows.md`):
+    /// `statements` in one transaction, each of which must change exactly one
+    /// row, since an edit names its row by its key. Any failure, or another
+    /// count (`ErrorCode::RowGone`), rolls every statement back.
+    async fn apply_edits(&self, _statements: &[String], _options: CallOptions) -> Result<()> {
+        Err(DriverError::unsupported("this engine does not save edits"))
+    }
+
     /// One step of a scan over a key-value engine's keys, with each key's
     /// kind and time to live. Never a command that reads every key at once.
     async fn scan_keys(&self, _scan: &KeyScan, _options: CallOptions) -> Result<KeyPage> {
