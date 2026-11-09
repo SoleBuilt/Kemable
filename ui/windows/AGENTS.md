@@ -16,7 +16,7 @@ Tauri 2 over WebView2, with a Svelte 5 and TypeScript UI. The Rust side (`src-ta
 - `src/App.svelte`: the window: toolbar, sidebar, editor, results, status bar.
 - `src/lib/ipc.ts`: every command with its types. `src/lib/types.ts`: the Rust types as TypeScript. `src/lib/errors.ts`: the words for each error code.
 - `src/lib/grid/`: `engine.ts` (the canvas grid), `window.ts` (the packed window reader), `DataGrid.svelte` (the thin Svelte wrapper), `TableBar.svelte` (a table tab's pager and filters; the page and count statements are the core's).
-- `src/lib/editor/SqlEditor.svelte`: CodeMirror 6 with the engine's SQL dialect.
+- `src/lib/editor/SqlEditor.svelte`: CodeMirror 6 with the engine's SQL dialect, and the completion source that asks `complete` for names (`src-tauri/src/catalog.rs` caches the catalog it reads).
 - `src/lib/sidebar/ObjectTree.svelte`: the tree: databases (for an engine with them), their schemas and objects, loaded when opened. Ctrl+R refreshes it. `HistoryList.svelte` (the History tab), `QueryList.svelte` (the Queries tab), `SaveQueryDialog.svelte` (Ctrl+Shift+D).
 - `src/lib/connect/`: `SavedList.svelte` (saved connections, in the sidebar while nothing is open), `ConnectDialog.svelte` (the connect form for PostgreSQL and SQL Server, which also saves), `DatabasePicker.svelte` (the toolbar database switcher, Ctrl+K).
 - `src/app.css`: Tailwind and the colour tokens (`.claude/rules/ui-theme.md`).

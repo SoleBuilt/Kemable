@@ -382,3 +382,130 @@ async fn a_table_tab_pages_and_filters_on_sql_server() {
     browse_checks(&state, &server, SqlGrammar::SqlServer).await;
     server.close().await;
 }
+
+/// Completion read through the app's catalog cache from a real catalog
+/// (docs/decisions/0007-autocomplete.md).
+async fn completion_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, grammar: SqlGrammar, schema: &str) {
+    use paboable_core::sql::{completion_context, completions};
+
+    let suffix = std::process::id();
+    let orders = format!("pc_orders_{suffix}");
+    let customers = format!("pc_customers_{suffix}");
+    let (spaced, text_type) = match grammar {
+        SqlGrammar::SqlServer => ("[Total Amount]", "nvarchar(50)"),
+        SqlGrammar::Postgres | SqlGrammar::Sqlite => ("\"Total Amount\"", "varchar(50)"),
+    };
+    let setup = format!(
+        "create table {customers} (id int primary key, full_name {text_type});\n\
+         create table {orders} (id int primary key, customer_id int, {spaced} decimal(10, 2));"
+    );
+    let events = run_script(state, server, &setup, grammar).await;
+    assert!(of_type(&events, "statementFailed").is_empty(), "{events:#?}");
+
+    let labels = |text: String| {
+        let session = Arc::clone(server);
+        async move {
+            let cursor = text.find('|').unwrap_or(text.len());
+            let text = text.replacen('|', "", 1);
+            let context = completion_context(&text, cursor, grammar).expect("a context");
+            let session = session.session(None).await.expect("a session");
+            let view = state.catalog.view(7, None, session, &context).await;
+            completions(&context, &view, grammar)
+                .into_iter()
+                .map(|item| (item.label, item.apply))
+                .collect::<Vec<_>>()
+        }
+    };
+
+    let tables = labels("select * from |".to_owned()).await;
+    for name in [&orders, &customers] {
+        assert!(tables.iter().any(|(label, _)| label == name), "{grammar:?} {tables:?}");
+    }
+    let qualified = labels(format!("select * from {schema}.|")).await;
+    assert!(
+        qualified.iter().any(|(label, _)| *label == orders),
+        "{grammar:?} {qualified:?}"
+    );
+
+    let aliased = labels(format!("select o.| from {orders} o")).await;
+    let names: Vec<&str> = aliased.iter().map(|(label, _)| label.as_str()).collect();
+    assert_eq!(names, ["id", "customer_id", "Total Amount"], "{grammar:?}");
+    assert_eq!(aliased[2].1, spaced, "{grammar:?}");
+
+    let joined = labels(format!(
+        "select | from {orders} o join {customers} c on c.id = o.customer_id"
+    ))
+    .await;
+    let names: Vec<&str> = joined.iter().map(|(label, _)| label.as_str()).collect();
+    assert_eq!(
+        names,
+        ["id", "customer_id", "Total Amount", "full_name", "o", "c"],
+        "{grammar:?}"
+    );
+
+    // A table made after the first lookup shows once the catalog is forgotten, as after a run.
+    let later = format!("pc_later_{suffix}");
+    run_script(state, server, &format!("create table {later} (x int);"), grammar).await;
+    let before = labels("select * from |".to_owned()).await;
+    assert!(
+        !before.iter().any(|(label, _)| *label == later),
+        "{grammar:?}: the cache keeps the first read"
+    );
+    state.catalog.forget(7);
+    let after = labels("select * from |".to_owned()).await;
+    assert!(after.iter().any(|(label, _)| *label == later), "{grammar:?} {after:?}");
+
+    run_script(
+        state,
+        server,
+        &format!("drop table {orders};\ndrop table {customers};\ndrop table {later};"),
+        grammar,
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn completion_reads_the_sqlite_catalog() {
+    use paboable_core::config::{ConnectionConfig, Target};
+    use paboable_driver_sqlite::SqliteDriver;
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
+    let driver = state.registry.get("sqlite").cloned().unwrap();
+    let config = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: ":memory:".into(),
+            read_only: false,
+        },
+        options: Default::default(),
+    };
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    completion_checks(&state, &server, SqlGrammar::Sqlite, "main").await;
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+async fn completion_reads_the_postgres_catalog() {
+    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
+    let driver = state.registry.get("postgres").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    completion_checks(&state, &server, SqlGrammar::Postgres, "public").await;
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+async fn completion_reads_the_sql_server_catalog() {
+    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
+    let driver = state.registry.get("mssql").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    completion_checks(&state, &server, SqlGrammar::SqlServer, "dbo").await;
+    server.close().await;
+}

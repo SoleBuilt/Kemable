@@ -625,6 +625,20 @@
     };
   }
 
+  /** The editor's names, from the catalog of the database it runs in. */
+  function completeAt(text: string, cursor: number) {
+    const open = connection;
+    if (!open?.engine.sqlGrammar) return Promise.resolve(null);
+    return ipc.complete(open.id, database, text, cursor).catch(() => null);
+  }
+
+  // A run that may have changed the schema, or a refresh of the tree, makes completion read the catalog again.
+  $effect(() => {
+    void refreshKey;
+    const open = untrack(() => connection);
+    if (open) void ipc.forgetCatalog(open.id);
+  });
+
   function useDatabase(name: string) {
     if (running) return;
     database = name;
@@ -642,7 +656,10 @@
       void picker?.open();
     } else if (ctrl && key === "r") {
       event.preventDefault();
-      if (connection) void tree?.refresh();
+      if (connection) {
+        void ipc.forgetCatalog(connection.id);
+        void tree?.refresh();
+      }
     } else if (ctrl && event.shiftKey && key === "d") {
       event.preventDefault();
       if (!saving) saveFromEditor();
@@ -842,6 +859,7 @@
           {grammar}
           initial={"select 1 as one, 'hello' as greeting;\n"}
           onRun={(request) => void startRun(request)}
+          complete={completeAt}
         />
       </section>
       <div

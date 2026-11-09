@@ -242,3 +242,21 @@ export interface BrowseStatements {
   page: string;
   count: string;
 }
+
+export type CompletionKind = "schema" | "table" | "view" | "column" | "alias";
+
+/** A name the editor offers (docs/decisions/0007-autocomplete.md). */
+export interface CompletionItem {
+  label: string;
+  /** What replaces the word typed, quoted when the name needs it. */
+  apply: string;
+  kind: CompletionKind;
+  detail: string;
+  boost: number;
+}
+
+export interface CompletionReply {
+  /** The UTF-8 byte offset where the word the items replace starts. */
+  from: number;
+  items: CompletionItem[];
+}

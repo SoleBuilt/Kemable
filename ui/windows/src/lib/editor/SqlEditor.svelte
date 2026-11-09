@@ -11,6 +11,7 @@
 </script>
 
 <script lang="ts">
+  import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
   import { indentWithTab } from "@codemirror/commands";
   import { MSSQL, PostgreSQL, SQLite, sql, type SQLDialect } from "@codemirror/lang-sql";
   import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -19,15 +20,17 @@
   import { tags } from "@lezer/highlight";
   import { basicSetup } from "codemirror";
   import { onMount } from "svelte";
-  import type { ByteRange, SqlGrammar } from "../types";
+  import type { ByteRange, CompletionKind, CompletionReply, SqlGrammar } from "../types";
 
   interface Props {
     grammar: SqlGrammar | null;
     initial?: string;
     onRun: (request: RunRequest) => void;
+    /** Names from the catalog at a UTF-8 byte offset (docs/decisions/0007-autocomplete.md). */
+    complete?: (text: string, cursor: number) => Promise<CompletionReply | null>;
   }
 
-  let { grammar, initial = "", onRun }: Props = $props();
+  let { grammar, initial = "", onRun, complete }: Props = $props();
 
   let host: HTMLDivElement;
   let view: EditorView | null = null;
@@ -69,6 +72,45 @@
       color: "var(--accent-text)",
     },
   });
+
+  /** CodeMirror's icon for each kind of name. */
+  const ICONS: Record<CompletionKind, string> = {
+    schema: "namespace",
+    table: "class",
+    view: "interface",
+    column: "property",
+    alias: "variable",
+  };
+  /** Past this size, completion would send too much text on each word. */
+  const MAX_COMPLETE_CHARS = 2_000_000;
+  const WORD = /^[\p{L}\p{N}_$]*$/u;
+
+  /**
+   * Names from the catalog, beside lang-sql's keywords. It asks Rust only as
+   * a word starts (validFor keeps the list while the word goes on), and opens
+   * by itself only after a letter, a dot or a quote; Ctrl+Space always opens it.
+   */
+  async function catalogNames(context: CompletionContext): Promise<CompletionResult | null> {
+    const ask = complete;
+    if (!ask) return null;
+    const word = context.matchBefore(/[\p{L}\p{N}_$]+$/u);
+    const before = context.state.sliceDoc(Math.max(0, context.pos - 1), context.pos);
+    if (!context.explicit && !word && !/[."[`]/.test(before)) return null;
+    if (context.state.doc.length > MAX_COMPLETE_CHARS) return null;
+    const head = context.state.sliceDoc(0, context.pos);
+    const bytes = encoder.encode(head);
+    const reply = await ask(context.state.doc.toString(), bytes.length);
+    if (!reply || context.aborted || reply.items.length === 0) return null;
+    const typed = decoder.decode(bytes.subarray(reply.from)).length;
+    const options: Completion[] = reply.items.map((item) => ({
+      label: item.label,
+      apply: item.apply,
+      type: ICONS[item.kind],
+      detail: item.detail,
+      boost: item.boost,
+    }));
+    return { from: context.pos - typed, options, validFor: WORD };
+  }
 
   function languageFor(value: SqlGrammar | null) {
     return sql({ dialect: value ? DIALECTS[value] : PostgreSQL, upperCaseKeywords: false });
@@ -174,6 +216,7 @@
           keymap.of([indentWithTab]),
           language.of(languageFor(grammar)),
           syntaxHighlighting(highlight),
+          EditorState.languageData.of(() => [{ autocomplete: catalogNames }]),
           theme,
           ranField,
         ],

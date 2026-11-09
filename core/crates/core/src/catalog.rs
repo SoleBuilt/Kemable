@@ -44,7 +44,7 @@ pub struct ObjectInfo {
     pub kind: ObjectKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableRef {
     pub schema: Option<String>,

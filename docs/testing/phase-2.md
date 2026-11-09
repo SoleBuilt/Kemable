@@ -104,3 +104,30 @@ Dùng `demo_sales` (PostgreSQL) và một bảng bất kỳ ở SQL Server. Bả
   **Đúng:** như trên.
 
 Test tự động cho phần này: `a_table_tab_pages_and_filters_on_sqlite` chạy trong `node scripts/verify.mjs`; bản PostgreSQL và SQL Server chạy cùng các test live ở cuối `docs/testing/phase-1.md`.
+
+## 4. Gợi ý khi gõ (autocomplete)
+
+Kết nối `Local PG`, chọn database `demo_sales`.
+
+- [ ] Gõ `select * from ord`.
+  **Đúng:** danh sách hiện `orders`, `order_items` (icon bảng) cùng các từ khóa; Enter hoặc Tab chèn tên.
+- [ ] Gõ `select * from public.`.
+  **Đúng:** ngay sau dấu chấm hiện các bảng và view của schema `public`.
+- [ ] Gõ `select o. from orders o` rồi đặt con trỏ ngay sau `o.`, nhấn **Ctrl+Space**.
+  **Đúng:** chỉ hiện các cột của `orders`, có kiểu dữ liệu ở bên phải.
+- [ ] Gõ `select ` rồi **Ctrl+Space** trong câu `select  from orders o join customers c on c.id = o.customer_id`.
+  **Đúng:** hiện cột của cả hai bảng; cột trùng tên (`id`) chỉ hiện một lần, ghi `o, c`; cuối danh sách có alias `o`, `c`.
+- [ ] Gõ `insert into customers (`, rồi gõ chữ đầu của một cột.
+  **Đúng:** hiện các cột của `customers`.
+- [ ] Gõ trong chuỗi `'...'` hoặc sau `--`.
+  **Đúng:** không hiện tên bảng/cột.
+- [ ] Tạo bảng có tên viết hoa hoặc có dấu cách: `create table "Bang Thu" ("Ma So" int);`, chạy, rồi gõ `select * from Ba`.
+  **Đúng:** bảng mới có trong gợi ý ngay (không cần kết nối lại); chọn nó thì chèn `"Bang Thu"` có ngoặc kép. Gõ `select * from "Ba` rồi chọn thì ngoặc được đóng đúng, không bị thừa.
+- [ ] Trên **SQL Server**, gõ `select * from dbo.` và `select [`.
+  **Đúng:** hiện bảng của `dbo`; tên cần quote được chèn trong `[...]`.
+- [ ] Trên **SQL Server**, script có nhiều câu không có `;` và có dòng `GO`: gõ ở câu sau `GO`.
+  **Đúng:** alias của batch trước `GO` không lẫn vào.
+- [ ] Đổi database ở toolbar (Ctrl+K) rồi gõ `select * from `.
+  **Đúng:** gợi ý là bảng của database mới.
+- [ ] Gõ nhanh một câu dài.
+  **Đúng:** editor không khựng; danh sách hiện ra trong khoảng một khung hình sau lần đầu (lần đầu với mỗi bảng có thể chậm hơn chút vì phải đọc catalog).
