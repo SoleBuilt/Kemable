@@ -4,6 +4,7 @@ use async_trait::async_trait;
 
 use crate::catalog::{ColumnInfo, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
 use crate::engine::EngineInfo;
+use crate::keys::{KeyDetail, KeyPage, KeyScan};
 use crate::sink::{ExecOutcome, ResultSink};
 use crate::{CallOptions, DriverError, Result};
 
@@ -41,6 +42,19 @@ pub trait Connection: Send + Sync {
     /// Runs one statement, already split from its script, and streams what
     /// it returns into `sink`. A cancel stops the statement on the server.
     async fn execute(&self, statement: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome>;
+
+    /// One step of a scan over a key-value engine's keys, with each key's
+    /// kind and time to live. Never a command that reads every key at once.
+    async fn scan_keys(&self, _scan: &KeyScan, _options: CallOptions) -> Result<KeyPage> {
+        Err(DriverError::unsupported("this engine has no keys"))
+    }
+
+    /// Streams one key's value into `sink` as a result set (a hash as
+    /// field and value, a list as index and value, ...), in steps, stopping
+    /// when the sink takes no more.
+    async fn read_key(&self, _key: &str, _sink: Arc<dyn ResultSink>, _options: CallOptions) -> Result<KeyDetail> {
+        Err(DriverError::unsupported("this engine has no keys"))
+    }
 
     async fn close(&self) -> Result<()>;
 }

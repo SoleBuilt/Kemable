@@ -18,6 +18,7 @@ keyring.workspace = true
 paboable-core.workspace = true
 paboable-driver-mssql.workspace = true
 paboable-driver-postgres.workspace = true
+paboable-driver-redis.workspace = true
 paboable-driver-sqlite.workspace = true
 paboable-store.workspace = true
 paboable-storage.workspace = true

@@ -24,13 +24,15 @@
 
   interface Props {
     grammar: SqlGrammar | null;
+    /** Commands, not SQL (Redis): no SQL highlighting or keywords. */
+    plain?: boolean;
     initial?: string;
     onRun: (request: RunRequest) => void;
     /** Names from the catalog at a UTF-8 byte offset (docs/decisions/0007-autocomplete.md). */
     complete?: (text: string, cursor: number) => Promise<CompletionReply | null>;
   }
 
-  let { grammar, initial = "", onRun, complete }: Props = $props();
+  let { grammar, plain = false, initial = "", onRun, complete }: Props = $props();
 
   let host: HTMLDivElement;
   let view: EditorView | null = null;
@@ -112,7 +114,8 @@
     return { from: context.pos - typed, options, validFor: WORD };
   }
 
-  function languageFor(value: SqlGrammar | null) {
+  function languageFor(value: SqlGrammar | null, commands: boolean) {
+    if (commands) return [];
     return sql({ dialect: value ? DIALECTS[value] : PostgreSQL, upperCaseKeywords: false });
   }
 
@@ -214,7 +217,7 @@
           ),
           basicSetup,
           keymap.of([indentWithTab]),
-          language.of(languageFor(grammar)),
+          language.of(languageFor(grammar, plain)),
           syntaxHighlighting(highlight),
           EditorState.languageData.of(() => [{ autocomplete: catalogNames }]),
           theme,
@@ -227,7 +230,8 @@
 
   $effect(() => {
     const value = grammar;
-    view?.dispatch({ effects: language.reconfigure(languageFor(value)) });
+    const commands = plain;
+    view?.dispatch({ effects: language.reconfigure(languageFor(value, commands)) });
   });
 </script>
 

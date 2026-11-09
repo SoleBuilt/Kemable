@@ -88,10 +88,18 @@ fn sql_error(error: rusqlite::Error) -> DriverError {
 /// Whether a statement may carry a password, by the words engines use for one.
 pub fn holds_password(statement: &str) -> bool {
     let upper = statement.to_ascii_uppercase();
-    ["PASSWORD", "IDENTIFIED BY", "SECRET "]
+    // SQL writes a password as a literal, so a statement without a quote holds none.
+    let sql = ["PASSWORD", "IDENTIFIED BY", "SECRET "]
         .iter()
         .any(|word| upper.contains(word))
-        && (statement.contains('\'') || statement.contains('"') || statement.contains('$'))
+        && (statement.contains('\'') || statement.contains('"') || statement.contains('$'));
+    // A Redis command writes it as a bare word: `AUTH pw`, `CONFIG SET requirepass pw`, `MIGRATE ... AUTH pw`.
+    let words: Vec<&str> = upper.split_whitespace().collect();
+    let console = words
+        .iter()
+        .any(|word| matches!(*word, "REQUIREPASS" | "MASTERAUTH" | "AUTH" | "AUTH2"))
+        || words.windows(2).any(|pair| pair == ["ACL", "SETUSER"]);
+    sql || console
 }
 
 impl QueryHistory {

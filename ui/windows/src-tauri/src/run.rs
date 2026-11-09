@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use paboable_core::catalog::ColumnMeta;
+use paboable_core::command::select_database;
 use paboable_core::connection::Connection;
 use paboable_core::sink::ResultSink;
 use paboable_core::sql::{DatabaseChange, SqlGrammar, StatementKind, database_change};
@@ -191,7 +192,8 @@ pub struct Run {
     pub server: Arc<OpenServer>,
     /// The database the run starts in; `None` for the home database.
     pub database: Option<String>,
-    pub grammar: SqlGrammar,
+    /// How the text was split; `None` for a console of commands (Redis).
+    pub grammar: Option<SqlGrammar>,
     pub statements: Vec<Statement>,
     /// After `CREATE DATABASE x` succeeds, run the rest of the script in `x`.
     pub follow_created_database: bool,
@@ -245,12 +247,13 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
         let statement_started = Instant::now();
         let ran_in = database.clone();
         let outcome = match statement.kind {
-            StatementKind::Directive => directive(&run.server, text, &mut database),
+            StatementKind::Directive => directive(&run, text, &mut database),
             StatementKind::Sql => {
                 // The server refuses to drop a database someone is connected
                 // to; when that someone is this app, step out of it first.
                 if run.server.engine.has_databases
-                    && let Some(DatabaseChange::Dropped(name)) = database_change(text, run.grammar)
+                    && let Some(grammar) = run.grammar
+                    && let Some(DatabaseChange::Dropped(name)) = database_change(text, grammar)
                     && database.as_deref() != Some(name.as_str())
                 {
                     run.server.close_session(&name).await;
@@ -327,7 +330,7 @@ fn follow(run: &Run, text: &str, database: &mut Option<String>) -> Option<String
     if !run.server.engine.has_databases {
         return None;
     }
-    let target = match database_change(text, run.grammar)? {
+    let target = match database_change(text, run.grammar?)? {
         DatabaseChange::Created(name) if run.follow_created_database => name,
         DatabaseChange::Used(name) => name,
         _ => return None,
@@ -338,7 +341,15 @@ fn follow(run: &Run, text: &str, database: &mut Option<String>) -> Option<String
 
 /// A client command. `\c name` moves the run to `name`; any other is refused,
 /// since nothing would run it.
-fn directive(server: &OpenServer, text: &str, database: &mut Option<String>) -> Result<Option<String>, DriverError> {
+fn directive(run: &Run, text: &str, database: &mut Option<String>) -> Result<Option<String>, DriverError> {
+    let server = &run.server;
+    // A console's `SELECT n` switches as psql's `c` does: the session for n runs what follows.
+    if run.grammar.is_none() {
+        let target =
+            select_database(text).ok_or_else(|| DriverError::unsupported(format!("{text} is not a directive")))?;
+        *database = Some(target.clone());
+        return Ok(Some(target));
+    }
     match database_change(text, SqlGrammar::Postgres) {
         Some(DatabaseChange::Connect(name)) if server.engine.has_databases => {
             *database = Some(name.clone());

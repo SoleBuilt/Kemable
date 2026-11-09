@@ -9,8 +9,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use paboable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
+use paboable_core::command::split_lines;
 use paboable_core::config::{ConnectionConfig, Secret, Target};
-use paboable_core::engine::EngineInfo;
+use paboable_core::engine::{DataModel, EngineInfo};
+use paboable_core::keys::{KeyDetail, KeyPage, KeyScan};
 use paboable_core::sink::ResultSink;
 use paboable_core::sql::{
     BrowseQuery, Clause, CompletionItem, SortColumn, completion_context, completions, count_statement, page_statement,
@@ -21,7 +23,7 @@ use paboable_core::{CallOptions, DriverError};
 use paboable_storage::SavedConnection;
 use paboable_storage::history::{HistoryEntry, HistoryQuery};
 use paboable_storage::queries::SavedQuery;
-use paboable_store::{CellRange, MAX_COPY_CELLS, SortKey, WindowRequest};
+use paboable_store::{CellRange, MAX_COPY_CELLS, ResultStore, SortKey, WindowRequest};
 use serde::Serialize;
 use tauri::State;
 use tauri::ipc::{Channel, Response};
@@ -240,11 +242,12 @@ pub async fn run_query(
     on_event: Channel<RunEvent>,
 ) -> CommandResult<RunStarted> {
     let server = state.server(conn)?;
-    let grammar = server
-        .engine
-        .sql_grammar
-        .ok_or_else(|| DriverError::unsupported("this engine does not run SQL"))?;
-    let spans = split(&sql, grammar);
+    let grammar = server.engine.sql_grammar;
+    let spans = match grammar {
+        Some(grammar) => split(&sql, grammar),
+        None if server.engine.data_model == DataModel::KeyValue => split_lines(&sql),
+        None => return Err(DriverError::unsupported("this engine has no console")),
+    };
     let chosen = match cursor {
         Some(offset) => statement_at(&spans, offset)
             .map(|index| &spans[index..=index])
@@ -331,7 +334,9 @@ pub async fn sort_result(
                 descending: key.descending,
             })
             .collect();
-        if let Some(sql) = sorted_statement(&origin.statement, origin.grammar, &names, &columns) {
+        if let Some(grammar) = origin.grammar
+            && let Some(sql) = sorted_statement(&origin.statement, grammar, &names, &columns)
+        {
             return Ok(SortOutcome::Rerun {
                 sql,
                 statement: origin.statement,
@@ -611,4 +616,112 @@ pub async fn complete(
 pub async fn forget_catalog(state: State<'_, Arc<AppState>>, conn: u64) -> CommandResult<()> {
     state.catalog.forget(conn);
     Ok(())
+}
+
+/// One step of a scan over a key-value server's keys
+/// (docs/decisions/0008-key-value-engines.md).
+#[tauri::command]
+pub async fn scan_keys(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    scan: KeyScan,
+) -> CommandResult<KeyPage> {
+    let session = state.server(conn)?.session(database.as_deref()).await?;
+    session.scan_keys(&scan, metadata_options()).await
+}
+
+/// A key read into a result set for the grid.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyRead {
+    /// The result set, when the key's kind has rows to show.
+    result: Option<u64>,
+    columns: Vec<ColumnMeta>,
+    detail: KeyDetail,
+    total_rows: u64,
+    limited: bool,
+    /// What the driver said beside the rows.
+    notices: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn read_key(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    key: String,
+    row_limit: Option<u64>,
+) -> CommandResult<KeyRead> {
+    let session = state.server(conn)?.session(database.as_deref()).await?;
+    let sink = Arc::new(KeySink {
+        row_limit,
+        store: Mutex::new(None),
+        notices: Mutex::new(Vec::new()),
+    });
+    let detail = session
+        .read_key(
+            &key,
+            Arc::clone(&sink) as Arc<dyn ResultSink>,
+            CallOptions::default().with_timeout(COUNT_TIMEOUT),
+        )
+        .await?;
+    let store = sink.store.lock().unwrap_or_else(PoisonError::into_inner).take();
+    let notices = std::mem::take(&mut *sink.notices.lock().unwrap_or_else(PoisonError::into_inner));
+    Ok(match store {
+        Some(store) => {
+            store.finish();
+            let shown = store.state();
+            let columns = store.columns().to_vec();
+            KeyRead {
+                result: Some(state.add_result(store, None)),
+                columns,
+                detail,
+                total_rows: shown.total_rows,
+                limited: shown.limited,
+                notices,
+            }
+        }
+        None => KeyRead {
+            result: None,
+            columns: Vec::new(),
+            detail,
+            total_rows: 0,
+            limited: false,
+            notices,
+        },
+    })
+}
+
+/// Keeps the one set a key read gives.
+struct KeySink {
+    row_limit: Option<u64>,
+    store: Mutex<Option<Arc<ResultStore>>>,
+    notices: Mutex<Vec<String>>,
+}
+
+impl ResultSink for KeySink {
+    fn begin_set(&self, columns: Vec<ColumnMeta>) {
+        *self.store.lock().unwrap_or_else(PoisonError::into_inner) =
+            Some(Arc::new(ResultStore::new(columns, self.row_limit)));
+    }
+
+    fn push_rows(&self, values: &[Value]) -> bool {
+        self.store
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|store| store.push_rows(values))
+    }
+
+    fn end_set(&self) {}
+
+    fn command_done(&self, _rows_affected: Option<u64>) {}
+
+    fn notice(&self, text: &str) {
+        self.notices
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(text.to_owned());
+    }
 }

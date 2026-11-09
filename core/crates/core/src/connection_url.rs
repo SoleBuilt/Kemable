@@ -4,7 +4,8 @@
 //! `postgres://user:password@host:port/database?sslmode=require&...`
 //! (`postgresql://` too), and the same shape for SQL Server as `sqlserver://`
 //! (or `mssql://`), where a URL without a user logs in as the Windows user.
-//! `sslmode` becomes the TLS mode; every other query
+//! Redis is `redis://[user]:password@host:port/db`, and `rediss://` for TLS
+//! with the certificate checked. `sslmode` becomes the TLS mode; every other query
 //! parameter goes to `options` unchanged, for the driver to read.
 
 use std::collections::BTreeMap;
@@ -17,9 +18,11 @@ pub fn parse(url: &str) -> Result<ConnectionConfig, DriverError> {
     let (scheme, rest) = url
         .split_once("://")
         .ok_or_else(|| DriverError::config("the URL has no scheme"))?;
-    let engine = match scheme.to_ascii_lowercase().as_str() {
+    let scheme = scheme.to_ascii_lowercase();
+    let engine = match scheme.as_str() {
         "postgres" | "postgresql" => "postgres",
         "sqlserver" | "mssql" => "mssql",
+        "redis" | "rediss" => "redis",
         other => return Err(DriverError::unsupported(format!("no driver reads {other}:// URLs"))),
     };
 
@@ -39,7 +42,11 @@ pub fn parse(url: &str) -> Result<ConnectionConfig, DriverError> {
     let (host, port) = split_host_port(hostport)?;
 
     let mut options = BTreeMap::new();
-    let mut tls = TlsMode::Prefer;
+    let mut tls = match scheme.as_str() {
+        "redis" => TlsMode::Disable,
+        "rediss" => TlsMode::VerifyFull,
+        _ => TlsMode::Prefer,
+    };
     for pair in query.split('&').filter(|pair| !pair.is_empty()) {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         let (key, value) = (decode(key)?, decode(value)?);
@@ -195,6 +202,19 @@ mod tests {
             ("localhost", None, None, "", Some("demo"), TlsMode::Prefer)
         );
         assert_eq!(parse("mssql://sa:pw@db:1433").expect("a valid URL").engine, "mssql");
+    }
+
+    #[test]
+    fn a_redis_url_takes_a_password_without_a_user_and_a_database_number() {
+        let config = parse("redis://:s3cret@cache.local:6380/2").expect("a valid URL");
+        assert_eq!(config.engine, "redis");
+        assert_eq!(
+            network(&config),
+            ("cache.local", Some(6380), None, "s3cret", Some("2"), TlsMode::Disable)
+        );
+        let secure = parse("rediss://default:pw@x.upstash.io:6379").expect("a valid URL");
+        assert_eq!(network(&secure).5, TlsMode::VerifyFull);
+        assert_eq!(network(&secure).2, Some("default"));
     }
 
     #[test]

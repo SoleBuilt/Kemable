@@ -36,7 +36,7 @@ async fn run_script(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &st
         id: 1,
         server: Arc::clone(server),
         database: None,
-        grammar,
+        grammar: Some(grammar),
         statements,
         follow_created_database: true,
         row_limit: Some(500_000),

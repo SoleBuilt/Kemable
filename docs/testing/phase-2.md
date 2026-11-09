@@ -131,3 +131,54 @@ Kết nối `Local PG`, chọn database `demo_sales`.
   **Đúng:** gợi ý là bảng của database mới.
 - [ ] Gõ nhanh một câu dài.
   **Đúng:** editor không khựng; danh sách hiện ra trong khoảng một khung hình sau lần đầu (lần đầu với mỗi bảng có thể chậm hơn chút vì phải đọc catalog).
+
+## 5. Redis: key, kiểu giá trị, TTL
+
+Máy hiện chưa có Redis. Cách có một server để thử, chọn một:
+
+- **Memurai Developer** (Redis cho Windows, miễn phí cho dev): cài xong chạy ở `localhost:6379`.
+- **Upstash** (Redis trên cloud, gói free): lấy URL `rediss://default:<mật khẩu>@<tên>.upstash.io:6379`.
+- Docker hoặc WSL nếu sau này cài: `docker run -p 6379:6379 redis:7`.
+
+Khi đã có server, chạy luôn test live: `set PABOABLE_REDIS_URL=redis://localhost:6379` rồi `cargo test -p paboable-driver-redis -- --ignored`.
+
+Dữ liệu thử: kết nối xong, dán vào editor và **Run all** (F5):
+
+```
+SET greeting "xin chào"
+SET session:1 abc EX 3600
+HSET user:1 name "Nguyễn Văn A" email a@example.com age 30
+RPUSH queue:jobs job1 job2 job3
+SADD tags redis sql rust
+ZADD leaderboard 100 an 250 binh 175 chi
+XADD events * type login user 1
+XADD events * type logout user 1
+DEBUG POPULATE 5000 bulk:
+```
+
+Redis 7 từ chối `DEBUG` nếu chưa bật `enable-debug-command`; khi đó bỏ dòng cuối, phần "Load more" thử bằng Limit và `COUNT` nhỏ hơn hoặc bỏ qua.
+
+- [ ] Bấm **Redis…**, Host `localhost`, Name `Local Redis`, **Connect**. Thử thêm: dán URL `redis://:matkhau@localhost:6379/0` vào ô URL; với Upstash dán URL `rediss://...`.
+  **Đúng:** toolbar ghi "Redis 7.x"; sidebar có tab **Keys**; ô chọn database (Ctrl+K) có `0` đến `15`. Sai mật khẩu thì báo "Access denied" kèm `WRONGPASS`.
+- [ ] Chạy dữ liệu thử ở trên.
+  **Đúng:** mỗi dòng là một lệnh; `SET` ghi "Done" trong Messages; `HSET`, `RPUSH`... trả về một dòng số. Tab Keys tự quét lại.
+- [ ] Ở tab **Keys**: gõ `user` rồi Enter; gõ `bulk:*` rồi Enter; chọn loại **Hash**.
+  **Đúng:** chữ thường tìm ở bất kỳ đâu trong tên, `*` là glob; lọc loại chỉ còn hash. Có nhãn STR/HASH/LIST/SET/ZSET; `session:1` có TTL (ví dụ `60 min`). Với 5.000 key `bulk:*` có nút **Load more**.
+- [ ] Bấm từng key: `greeting`, `user:1`, `queue:jobs`, `tags`, `leaderboard`, `events`.
+  **Đúng:** thanh trên kết quả ghi tên key, loại, độ dài (bytes/fields/items/members/entries), "no expiry" hoặc "expires in ..."; grid: string là 1 dòng `value`; hash `field, value`; list `index, value`; set `member`; sorted set `member, score` (số); stream `id, fields` (JSON).
+- [ ] Bấm tiêu đề cột `score` của `leaderboard`.
+  **Đúng:** sort trong app (status bar ghi "sorted in Paboable").
+- [ ] Tạo một list lớn: `DEBUG POPULATE` không tạo list, nên chạy trong editor một vòng `RPUSH big 1 2 3 ...` vài lần, hoặc dùng Limit nhỏ (1.000) rồi mở một hash/list lớn hơn 1.000 phần tử.
+  **Đúng:** dừng ở row cap, có **Fetch all**; bấm thì đọc hết.
+- [ ] Chạy `SELECT 1` rồi `SET only_in_1 x` trong cùng một script; sau đó chọn lại database `0` ở toolbar.
+  **Đúng:** Messages ghi "Switched to 1"; toolbar đổi sang `1`; key `only_in_1` chỉ thấy ở database 1.
+- [ ] Chạy `SUBSCRIBE news`, `MONITOR`, `AUTH x`.
+  **Đúng:** báo lệnh không chạy từ console ("not run from the console"); kết nối vẫn dùng được.
+- [ ] Chạy `BLPOP empty 0` rồi bấm **Stop**.
+  **Đúng:** dừng ngay, Messages báo đã hủy; chạy `PING` sau đó vẫn ra `PONG`.
+- [ ] Chạy `GET user:1`.
+  **Đúng:** lỗi `WRONGTYPE` của server ở Messages.
+- [ ] Chạy `CONFIG SET requirepass x` (trên server thử, rồi đặt lại) và xem tab **History**.
+  **Đúng:** câu đó trong History là `-- not kept: this statement holds a password`.
+- [ ] Đợi một key có TTL hết hạn (`SET temp 1 EX 5`), rồi bấm vào nó trong danh sách.
+  **Đúng:** status bar báo "Not read: ..."; danh sách tự quét lại và key đó biến mất.

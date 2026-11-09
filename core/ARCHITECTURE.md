@@ -11,11 +11,12 @@ core/crates/
 └── drivers/
     ├── mssql/                  paboable-driver-mssql: tiberius; SQL Server, Windows or SQL Server login
     ├── postgres/               paboable-driver-postgres: tokio-postgres and rustls; PostgreSQL, Neon, Supabase
+    ├── redis/                  paboable-driver-redis: its own RESP2 client on tokio and rustls; Redis, Valkey
     └── sqlite/                 paboable-driver-sqlite: rusqlite, SQLite compiled in
 ui/windows/src-tauri/           paboable-windows: the Tauri app, the only crate that names every driver
 ```
 
-Planned crates, in the order `docs/roadmap.md` gives: `drivers/redis`, `drivers/d1` (HTTP API), `drivers/rabbitmq`, `drivers/firebase`, `storage` gains query history, `session` (health, reconnect), `live` (the Live tab's subscriptions).
+Planned crates, in the order `docs/roadmap.md` gives: `drivers/d1` (HTTP API), `drivers/rabbitmq`, `drivers/firebase`, `session` (health, reconnect), `live` (the Live tab's subscriptions).
 
 ## Dependency rules
 
@@ -43,7 +44,7 @@ Planned crates, in the order `docs/roadmap.md` gives: `drivers/redis`, `drivers/
 
 An engine whose server holds several databases sets `EngineInfo::has_databases` and answers `current_database` and `list_databases` (what the login may open, as the server's permissions decide). A `Connection` stays bound to one database: PostgreSQL cannot change a session's database, so the app opens one connection per database in use (`ui/windows/src-tauri/src/state.rs`, `OpenServer`). After a run's statement, `paboable_core::sql::database_change` says whether it moved the run (`CREATE DATABASE x`, SQL Server's `USE x`, psql's `\c x`, which the PostgreSQL grammar splits off as a `StatementKind::Directive`).
 
-Methods a data model does not use return `driver.unsupported`. Key-value, document and queue engines will add their own methods with that default, as the first engine of each model lands (`docs/decisions/0004-engines.md`).
+Methods a data model does not use return `driver.unsupported`. Each data model adds its own methods with that default as its first engine lands (`docs/decisions/0004-engines.md`): key-value has `scan_keys` and `read_key` (`docs/decisions/0008-key-value-engines.md`), and an engine without SQL runs console text split by `paboable_core::command`, one command per line.
 
 ## SQL scripts
 

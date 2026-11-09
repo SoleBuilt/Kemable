@@ -261,6 +261,11 @@ fn a_statement_holding_a_password_is_kept_as_a_note() {
     assert!(holds_password("CREATE USER app WITH PASSWORD 'hunter2'"));
     assert!(holds_password("ALTER LOGIN sa WITH PASSWORD = 'x'"));
     assert!(!holds_password("select password_changed_at from users"));
+    assert!(holds_password("CONFIG SET requirepass hunter2"));
+    assert!(holds_password("auth default hunter2"));
+    assert!(holds_password("ACL SETUSER app on >hunter2"));
+    assert!(holds_password("MIGRATE host 6379 k 0 5000 AUTH hunter2"));
+    assert!(!holds_password("GET author"));
     let history = QueryHistory::in_memory().unwrap();
     history
         .record(&entry("alter role app password 'hunter2'", "c"))
