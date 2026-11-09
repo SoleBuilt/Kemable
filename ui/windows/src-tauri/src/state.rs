@@ -127,8 +127,13 @@ impl OpenServer {
 /// The same server, pointed at another database.
 fn with_database(config: &ConnectionConfig, database: &str) -> ConnectionConfig {
     let mut config = config.clone();
-    if let Target::Network { database: target, .. } = &mut config.target {
-        *target = Some(database.to_owned());
+    match &mut config.target {
+        Target::Network { database: target, .. } => *target = Some(database.to_owned()),
+        // D1 names its database in the options; the target is the account.
+        Target::Http { .. } => {
+            config.options.insert("database".to_owned(), database.to_owned());
+        }
+        Target::File { .. } => {}
     }
     config
 }

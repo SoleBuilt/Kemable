@@ -182,3 +182,39 @@ Redis 7 từ chối `DEBUG` nếu chưa bật `enable-debug-command`; khi đó b
   **Đúng:** câu đó trong History là `-- not kept: this statement holds a password`.
 - [ ] Đợi một key có TTL hết hạn (`SET temp 1 EX 5`), rồi bấm vào nó trong danh sách.
   **Đúng:** status bar báo "Not read: ..."; danh sách tự quét lại và key đó biến mất.
+
+## 6. Cloudflare D1 qua API
+
+Cần một tài khoản Cloudflare (gói free đủ dùng) và một database D1:
+
+1. Dashboard Cloudflare → **Storage & Databases → D1** → **Create**, đặt tên ví dụ `paboable-test`.
+2. **Account ID**: ở trang tổng quan của tài khoản (cột phải), hoặc trong URL dashboard (`dash.cloudflare.com/<account id>/...`).
+3. **API token**: My Profile → API Tokens → **Create Token** → Custom token, quyền **Account · D1 · Edit**.
+4. Chạy luôn test live (thay giá trị):
+   ```bash
+   set PABOABLE_D1_ACCOUNT=<account id>
+   set PABOABLE_D1_TOKEN=<token>
+   set PABOABLE_D1_DATABASE=paboable-test
+   cargo test -p paboable-driver-d1 -- --ignored
+   ```
+
+- [ ] Bấm **D1…**, nhập Account ID, API token, để trống Database, Name `D1 test`, giữ tick lưu token, **Connect**.
+  **Đúng:** sidebar liệt kê các database D1 của tài khoản; chạy một câu khi chưa chọn database thì báo cần chọn database (Ctrl+K). Token sai báo "Access denied" kèm mã `10000`.
+- [ ] Chọn `paboable-test` (Ctrl+K hoặc ở cây), chạy:
+  ```sql
+  create table items (id integer primary key, name text, price real, photo blob);
+  insert into items (name, price, photo) values ('xin chào', 1.5, x'00ff'), ('b', 2, null);
+  select * from items;
+  ```
+  **Đúng:** `create`/`insert` ghi "Done"/"2 rows affected"; Messages có dòng "D1: N rows read, M written, x ms" cho mỗi câu; `select` ra 2 dòng, `photo` hiện `0x00ff`, tiếng Việt đúng.
+- [ ] Gõ sai `selec * from items`.
+  **Đúng:** Messages báo lỗi của SQLite kèm mã `7500`, editor đánh dấu đúng vị trí lỗi.
+- [ ] Double-click bảng `items` ở cây; thử phân trang, filter, sort (mục 3).
+  **Đúng:** như với SQLite; câu Copy SQL dùng `LIMIT ... OFFSET ...`.
+- [ ] Gõ `select * from it` và `select i. from items i` (Ctrl+Space sau dấu chấm).
+  **Đúng:** gợi ý bảng `items` và các cột của nó (mục 4).
+- [ ] Chạy một câu chậm (ví dụ `with recursive c(x) as (select 1 union all select x+1 from c limit 5000000) select count(*) from c;`) rồi bấm **Stop**.
+  **Đúng:** app dừng chờ ngay và báo đã hủy (phía Cloudflare câu có thể vẫn chạy xong).
+- [ ] Đóng app, mở lại, mở `D1 test` từ danh sách đã lưu.
+  **Đúng:** kết nối mà không hỏi token (token ở Windows Credential Manager). Bỏ tick lưu token rồi mở lại thì app hỏi "API token".
+- [ ] Nếu máy đi Internet qua proxy công ty: kết nối vẫn được, vì app dùng proxy của Windows.

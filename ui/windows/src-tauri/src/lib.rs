@@ -14,6 +14,7 @@ mod tests;
 use std::sync::Arc;
 
 use paboable_core::registry::DriverRegistry;
+use paboable_driver_d1::D1Driver;
 use paboable_driver_mssql::MssqlDriver;
 use paboable_driver_postgres::PostgresDriver;
 use paboable_driver_redis::RedisDriver;
@@ -29,6 +30,7 @@ fn registry() -> DriverRegistry {
         .with(Arc::new(PostgresDriver))
         .with(Arc::new(MssqlDriver))
         .with(Arc::new(RedisDriver))
+        .with(Arc::new(D1Driver))
 }
 
 pub fn run() {

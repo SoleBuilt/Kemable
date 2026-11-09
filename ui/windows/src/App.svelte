@@ -265,7 +265,9 @@
 
   function needsPassword(saved: SavedConnection): boolean {
     const target = saved.config.target;
-    return target.kind === "network" && !saved.savePassword && !(saved.config.engine === "mssql" && !target.user);
+    if (saved.savePassword) return false;
+    if (target.kind === "http") return true;
+    return target.kind === "network" && !(saved.config.engine === "mssql" && !target.user);
   }
 
   async function openSaved(saved: SavedConnection, password: string | null = null) {
@@ -791,6 +793,7 @@
     <button class="toolbar-button" onclick={() => (connectDialog = { engine: "postgres", saved: null })} disabled={connecting}>PostgreSQL…</button>
     <button class="toolbar-button" onclick={() => (connectDialog = { engine: "mssql", saved: null })} disabled={connecting}>SQL Server…</button>
     <button class="toolbar-button" onclick={() => (connectDialog = { engine: "redis", saved: null })} disabled={connecting}>Redis…</button>
+    <button class="toolbar-button" onclick={() => (connectDialog = { engine: "d1", saved: null })} disabled={connecting}>D1…</button>
     {#if connection}
       <div class="ml-2 flex min-w-0 items-center gap-2 text-[12px]">
         <span class="size-2 shrink-0 rounded-full bg-success"></span>
@@ -1147,7 +1150,9 @@
       }}
     >
       <h2 class="mb-1 text-[14px] font-semibold">Password for {target.name}</h2>
-      <p class="mb-3 text-[12px] text-muted">This connection does not keep its password.</p>
+      <p class="mb-3 text-[12px] text-muted">
+        This connection does not keep its {target.config.target.kind === "http" ? "API token" : "password"}.
+      </p>
       <!-- svelte-ignore a11y_autofocus -->
       <input
         name="password"

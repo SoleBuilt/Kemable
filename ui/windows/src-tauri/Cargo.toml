@@ -16,6 +16,7 @@ tauri-build.workspace = true
 [dependencies]
 keyring.workspace = true
 paboable-core.workspace = true
+paboable-driver-d1.workspace = true
 paboable-driver-mssql.workspace = true
 paboable-driver-postgres.workspace = true
 paboable-driver-redis.workspace = true

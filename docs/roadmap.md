@@ -33,7 +33,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 - [x] Table browsing with server-side paging and filters; a table tab's sort pages with it (ADR 0005, ADR 0006).
 - [x] Autocomplete from the catalog (ADR 0007).
 - [x] Redis: keys, typed values, TTL (ADR 0008). Tested against a RESP2 server in the tests; the live test waits for a Redis at `$PABOABLE_REDIS_URL`.
-- [ ] D1 over HTTP.
+- [x] D1 over HTTP (ADR 0009). Tested against an HTTP server in the tests; the live test waits for `$PABOABLE_D1_ACCOUNT`, `$PABOABLE_D1_TOKEN` and `$PABOABLE_D1_DATABASE`.
 - [ ] Editing rows, with a preview of the statements before they run.
 
 ## Phase 3: everything else

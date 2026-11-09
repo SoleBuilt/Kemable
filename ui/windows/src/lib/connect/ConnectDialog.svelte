@@ -2,10 +2,10 @@
   import type { ConnectionConfig } from "../types";
 
   /** The engines this dialog connects to over the network. */
-  export type NetworkEngine = "postgres" | "mssql" | "redis";
+  export type NetworkEngine = "postgres" | "mssql" | "redis" | "d1";
 
   export function isNetworkEngine(id: string): id is NetworkEngine {
-    return id === "postgres" || id === "mssql" || id === "redis";
+    return id === "postgres" || id === "mssql" || id === "redis" || id === "d1";
   }
 
   /** What Connect asks for: a saved connection by id, or a config as typed. */
@@ -57,6 +57,12 @@
       urlHint: "redis://:password@host:6379/0 (rediss:// for TLS)",
       hostHint: "localhost",
     },
+    d1: {
+      title: "Cloudflare D1",
+      port: 0,
+      urlHint: "",
+      hostHint: "",
+    },
   };
 
   // svelte-ignore state_referenced_locally
@@ -72,6 +78,8 @@
   let tls: TlsMode = $state("prefer");
   // Query parameters from a pasted URL that the form has no field for.
   let options: Record<string, string> = $state({});
+  /** D1: the Cloudflare account the databases belong to. */
+  let account = $state("");
   let name = $state("");
   let save = $state(true);
   let savePassword = $state(true);
@@ -94,19 +102,35 @@
     options = { ...(saved.config.options ?? {}) };
     savePassword = saved.savePassword;
   }
+  // svelte-ignore state_referenced_locally
+  if (saved && saved.config.target.kind === "http") {
+    engine = "d1";
+    savedId = saved.id;
+    name = saved.name;
+    account = saved.config.target.endpoint;
+    database = saved.config.options?.database ?? "";
+    options = { ...(saved.config.options ?? {}) };
+    delete options.database;
+    savePassword = saved.savePassword;
+  }
 
   /** A name for a connection the user did not name. */
   function defaultName(): string {
+    if (engine === "d1") return `D1 ${database.trim() || account.trim().slice(0, 8)}`;
     const who = usesLogin && user.trim() ? `${user.trim()}@` : "";
     return `${who}${host.trim()}${database.trim() ? `/${database.trim()}` : ""}`;
   }
 
   let busy = $state(false);
   let error: CoreError | null = $state(null);
-  let urlInput: HTMLInputElement;
+  let urlInput: HTMLInputElement | undefined = $state();
+  let accountInput: HTMLInputElement | undefined = $state();
 
   const info = $derived(ENGINES[engine]);
   const usesLogin = $derived(engine !== "mssql" || !windowsLogin);
+  /** D1 is reached through Cloudflare's API: an account and a token, no host. */
+  const http = $derived(engine === "d1");
+  const ready = $derived(http ? account.trim() !== "" : host.trim() !== "");
 
   const TLS_MODES: { value: TlsMode; label: string }[] = [
     { value: "disable", label: "Disable" },
@@ -126,7 +150,7 @@
     if (next === "redis" && tls !== "verifyFull") tls = "disable";
   }
 
-  onMount(() => urlInput.focus());
+  onMount(() => (http ? accountInput?.focus() : urlInput?.focus()));
 
   async function fillFromUrl() {
     const text = url.trim();
@@ -150,6 +174,15 @@
   }
 
   function buildConfig(): ConnectionConfig | null {
+    if (http) {
+      const extra: Record<string, string> = { ...options };
+      if (database.trim()) extra.database = database.trim();
+      return {
+        engine,
+        target: { kind: "http", endpoint: account.trim(), token: password },
+        options: extra,
+      };
+    }
     const portNumber = port.trim() === "" ? null : Number(port);
     if (portNumber !== null && (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535)) {
       error = { code: "config.invalid", message: `${port} is not a port` };
@@ -252,6 +285,27 @@
       <input bind:value={name} placeholder={defaultName() || "My database"} spellcheck="false" />
     </label>
 
+    {#if http}
+      <label class="field">
+        <span>Account ID</span>
+        <input bind:this={accountInput} bind:value={account} required spellcheck="false" placeholder="32 letters and digits, from the dashboard" />
+      </label>
+      <label class="field">
+        <span>API token</span>
+        <input
+          bind:value={password}
+          type="password"
+          placeholder={savedId && saved?.savePassword ? "kept in Credential Manager" : "a token with D1 Read (and Edit to write)"}
+        />
+      </label>
+      <label class="field">
+        <span>Database</span>
+        <input bind:value={database} placeholder="optional: every database of the account shows in the tree" spellcheck="false" />
+      </label>
+      <p class="mb-3 -mt-1 text-[11.5px] text-muted">
+        Each statement is its own request and its own transaction. Local D1 databases are SQLite files: open them with Open SQLite.
+      </p>
+    {:else}
     <label class="field">
       <span>URL</span>
       <input
@@ -314,11 +368,12 @@
         {/each}
       </select>
     </label>
+    {/if}
     <div class="mb-3 flex flex-col gap-1.5 text-[12px]">
       <label class="flex items-center gap-2"><input type="checkbox" bind:checked={save} /> Save this connection</label>
       {#if save && usesLogin}
         <label class="flex items-center gap-2 pl-5">
-          <input type="checkbox" bind:checked={savePassword} /> Keep the password in Windows Credential Manager
+          <input type="checkbox" bind:checked={savePassword} /> Keep the {http ? "token" : "password"} in Windows Credential Manager
         </label>
       {/if}
     </div>
@@ -340,11 +395,11 @@
     <div class="mt-4 flex justify-end gap-2">
       <button type="button" class="dialog-button" onclick={onClose} disabled={busy}>Cancel</button>
       {#if save}
-        <button type="button" class="dialog-button" onclick={saveOnly} disabled={busy || host.trim() === ""}>
+        <button type="button" class="dialog-button" onclick={saveOnly} disabled={busy || !ready}>
           Save
         </button>
       {/if}
-      <button type="submit" class="dialog-button primary" disabled={busy || host.trim() === ""}>
+      <button type="submit" class="dialog-button primary" disabled={busy || !ready}>
         {busy ? "Connecting…" : "Connect"}
       </button>
     </div>

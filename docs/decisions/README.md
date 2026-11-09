@@ -36,3 +36,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0006 | [A table tab reads one page at a time, filtered, sorted and counted on the server](0006-table-browsing.md) |
 | 0007 | [Autocomplete reads its context in the core and its names from a cached catalog](0007-autocomplete.md) |
 | 0008 | [Key-value engines: a console of commands, keys by SCAN, a key read in steps](0008-key-value-engines.md) |
+| 0009 | [Cloudflare D1 through its REST API, one request per statement](0009-d1-over-http.md) |
