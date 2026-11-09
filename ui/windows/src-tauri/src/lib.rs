@@ -12,6 +12,7 @@ mod tests;
 use std::sync::Arc;
 
 use paboable_core::registry::DriverRegistry;
+use paboable_driver_mssql::MssqlDriver;
 use paboable_driver_postgres::PostgresDriver;
 use paboable_driver_sqlite::SqliteDriver;
 
@@ -21,6 +22,7 @@ fn registry() -> DriverRegistry {
     DriverRegistry::new()
         .with(Arc::new(SqliteDriver))
         .with(Arc::new(PostgresDriver))
+        .with(Arc::new(MssqlDriver))
 }
 
 pub fn run() {
