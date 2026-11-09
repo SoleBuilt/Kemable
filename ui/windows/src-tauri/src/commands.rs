@@ -9,16 +9,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use paboable_core::catalog::{ColumnInfo, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
-use paboable_core::config::{ConnectionConfig, Target};
+use paboable_core::config::{ConnectionConfig, Secret, Target};
 use paboable_core::engine::EngineInfo;
 use paboable_core::sql::{split, statement_at};
 use paboable_core::{CallOptions, DriverError};
+use paboable_storage::SavedConnection;
 use paboable_store::WindowRequest;
 use serde::Serialize;
 use tauri::State;
 use tauri::ipc::{Channel, Response};
 use tokio_util::sync::CancellationToken;
 
+use crate::library::Library;
 use crate::run::{self, Run, RunEvent, Statement};
 use crate::state::{AppState, CONNECT_TIMEOUT, OpenServer};
 
@@ -50,6 +52,11 @@ pub async fn parse_connection_url(url: String) -> CommandResult<ConnectionConfig
 
 #[tauri::command]
 pub async fn connect(state: State<'_, Arc<AppState>>, config: ConnectionConfig) -> CommandResult<OpenedConnection> {
+    let title = title_of(&config.target);
+    open_server(&state, config, title).await
+}
+
+async fn open_server(state: &AppState, config: ConnectionConfig, title: String) -> CommandResult<OpenedConnection> {
     let driver = state
         .registry
         .get(&config.engine)
@@ -58,7 +65,6 @@ pub async fn connect(state: State<'_, Arc<AppState>>, config: ConnectionConfig) 
     let first = driver
         .connect(&config, CallOptions::default().with_timeout(CONNECT_TIMEOUT))
         .await?;
-    let title = title_of(&config.target);
     let server_version = first.server_version();
     let server = Arc::new(OpenServer::new(driver, config, first));
     let opened = OpenedConnection {
@@ -70,6 +76,49 @@ pub async fn connect(state: State<'_, Arc<AppState>>, config: ConnectionConfig) 
     };
     let id = state.add_server(server);
     Ok(OpenedConnection { id, ..opened })
+}
+
+/// The saved connections, in the order they were added.
+#[tauri::command]
+pub async fn list_saved(library: State<'_, Library>) -> CommandResult<Vec<SavedConnection>> {
+    library.with(|library, _| library.list())
+}
+
+/// Saves a connection (a new one when its id is empty). `password`, when
+/// given, replaces the kept one; the file never holds it.
+#[tauri::command]
+pub async fn save_connection(
+    library: State<'_, Library>,
+    connection: SavedConnection,
+    password: Option<String>,
+) -> CommandResult<SavedConnection> {
+    library.with(|library, vault| library.save(connection, password.map(Secret::new), vault))
+}
+
+#[tauri::command]
+pub async fn delete_saved(library: State<'_, Library>, id: String) -> CommandResult<()> {
+    library.with(|library, vault| library.delete(&id, vault))
+}
+
+/// Opens a saved connection. `password` is for one saved without its
+/// password, asked for at connect time and not kept.
+#[tauri::command]
+pub async fn connect_saved(
+    state: State<'_, Arc<AppState>>,
+    library: State<'_, Library>,
+    id: String,
+    password: Option<String>,
+) -> CommandResult<OpenedConnection> {
+    let (saved, mut config) = library.with(|library, vault| library.resolve(&id, vault))?;
+    if let Some(password) = password
+        && let Target::Network { password: target, .. } = &mut config.target
+    {
+        *target = Secret::new(password);
+    }
+    let opened = open_server(&state, config, saved.name).await?;
+    // A failure to record the time is not worth failing the connection for.
+    let _ = library.with(|library, _| library.touch(&id));
+    Ok(opened)
 }
 
 fn title_of(target: &Target) -> String {

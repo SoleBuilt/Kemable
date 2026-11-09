@@ -11,7 +11,7 @@ Windows first. Each phase ends with `node scripts/verify.mjs` passing and the ap
 - [x] Windows app: open a SQLite file, schema tree, SQL editor, run statement or script, streaming canvas grid, Stop, Messages.
 - [x] PostgreSQL driver (also Neon and Supabase), with TLS and the cancel request; a connect dialog that reads a pasted URL.
 - [x] SQL Server driver, with `GO` batches and attention; Windows or SQL Server login; a connect dialog shared with PostgreSQL.
-- [ ] Connection form and saved connections; secrets in Windows Credential Manager.
+- [x] Connection form and saved connections; secrets in Windows Credential Manager.
 - [ ] Grid: range selection, copy as TSV, a cell detail pane, column sort by re-running the query.
 - [ ] Row cap as a setting (today a fixed 500,000 in `run.rs`), Run Without Limit (Ctrl+Alt+Enter), and Fetch All for a capped result.
 

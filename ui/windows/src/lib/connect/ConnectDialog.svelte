@@ -1,22 +1,38 @@
 <script lang="ts" module>
+  import type { ConnectionConfig } from "../types";
+
   /** The engines this dialog connects to over the network. */
   export type NetworkEngine = "postgres" | "mssql";
+
+  /** What Connect asks for: a saved connection by id, or a config as typed. */
+  export interface ConnectRequest {
+    config: ConnectionConfig;
+    /** The saved connection this is, when it was saved or opened for editing. */
+    savedId: string | null;
+    /** A password typed now and not kept, for a saved connection without one. */
+    password: string | null;
+    title: string;
+  }
 </script>
 
 <script lang="ts">
   import { onMount } from "svelte";
   import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
-  import type { ConnectionConfig, CoreError, TlsMode } from "../types";
+  import type { CoreError, SavedConnection, TlsMode } from "../types";
 
   interface Props {
     engine: NetworkEngine;
-    /** Connects with the form's config; resolves to the error to show, or null on success. */
-    onConnect: (config: ConnectionConfig) => Promise<CoreError | null>;
+    /** A saved connection to edit; null for a new one. */
+    saved: SavedConnection | null;
+    /** Connects; resolves to the error to show, or null on success. */
+    onConnect: (request: ConnectRequest) => Promise<CoreError | null>;
+    /** The library changed. */
+    onSaved: () => void;
     onClose: () => void;
   }
 
-  let { engine: initialEngine, onConnect, onClose }: Props = $props();
+  let { engine: initialEngine, saved, onConnect, onSaved, onClose }: Props = $props();
 
   const ENGINES: Record<NetworkEngine, { title: string; port: number; urlHint: string; hostHint: string }> = {
     postgres: {
@@ -46,6 +62,34 @@
   let tls: TlsMode = $state("prefer");
   // Query parameters from a pasted URL that the form has no field for.
   let options: Record<string, string> = $state({});
+  let name = $state("");
+  let save = $state(true);
+  let savePassword = $state(true);
+  /** The id once saved (or the one being edited), so a second save updates it. */
+  let savedId: string | null = $state(null);
+
+  // Editing a saved connection fills the form; its kept password stays kept.
+  // svelte-ignore state_referenced_locally
+  if (saved && saved.config.target.kind === "network") {
+    const target = saved.config.target;
+    if (saved.config.engine === "postgres" || saved.config.engine === "mssql") engine = saved.config.engine;
+    savedId = saved.id;
+    name = saved.name;
+    host = target.host;
+    port = target.port ? String(target.port) : "";
+    database = target.database ?? "";
+    user = target.user ?? "";
+    windowsLogin = saved.config.engine === "mssql" && !target.user;
+    tls = target.tls ?? "prefer";
+    options = { ...(saved.config.options ?? {}) };
+    savePassword = saved.savePassword;
+  }
+
+  /** A name for a connection the user did not name. */
+  function defaultName(): string {
+    const who = usesLogin && user.trim() ? `${user.trim()}@` : "";
+    return `${who}${host.trim()}${database.trim() ? `/${database.trim()}` : ""}`;
+  }
 
   let busy = $state(false);
   let error: CoreError | null = $state(null);
@@ -84,16 +128,13 @@
     }
   }
 
-  async function submit(event: SubmitEvent) {
-    event.preventDefault();
-    if (busy) return;
+  function buildConfig(): ConnectionConfig | null {
     const portNumber = port.trim() === "" ? null : Number(port);
     if (portNumber !== null && (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535)) {
       error = { code: "config.invalid", message: `${port} is not a port` };
-      return;
+      return null;
     }
-    busy = true;
-    error = await onConnect({
+    return {
       engine,
       target: {
         kind: "network",
@@ -105,7 +146,58 @@
         tls,
       },
       options,
+    };
+  }
+
+  /** Saves the form to the library; resolves to whether it worked. */
+  async function saveToLibrary(config: ConnectionConfig): Promise<boolean> {
+    try {
+      const stored = await ipc.saveConnection(
+        {
+          id: savedId ?? "",
+          name: name.trim() || defaultName(),
+          config,
+          savePassword: usesLogin && savePassword,
+          lastUsed: saved?.lastUsed ?? null,
+        },
+        usesLogin && password !== "" ? password : null,
+      );
+      savedId = stored.id;
+      name = stored.name;
+      onSaved();
+      return true;
+    } catch (caught) {
+      error = asCoreError(caught);
+      return false;
+    }
+  }
+
+  async function submit(event: SubmitEvent) {
+    event.preventDefault();
+    if (busy) return;
+    const config = buildConfig();
+    if (!config) return;
+    busy = true;
+    if (save && !(await saveToLibrary(config))) {
+      busy = false;
+      return;
+    }
+    // A saved connection connects by id, so a password left blank uses the
+    // one kept in Credential Manager.
+    error = await onConnect({
+      config,
+      savedId: save ? savedId : null,
+      password: usesLogin && password !== "" ? password : null,
+      title: name.trim() || defaultName(),
     });
+    busy = false;
+  }
+
+  async function saveOnly() {
+    const config = buildConfig();
+    if (!config || busy) return;
+    busy = true;
+    if (await saveToLibrary(config)) onClose();
     busy = false;
   }
 
@@ -117,7 +209,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[10vh]" role="presentation">
-  <form class="w-[480px] rounded-lg border border-line bg-surface p-5 shadow-xl" onsubmit={submit} aria-labelledby="connect-title">
+  <form class="w-120 rounded-lg border border-line bg-surface p-5 shadow-xl" onsubmit={submit} aria-labelledby="connect-title">
     <div class="mb-4 flex items-center gap-3">
       <h2 id="connect-title" class="text-[14px] font-semibold">Connect to</h2>
       <div class="flex rounded-md border border-line p-0.5 text-[12px]" role="radiogroup" aria-label="Database engine">
@@ -133,6 +225,11 @@
         {/each}
       </div>
     </div>
+
+    <label class="field">
+      <span>Name</span>
+      <input bind:value={name} placeholder={defaultName() || "My database"} spellcheck="false" />
+    </label>
 
     <label class="field">
       <span>URL</span>
@@ -173,7 +270,14 @@
           <span>User</span>
           <input bind:value={user} placeholder={engine === "postgres" ? "postgres" : "sa"} spellcheck="false" />
         </label>
-        <label class="field"><span>Password</span><input bind:value={password} type="password" /></label>
+        <label class="field">
+          <span>Password</span>
+          <input
+            bind:value={password}
+            type="password"
+            placeholder={savedId && saved?.savePassword ? "kept in Credential Manager" : ""}
+          />
+        </label>
       </div>
     {/if}
     <label class="field">
@@ -184,6 +288,14 @@
         {/each}
       </select>
     </label>
+    <div class="mb-3 flex flex-col gap-1.5 text-[12px]">
+      <label class="flex items-center gap-2"><input type="checkbox" bind:checked={save} /> Save this connection</label>
+      {#if save && usesLogin}
+        <label class="flex items-center gap-2 pl-5">
+          <input type="checkbox" bind:checked={savePassword} /> Keep the password in Windows Credential Manager
+        </label>
+      {/if}
+    </div>
     {#if Object.keys(options).length > 0}
       <p class="mb-3 text-[11.5px] text-muted">
         From the URL: {Object.entries(options)
@@ -201,6 +313,11 @@
 
     <div class="mt-4 flex justify-end gap-2">
       <button type="button" class="dialog-button" onclick={onClose} disabled={busy}>Cancel</button>
+      {#if save}
+        <button type="button" class="dialog-button" onclick={saveOnly} disabled={busy || host.trim() === ""}>
+          Save
+        </button>
+      {/if}
       <button type="submit" class="dialog-button primary" disabled={busy || host.trim() === ""}>
         {busy ? "Connecting…" : "Connect"}
       </button>

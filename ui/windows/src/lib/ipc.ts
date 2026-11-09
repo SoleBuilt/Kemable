@@ -11,6 +11,7 @@ import type {
   OpenedConnection,
   RunEvent,
   RunStarted,
+  SavedConnection,
   SchemaInfo,
 } from "./types";
 
@@ -21,6 +22,19 @@ export const ipc = {
   parseConnectionUrl: (url: string) => invoke<ConnectionConfig>("parse_connection_url", { url }),
 
   connect: (config: ConnectionConfig) => invoke<OpenedConnection>("connect", { config }),
+
+  /** The saved connections, in the order they were added. */
+  listSaved: () => invoke<SavedConnection[]>("list_saved"),
+
+  /** Saves a connection; `password`, when given, replaces the kept one. */
+  saveConnection: (connection: SavedConnection, password: string | null) =>
+    invoke<SavedConnection>("save_connection", { connection, password }),
+
+  deleteSaved: (id: string) => invoke<void>("delete_saved", { id }),
+
+  /** Opens a saved connection; `password` is for one saved without it. */
+  connectSaved: (id: string, password: string | null) =>
+    invoke<OpenedConnection>("connect_saved", { id, password }),
 
   disconnect: (conn: number) => invoke<void>("disconnect", { conn }),
 

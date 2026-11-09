@@ -3,6 +3,7 @@
 //! nothing; the core formats values and the UI words errors.
 
 mod commands;
+mod library;
 mod run;
 mod state;
 
@@ -15,7 +16,9 @@ use paboable_core::registry::DriverRegistry;
 use paboable_driver_mssql::MssqlDriver;
 use paboable_driver_postgres::PostgresDriver;
 use paboable_driver_sqlite::SqliteDriver;
+use tauri::Manager;
 
+use crate::library::Library;
 use crate::state::AppState;
 
 fn registry() -> DriverRegistry {
@@ -30,9 +33,19 @@ pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
+        .setup(|app| {
+            // %APPDATA%\dev.paboable.app, the folder Windows keeps per user.
+            let folder = app.path().app_data_dir()?;
+            app.manage(Library::in_folder(&folder));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::engines,
             commands::parse_connection_url,
+            commands::list_saved,
+            commands::save_connection,
+            commands::delete_saved,
+            commands::connect_saved,
             commands::connect,
             commands::disconnect,
             commands::list_databases,

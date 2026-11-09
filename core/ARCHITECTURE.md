@@ -7,6 +7,7 @@ Cargo.toml                      the workspace, at the root, with rust-toolchain.
 core/crates/
 ├── core/                       paboable-core: domain types, the driver contract, SQL splitting. No I/O.
 ├── store/                      paboable-store: columnar result sets and the packed windows a grid reads
+├── storage/                    paboable-storage: saved connections in connections.json; secrets through SecretVault
 └── drivers/
     ├── mssql/                  paboable-driver-mssql: tiberius; SQL Server, Windows or SQL Server login
     ├── postgres/               paboable-driver-postgres: tokio-postgres and rustls; PostgreSQL, Neon, Supabase
@@ -14,7 +15,7 @@ core/crates/
 ui/windows/src-tauri/           paboable-windows: the Tauri app, the only crate that names every driver
 ```
 
-Planned crates, in the order `docs/roadmap.md` gives: `drivers/redis`, `drivers/d1` (HTTP API), `drivers/rabbitmq`, `drivers/firebase`, `storage` (saved connections, history, secrets through a trait), `session` (health, reconnect), `live` (the Live tab's subscriptions).
+Planned crates, in the order `docs/roadmap.md` gives: `drivers/redis`, `drivers/d1` (HTTP API), `drivers/rabbitmq`, `drivers/firebase`, `storage` gains query history, `session` (health, reconnect), `live` (the Live tab's subscriptions).
 
 ## Dependency rules
 
@@ -22,6 +23,7 @@ Planned crates, in the order `docs/roadmap.md` gives: `drivers/redis`, `drivers/
 |---|---|
 | `core` | no workspace crate |
 | `store` | `core` |
+| `storage` | `core`. Secrets go through the `SecretVault` trait the app implements, never to the file |
 | `drivers/*` | `core` only. Never another driver, never `store`. Their tests may use `store` |
 | an app (`ui/windows/src-tauri`) | everything above |
 
