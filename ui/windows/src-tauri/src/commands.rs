@@ -127,10 +127,12 @@ pub async fn connect_saved(
     password: Option<String>,
 ) -> CommandResult<OpenedConnection> {
     let (saved, mut config) = library.with(|library, vault| library.resolve(&id, vault))?;
-    if let Some(password) = password
-        && let Target::Network { password: target, .. } = &mut config.target
-    {
-        *target = Secret::new(password);
+    if let Some(password) = password {
+        match &mut config.target {
+            Target::Network { password: target, .. } => *target = Secret::new(password),
+            Target::Http { token, .. } => *token = Secret::new(password),
+            Target::File { .. } => {}
+        }
     }
     let opened = open_server(&state, config, saved.name, Some(id.clone())).await?;
     // A failure to record the time is not worth failing the connection for.

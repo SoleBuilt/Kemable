@@ -8,6 +8,7 @@ members = [
     "core/crates/drivers/postgres",
     "core/crates/drivers/mssql",
     "core/crates/drivers/redis",
+    "core/crates/drivers/d1",
     "ui/windows/src-tauri",
 ]
 
@@ -25,6 +26,7 @@ paboable-driver-sqlite = { path = "core/crates/drivers/sqlite" }
 paboable-driver-postgres = { path = "core/crates/drivers/postgres" }
 paboable-driver-mssql = { path = "core/crates/drivers/mssql" }
 paboable-driver-redis = { path = "core/crates/drivers/redis" }
+paboable-driver-d1 = { path = "core/crates/drivers/d1" }
 
 async-trait = "0.1"
 fallible-iterator = "0.2"
@@ -41,6 +43,8 @@ tokio-rustls = { version = "0.26", default-features = false }
 rusqlite = { version = "0.41", features = ["bundled", "column_decltype"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# HTTP for D1: our own rustls config (ring, the Windows trust store), the system proxy, HTTP/1.1 only.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "system-proxy", "json", "query"] }
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-util = "0.7"

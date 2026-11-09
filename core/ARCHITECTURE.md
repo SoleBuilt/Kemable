@@ -9,6 +9,7 @@ core/crates/
 ├── store/                      paboable-store: columnar result sets and the packed windows a grid reads
 ├── storage/                    paboable-storage: saved connections in connections.json; secrets through SecretVault
 └── drivers/
+    ├── d1/                     paboable-driver-d1: Cloudflare D1 through its REST API, reqwest with rustls
     ├── mssql/                  paboable-driver-mssql: tiberius; SQL Server, Windows or SQL Server login
     ├── postgres/               paboable-driver-postgres: tokio-postgres and rustls; PostgreSQL, Neon, Supabase
     ├── redis/                  paboable-driver-redis: its own RESP2 client on tokio and rustls; Redis, Valkey
@@ -16,7 +17,7 @@ core/crates/
 ui/windows/src-tauri/           paboable-windows: the Tauri app, the only crate that names every driver
 ```
 
-Planned crates, in the order `docs/roadmap.md` gives: `drivers/d1` (HTTP API), `drivers/rabbitmq`, `drivers/firebase`, `session` (health, reconnect), `live` (the Live tab's subscriptions).
+Planned crates, in the order `docs/roadmap.md` gives: `drivers/rabbitmq`, `drivers/firebase`, `session` (health, reconnect), `live` (the Live tab's subscriptions).
 
 ## Dependency rules
 
