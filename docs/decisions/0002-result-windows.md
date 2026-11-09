@@ -24,7 +24,7 @@ A query can return millions of rows while more are still arriving. The Windows U
 ## Consequences
 
 - The window format is a contract between `window.rs` and `window.ts`. A change updates both and this file.
-- Sorting, filtering and editing a result are not designed yet. Server-side sort re-runs the query; a client-side sort will be an index over the store, kept in the core.
+- Sorting is decided in `0005-sorting-a-result.md`: the statement runs again with `ORDER BY` when the column can be named, else the core sorts the rows held through a row order over the same chunks. Filtering and editing a result are not designed yet.
 - Each result set stops at `ROW_LIMIT` (`ui/windows/src-tauri/src/run.rs`) and says so.
 
 ## Alternatives considered

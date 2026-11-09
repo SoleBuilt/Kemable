@@ -12,7 +12,8 @@ Windows first. Each phase ends with `node scripts/verify.mjs` passing and the ap
 - [x] PostgreSQL driver (also Neon and Supabase), with TLS and the cancel request; a connect dialog that reads a pasted URL.
 - [x] SQL Server driver, with `GO` batches and attention; Windows or SQL Server login; a connect dialog shared with PostgreSQL.
 - [x] Connection form and saved connections; secrets in Windows Credential Manager.
-- [ ] Grid: range selection, copy as TSV, a cell detail pane, column sort by re-running the query.
+- [ ] Grid: range selection, copy as TSV, a cell detail pane.
+- [ ] Sorting, as `docs/decisions/0005-sorting-a-result.md` decides: a table tab sorts on the server with paging; a query result runs again with `ORDER BY` when the column can be named, else the core sorts the rows held. Header click cycles ascending, descending, unsorted.
 - [ ] Row cap as a setting (today a fixed 500,000 in `run.rs`), Run Without Limit (Ctrl+Alt+Enter), and Fetch All for a capped result.
 
 ## UX backlog, from using the app

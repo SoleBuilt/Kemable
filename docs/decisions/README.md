@@ -32,3 +32,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0002 | [The core owns result sets; a grid pulls packed windows](0002-result-windows.md) |
 | 0003 | [Tauri 2 and Svelte 5 for the Windows app](0003-tauri-svelte-for-windows.md) |
 | 0004 | [How each engine is reached](0004-engines.md) |
+| 0005 | [Sorting a result: run again with ORDER BY, else sort the rows held](0005-sorting-a-result.md) |
