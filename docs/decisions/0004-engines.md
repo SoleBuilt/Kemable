@@ -13,9 +13,9 @@ The engines the author uses: SQL Server, PostgreSQL, SQLite, PGlite, Redis, Rabb
 |---|---|---|---|---|
 | SQLite | SQL | the file | `rusqlite`, bundled | Done. Interrupt on cancel |
 | Cloudflare D1, local | SQL | the file | the SQLite driver | Wrangler keeps local D1 databases as SQLite files under `.wrangler/state/v3/d1/` |
-| PostgreSQL | SQL | TCP, TLS | `tokio-postgres` with rustls | Cancel through the cancel request |
+| PostgreSQL | SQL | TCP, TLS | `tokio-postgres`, rustls with ring and the Windows trust store | Done. Two sessions per connection, editor and catalog. Binary values decoded exactly; arrays, ranges, intervals and network types as psql writes them; `timestamptz` shown in UTC. Cancel through the cancel request, also when the row cap stops a result |
 | Neon | SQL | the PostgreSQL driver | | TLS with SNI is required: the endpoint id travels in the server name. A suspended compute wakes in seconds, so the connect timeout is generous |
-| Supabase | SQL | the PostgreSQL driver | | The transaction pooler (port 6543) does not keep prepared statements: the driver uses the simple or unnamed-statement protocol there. Direct (5432) and session pooler work as plain PostgreSQL |
+| Supabase | SQL | the PostgreSQL driver | | The transaction pooler (`*.pooler.supabase.com:6543`) does not keep prepared statements: the driver sends unnamed statements there (`StatementMode::Unnamed`, or `statement_mode=unnamed` in the URL), so a result with no rows shows no columns. Direct (5432) and session pooler work as plain PostgreSQL |
 | PGlite | SQL | the PostgreSQL driver, through `@electric-sql/pglite-socket` | | PGlite runs inside Node and has no server. The app starts `pglite-server` on the database's directory as a sidecar on a loopback port, then connects as PostgreSQL. PGlite serves one connection at a time, and the directory must not be open in the user's own app at the same time |
 | SQL Server | SQL | TCP, TLS | `tiberius` | Batches split at `GO` lines. Cancel through a TDS attention |
 | Cloudflare D1, remote | SQL | HTTPS | `reqwest` | `POST /accounts/{account}/d1/database/{id}/query` with an API token. No session: each request is its own transaction |

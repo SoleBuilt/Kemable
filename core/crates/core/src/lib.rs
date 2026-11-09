@@ -7,6 +7,7 @@ pub mod call;
 pub mod catalog;
 pub mod config;
 pub mod connection;
+pub mod connection_url;
 pub mod driver;
 pub mod engine;
 pub mod error;

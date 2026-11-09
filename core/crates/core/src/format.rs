@@ -22,6 +22,7 @@ pub fn write_display(value: &Value, out: &mut String) {
         Value::Int(value) => push_display(out, value),
         Value::UInt(value) => push_display(out, value),
         Value::Float(value) => write_float(*value, out),
+        Value::Float32(value) => write_float32(*value, out),
         Value::Decimal(text) | Value::Text(text) | Value::Json(text) | Value::Other(text) => out.push_str(text),
         Value::Uuid(bytes) => write_uuid(bytes, out),
         Value::Date(days) => write_date(i64::from(*days), out),
@@ -67,6 +68,16 @@ fn write_float(value: f64, out: &mut String) {
         out.push_str(if value > 0.0 { "Infinity" } else { "-Infinity" });
     } else {
         // Rust's Display for f64 is the shortest text that round-trips.
+        push_display(out, &value);
+    }
+}
+
+fn write_float32(value: f32, out: &mut String) {
+    if value.is_nan() {
+        out.push_str("NaN");
+    } else if value.is_infinite() {
+        out.push_str(if value > 0.0 { "Infinity" } else { "-Infinity" });
+    } else {
         push_display(out, &value);
     }
 }
@@ -197,6 +208,16 @@ mod tests {
         assert_eq!(display(&Value::Float(1e300)), format!("{}", 1e300));
         assert_eq!(display(&Value::Float(f64::NAN)), "NaN");
         assert_eq!(display(&Value::Float(f64::NEG_INFINITY)), "-Infinity");
+    }
+
+    #[test]
+    fn single_precision_floats_print_their_own_shortest_text() {
+        assert_eq!(display(&Value::Float32(0.1)), "0.1");
+        assert_eq!(
+            display(&Value::Float32(-3.4e38)),
+            "-340000000000000000000000000000000000000"
+        );
+        assert_eq!(display(&Value::Float32(f32::INFINITY)), "Infinity");
     }
 
     #[test]

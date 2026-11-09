@@ -22,10 +22,17 @@ export const Kind = {
   Timestamp: 12,
   TimestampTz: 13,
   Other: 14,
+  Float32: 15,
 } as const;
 
 export function isNumericKind(kind: number): boolean {
-  return kind === Kind.Int || kind === Kind.UInt || kind === Kind.Float || kind === Kind.Decimal;
+  return (
+    kind === Kind.Int ||
+    kind === Kind.UInt ||
+    kind === Kind.Float ||
+    kind === Kind.Float32 ||
+    kind === Kind.Decimal
+  );
 }
 
 const decoder = new TextDecoder();

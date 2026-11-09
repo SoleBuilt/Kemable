@@ -8,11 +8,12 @@ core/crates/
 ├── core/                       paboable-core: domain types, the driver contract, SQL splitting. No I/O.
 ├── store/                      paboable-store: columnar result sets and the packed windows a grid reads
 └── drivers/
+    ├── postgres/               paboable-driver-postgres: tokio-postgres and rustls; PostgreSQL, Neon, Supabase
     └── sqlite/                 paboable-driver-sqlite: rusqlite, SQLite compiled in
 ui/windows/src-tauri/           paboable-windows: the Tauri app, the only crate that names every driver
 ```
 
-Planned crates, in the order `docs/roadmap.md` gives: `drivers/postgres` (tokio-postgres; also Neon, Supabase and PGlite through pglite-socket), `drivers/mssql` (tiberius), `drivers/redis`, `drivers/d1` (HTTP API), `drivers/rabbitmq`, `drivers/firebase`, `storage` (saved connections, history, secrets through a trait), `session` (health, reconnect), `live` (the Live tab's subscriptions).
+Planned crates, in the order `docs/roadmap.md` gives: `drivers/mssql` (tiberius), `drivers/redis`, `drivers/d1` (HTTP API), `drivers/rabbitmq`, `drivers/firebase`, `storage` (saved connections, history, secrets through a trait), `session` (health, reconnect), `live` (the Live tab's subscriptions).
 
 ## Dependency rules
 

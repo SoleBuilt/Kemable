@@ -259,6 +259,7 @@ pub(crate) fn kind_from_u8(byte: u8) -> ValueKind {
         12 => ValueKind::Timestamp,
         13 => ValueKind::TimestampTz,
         14 => ValueKind::Other,
+        15 => ValueKind::Float32,
         _ => ValueKind::Null,
     }
 }

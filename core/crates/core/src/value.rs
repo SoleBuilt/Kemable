@@ -12,6 +12,8 @@ pub enum Value {
     Int(i64),
     UInt(u64),
     Float(f64),
+    /// A single-precision float, kept as one so it prints its own shortest text.
+    Float32(f32),
     /// Exact decimal text as the engine wrote it, so no digit is lost.
     Decimal(String),
     Text(String),
@@ -55,6 +57,7 @@ pub enum ValueKind {
     Timestamp = 12,
     TimestampTz = 13,
     Other = 14,
+    Float32 = 15,
 }
 
 impl ValueKind {
@@ -64,7 +67,10 @@ impl ValueKind {
 
     /// Whether a grid aligns the value to the right.
     pub const fn is_numeric(self) -> bool {
-        matches!(self, Self::Int | Self::UInt | Self::Float | Self::Decimal)
+        matches!(
+            self,
+            Self::Int | Self::UInt | Self::Float | Self::Float32 | Self::Decimal
+        )
     }
 }
 
@@ -76,6 +82,7 @@ impl Value {
             Self::Int(_) => ValueKind::Int,
             Self::UInt(_) => ValueKind::UInt,
             Self::Float(_) => ValueKind::Float,
+            Self::Float32(_) => ValueKind::Float32,
             Self::Decimal(_) => ValueKind::Decimal,
             Self::Text(_) => ValueKind::Text,
             Self::Json(_) => ValueKind::Json,
@@ -103,6 +110,7 @@ impl Value {
             Self::Int(value) => *value,
             Self::UInt(value) => i64::from_ne_bytes(value.to_ne_bytes()),
             Self::Float(value) => i64::from_ne_bytes(value.to_bits().to_ne_bytes()),
+            Self::Float32(value) => i64::from(value.to_bits()),
             Self::Date(days) => i64::from(*days),
             Self::Time(micros) | Self::Timestamp(micros) | Self::TimestampTz { micros, .. } => *micros,
             Self::Uuid(_) => 16,
