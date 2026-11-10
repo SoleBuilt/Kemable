@@ -39,6 +39,8 @@
     NewValue,
     ObjectInfo,
     OpenedConnection,
+    ResultFilter,
+    ResultWhere,
     RunEvent,
     SavedConnection,
     SavedQuery,
@@ -92,6 +94,17 @@
     sortedBy: "server" | "core" | null;
     /** For a set the server sorted: the statement it was written from, run again for "unsorted". */
     original: string | null;
+    /** The filter on the rows held (docs/decisions/0011-filtering-a-result.md); `totalRows` is then the rows shown. */
+    filter: ResultFilterView | null;
+  }
+
+  interface ResultFilterView {
+    conditions: Condition[];
+    matchAny: boolean;
+    /** The rows the result holds; the filter shows some of them. */
+    held: number;
+    /** The filter as a WHERE to copy, when the engine writes SQL. */
+    where: ResultWhere | null;
   }
 
   type Message =
@@ -580,6 +593,9 @@
     if (density) grid?.reload();
   }
 
+  /** Each result tab's filter as the run began, for the set that takes its place. */
+  let carriedFilters: ({ conditions: Condition[]; matchAny: boolean } | null)[] = [];
+
   /** The last run, for Fetch All. */
   let lastRun: { request: RunRequest; database: string | null } | null = null;
   /** A sort that runs the statement again: its keys go to the set that run starts. */
@@ -602,6 +618,7 @@
     }
     pageRun = overrides.tablePage === true;
     if (!pageRun && onTablePage) return;
+    carriedFilters = pageRun || keyView ? [] : sets.map((set) => (set.filter ? { conditions: set.filter.conditions, matchAny: set.filter.matchAny } : null));
     keyView = null;
     clearResults();
     statements = [];
@@ -722,7 +739,9 @@
       case "statementStarted":
         statements[event.index] = event.text;
         break;
-      case "setStarted":
+      case "setStarted": {
+        const carried = carriedFilters[sets.length];
+        if (carried) void filterSet(event.result, carried.conditions, carried.matchAny);
         if (pageRun && tableTab) {
           const tab = tableTab;
           const sort = tab.sort.flatMap((key) => {
@@ -744,14 +763,22 @@
             sort: pendingSort?.keys ?? [],
             sortedBy: pendingSort ? "server" : null,
             original: pendingSort?.original ?? null,
+            filter: null,
           },
         ];
         break;
+      }
       case "rows":
-        updateSet(event.result, { totalRows: event.total });
+        if (sets.find((set) => set.result === event.result)?.filter) refreshCounts(event.result);
+        else updateSet(event.result, { totalRows: event.total });
         break;
       case "setFinished":
-        updateSet(event.result, { totalRows: event.total, finished: true, limited: event.limited });
+        if (sets.find((set) => set.result === event.result)?.filter) {
+          updateSet(event.result, { finished: true, limited: event.limited });
+          refreshCounts(event.result);
+        } else {
+          updateSet(event.result, { totalRows: event.total, finished: true, limited: event.limited });
+        }
         break;
       case "commandDone":
         messages.push({ kind: "command", statement: event.statement, rowsAffected: event.rowsAffected });
@@ -932,6 +959,50 @@
     }
   }
 
+  /** Filters the rows result `result` holds, in the core; the statement does not run again. */
+  async function filterSet(result: number, conditions: Condition[], matchAny: boolean) {
+    const open = connection;
+    if (!open) return;
+    const filters: ResultFilter[] = conditions.flatMap((condition) =>
+      condition.op === "raw" ? [] : [{ column: condition.column, op: condition.op, value: condition.value, second: condition.second }],
+    );
+    try {
+      const counts = await ipc.filterResult(result, filters, matchAny);
+      let where: ResultWhere | null = null;
+      if (filters.length > 0 && open.engine.sqlGrammar) {
+        where = await ipc.resultWhere(open.id, result, filters, matchAny).catch(() => null);
+      }
+      updateSet(result, {
+        totalRows: counts.shownRows,
+        filter: counts.filtered ? { conditions, matchAny, held: counts.totalRows, where } : null,
+      });
+      if (activeResult === result) grid?.reload();
+    } catch (caught) {
+      note(`Not filtered: ${asCoreError(caught).message}`);
+    }
+  }
+
+  function applyResultFilter(conditions: Condition[], matchAny: boolean) {
+    const set = activeSet;
+    if (set && !running) void filterSet(set.result, conditions, matchAny);
+  }
+
+  /** A filtered set streaming in: run events count the rows held, so the rows shown are asked for. */
+  function refreshCounts(result: number) {
+    ipc.resultCounts(result).then(
+      (counts) => {
+        const set = sets.find((candidate) => candidate.result === result);
+        if (set?.filter) updateSet(result, { totalRows: counts.shownRows, filter: { ...set.filter, held: counts.totalRows } });
+      },
+      () => {},
+    );
+  }
+
+  function copyWhere() {
+    const where = activeSet?.filter?.where;
+    if (where?.sql) copyText(where.sql, "the WHERE");
+  }
+
   /** Reads a key into the results, up to the row cap unless `unlimited`. */
   async function openKey(name: string, unlimited = false) {
     if (!connection || running) return;
@@ -953,6 +1024,7 @@
             sort: [],
             sortedBy: null,
             original: null,
+            filter: null,
           },
         ];
         activeTab = 0;
@@ -1378,7 +1450,7 @@
     } else if (ctrl && event.shiftKey && key === "d") {
       event.preventDefault();
       if (!saving) saveFromEditor();
-    } else if (ctrl && key === "f" && tableTab) {
+    } else if (ctrl && key === "f" && (tableTab || (activeSet && !keyValue && !running))) {
       // The editor's own Ctrl+F (search) prevents the default, so it never gets here.
       event.preventDefault();
       if (!filtersOpen) void toggleFilters();
@@ -1823,7 +1895,7 @@
                   >
                     Result {index + 1}
                     {#if set.limited}
-                      <span class="pb-badge pb-badge--sm pb-badge--warning">{numberFormat.format(set.totalRows)}+</span>
+                      <span class="pb-badge pb-badge--sm pb-badge--warning">{numberFormat.format(set.filter?.held ?? set.totalRows)}+</span>
                     {:else}
                       <span class="pb-count">{numberFormat.format(set.totalRows)}</span>
                     {/if}
@@ -1834,6 +1906,18 @@
                 </button>
               </div>
               <span class="pb-spacer"></span>
+              {#if activeSet && !keyValue}
+                {@const filtered = activeSet.filter}
+                <button
+                  class="pb-btn pb-btn--ghost pb-btn--sm"
+                  class:is-open={filtersOpen}
+                  aria-pressed={filtersOpen}
+                  disabled={running}
+                  data-tip="Filter the rows held  Ctrl+F"
+                  onclick={() => void toggleFilters()}
+                  ><Icon name="filter" />Filter{#if filtered}<span class="pb-badge pb-badge--sm">{filtered.conditions.length}</span>{/if}</button
+                >
+              {/if}
               <button
                 class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon"
                 class:is-open={detailOpen}
@@ -1844,6 +1928,32 @@
                 onclick={() => (detailOpen = !detailOpen)}><Icon name="pane" /></button
               >
             </div>
+            {#if filtersOpen && activeSet && !keyValue}
+              {@const set = activeSet}
+              {#key set.result}
+                <FilterRow
+                  bind:this={filterRow}
+                  columns={set.columns.map((meta) => meta.name)}
+                  conditions={set.filter?.conditions ?? []}
+                  matchAny={set.filter?.matchAny ?? false}
+                  busy={running}
+                  onApply={(conditions, matchAny) => void applyResultFilter(conditions, matchAny)}
+                />
+              {/key}
+              {#if set.filter?.where?.sql}
+                {@const where = set.filter.where}
+                <div class="pb-where">
+                  <span class="pb-where-label" data-tip-start="" data-tip="For your own SQL; Paboable filters the rows held and never runs it">To filter on the server</span>
+                  <span class="pb-where-sql">{where.sql}</span>
+                  {#if where.leftOut.length > 0}
+                    <span class="pb-badge pb-badge--sm pb-badge--warning" data-tip-end="" data-tip="A column whose name is empty or shared cannot be named in SQL"
+                      >{where.leftOut.length} left out</span
+                    >
+                  {/if}
+                  <button class="pb-btn pb-btn--ghost pb-btn--sm" data-tip-end="" data-tip="Copy the WHERE" onclick={copyWhere}><Icon name="copy" />Copy WHERE</button>
+                </div>
+              {/if}
+            {/if}
           </div>
         {/if}
 
@@ -1968,9 +2078,14 @@
               >{/if}</span
           >
         {:else}
-          <span>{numberFormat.format(activeSet.totalRows)} rows{activeSet.finished ? "" : " so far"}</span>
+          {#if activeSet.filter}
+            <span>{numberFormat.format(activeSet.totalRows)} of {numberFormat.format(activeSet.filter.held)} rows held</span>
+          {:else}
+            <span>{numberFormat.format(activeSet.totalRows)} rows{activeSet.finished ? "" : " so far"}</span>
+          {/if}
           {#if activeSet.limited}
-            <span class="pb-badge pb-badge--warning"><span class="pb-badge-dot"></span>Stopped at {numberFormat.format(activeSet.totalRows)} rows</span>
+            <span class="pb-badge pb-badge--warning"><span class="pb-badge-dot"></span>Stopped at {numberFormat.format(activeSet.filter?.held ?? activeSet.totalRows)} rows</span>
+            {#if activeSet.filter}<span>the filter covers only the rows loaded</span>{/if}
             <button class="pb-btn pb-btn--link" disabled={running} onclick={fetchAll}>Fetch all</button>
           {/if}
           {#if activeSet.sortedBy === "server"}<span>sorted by the server</span>{/if}
