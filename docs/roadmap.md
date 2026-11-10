@@ -26,6 +26,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 - [x] **Switch database without the connect dialog.** A database picker in the toolbar and Ctrl+K, reusing the saved credentials. Agreed 2026-11-09.
 - [x] **Run and Run all are easy to confuse.** Ctrl+Enter / ▶ Run runs only the statement under the cursor. Label it "Run statement", flash the range that ran, and say "Ran 1 of 4 statements" in the status bar, so running one statement of a script is never mistaken for running all of it.
 - [x] **Sidebar refresh.** A refresh button and Ctrl+R on the object tree, besides the refresh after a run that changed the schema.
+- [ ] **Filter a query result.** The table tab's filter row on the result bar, filtering the rows the result holds in the core, with the `WHERE` shown to copy and "120 of 1,000 rows held" in the status bar; "Open <table> to edit" when the result comes from one table. Decided 2026-11-10: `docs/decisions/0011-filtering-a-result.md`. Core and commands built (`ResultStore::filter`, `sql::result_where`, `filter_result`, `result_where`); the UI is not.
 
 ## Phase 2: daily use
 

@@ -38,3 +38,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0008 | [Key-value engines: a console of commands, keys by SCAN, a key read in steps](0008-key-value-engines.md) |
 | 0009 | [Cloudflare D1 through its REST API, one request per statement](0009-d1-over-http.md) |
 | 0010 | [Editing rows: statements shown before they run, saved all or none](0010-editing-rows.md) |
+| 0011 | [A query result is filtered on the rows it holds; its WHERE is shown to copy](0011-filtering-a-result.md) |

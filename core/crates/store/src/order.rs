@@ -81,13 +81,35 @@ pub(crate) fn compare(a: SortCell<'_>, b: SortCell<'_>) -> Ordering {
         (Text(x), Text(y)) => natural(x, y),
         (Bytes(x), Bytes(y)) => x.cmp(y),
         (Decimal(x), Decimal(y)) => decimal_text(x, y),
-        (Decimal(x), Int(y)) => decimal_text(x, &y.to_string()),
-        (Int(x), Decimal(y)) => decimal_text(&x.to_string(), y),
-        (Decimal(x), UInt(y)) => decimal_text(x, &y.to_string()),
-        (UInt(x), Decimal(y)) => decimal_text(&x.to_string(), y),
+        (Decimal(x), Int(y)) => integer_text(i128::from(y), |y| decimal_text(x, y)),
+        (Int(x), Decimal(y)) => integer_text(i128::from(x), |x| decimal_text(x, y)),
+        (Decimal(x), UInt(y)) => integer_text(i128::from(y), |y| decimal_text(x, y)),
+        (UInt(x), Decimal(y)) => integer_text(i128::from(x), |x| decimal_text(x, y)),
         (Float(_), _) | (_, Float(_)) if a.class() == 2 && b.class() == 2 => float(as_f64(a), as_f64(b)),
         _ => a.class().cmp(&b.class()),
     }
+}
+
+/// An integer's decimal text, written on the stack: a filter compares every
+/// cell with its value, and a heap string per cell would cost more than the
+/// comparison.
+fn integer_text<R>(value: i128, then: impl FnOnce(&str) -> R) -> R {
+    let mut digits = [0u8; 40];
+    let mut at = digits.len();
+    let mut rest = value.unsigned_abs();
+    loop {
+        at -= 1;
+        digits[at] = b'0' + u8::try_from(rest % 10).unwrap_or(0);
+        rest /= 10;
+        if rest == 0 {
+            break;
+        }
+    }
+    if value < 0 {
+        at -= 1;
+        digits[at] = b'-';
+    }
+    then(std::str::from_utf8(&digits[at..]).unwrap_or("0"))
 }
 
 fn as_f64(cell: SortCell<'_>) -> f64 {
@@ -130,6 +152,12 @@ pub(crate) fn decimal_text(a: &str, b: &str) -> Ordering {
         (false, false) => x.magnitude(&y),
         (true, true) => y.magnitude(&x),
     }
+}
+
+/// Whether `text` is a decimal the order compares exactly: digits with an
+/// optional sign and point, no exponent.
+pub(crate) fn is_decimal(text: &str) -> bool {
+    Decimal::parse(text).is_some()
 }
 
 struct Decimal<'a> {
@@ -257,6 +285,20 @@ mod tests {
         assert!(matches!(sorted[3], SortCell::Decimal("9.5")));
         assert!(matches!(sorted[4], SortCell::Int(10)));
         assert!(matches!(sorted[5], SortCell::Float(value) if value.is_nan()));
+    }
+
+    #[test]
+    fn integers_compare_exactly_with_decimals_at_their_limits() {
+        assert_eq!(
+            compare(SortCell::Int(i64::MIN), SortCell::Decimal("-9223372036854775808.5")),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare(SortCell::UInt(u64::MAX), SortCell::Decimal("18446744073709551615.0")),
+            Ordering::Equal
+        );
+        assert_eq!(compare(SortCell::Decimal("-0.5"), SortCell::Int(0)), Ordering::Less);
+        assert_eq!(compare(SortCell::Decimal("10"), SortCell::Int(9)), Ordering::Greater);
     }
 
     #[test]

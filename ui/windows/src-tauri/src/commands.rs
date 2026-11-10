@@ -15,8 +15,9 @@ use paboable_core::engine::{DataModel, EngineInfo};
 use paboable_core::keys::{KeyDetail, KeyPage, KeyScan};
 use paboable_core::sink::ResultSink;
 use paboable_core::sql::{
-    BrowseQuery, Clause, CompletionItem, NewValue, RowEdit, SortColumn, SqlGrammar, completion_context, completions,
-    count_statement, edit_statement, page_statement, sorted_statement, split, statement_at,
+    BrowseQuery, Clause, CompletionItem, NewValue, ResultFilter, ResultWhere, RowEdit, SortColumn, SqlGrammar,
+    completion_context, completions, count_statement, edit_statement, page_statement, sorted_statement, split,
+    statement_at,
 };
 use paboable_core::value::Value;
 use paboable_core::{CallOptions, DriverError};
@@ -317,7 +318,9 @@ pub enum SortOutcome {
 
 /// Sorts a result as `docs/decisions/0005-sorting-a-result.md` decides: its
 /// statement again with ORDER BY when that is safe, else the rows it holds.
-/// No keys clears a sort the core made.
+/// While a filter is on, always the rows held, the filtered ones
+/// (`docs/decisions/0011-filtering-a-result.md`). No keys clears a sort the
+/// core made.
 #[tauri::command]
 pub async fn sort_result(
     state: State<'_, Arc<AppState>>,
@@ -326,6 +329,7 @@ pub async fn sort_result(
 ) -> CommandResult<SortOutcome> {
     let store = state.result(result)?;
     if !keys.is_empty()
+        && !store.state().filtered
         && let Some(origin) = state.origin(result).filter(|origin| origin.alone)
     {
         let names: Vec<String> = store.columns().iter().map(|column| column.name.clone()).collect();
@@ -362,6 +366,82 @@ pub async fn sort_result(
     Ok(SortOutcome::Sorted {
         limited: store.state().limited,
     })
+}
+
+/// What a result shows under its filter
+/// (`docs/decisions/0011-filtering-a-result.md`).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultCounts {
+    /// The rows the filter keeps; every row held when no filter is on.
+    shown_rows: u64,
+    /// The rows the result holds.
+    total_rows: u64,
+    filtered: bool,
+    /// The result stopped at its row limit: the filter covers only the rows loaded.
+    limited: bool,
+}
+
+impl ResultCounts {
+    fn of(store: &ResultStore) -> Self {
+        let state = store.state();
+        Self {
+            shown_rows: state.shown_rows,
+            total_rows: state.total_rows,
+            filtered: state.filtered,
+            limited: state.limited,
+        }
+    }
+}
+
+/// Filters the rows a result holds, in the core, never by running its
+/// statement again. No filters clears the filter; a core sort stays.
+#[tauri::command]
+pub async fn filter_result(
+    state: State<'_, Arc<AppState>>,
+    result: u64,
+    filters: Vec<ResultFilter>,
+    match_any: bool,
+) -> CommandResult<ResultCounts> {
+    let store = state.result(result)?;
+    // A million rows take a moment to test: keep them off the async workers.
+    let filtering = Arc::clone(&store);
+    tauri::async_runtime::spawn_blocking(move || filtering.filter(&filters, match_any))
+        .await
+        .map_err(|error| DriverError::internal(error.to_string()))??;
+    Ok(ResultCounts::of(&store))
+}
+
+/// The counts of a result while it streams under a filter: run events count
+/// the rows held, not the rows shown.
+#[tauri::command]
+pub async fn result_counts(state: State<'_, Arc<AppState>>, result: u64) -> CommandResult<ResultCounts> {
+    let store = state.result(result)?;
+    Ok(ResultCounts::of(&store))
+}
+
+/// A result's filter as a `WHERE` for the connection's engine, to copy;
+/// Paboable never runs it.
+#[tauri::command]
+pub async fn result_where(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    result: u64,
+    filters: Vec<ResultFilter>,
+    match_any: bool,
+) -> CommandResult<ResultWhere> {
+    let grammar = state
+        .server(conn)?
+        .engine
+        .sql_grammar
+        .ok_or_else(|| DriverError::unsupported("this engine does not run SQL"))?;
+    let names: Vec<String> = state
+        .result(result)?
+        .columns()
+        .iter()
+        .map(|column| column.name.clone())
+        .collect();
+    paboable_core::sql::result_where(grammar, &names, &filters, match_any)
 }
 
 /// The query history, newest first, filtered by text and connection.

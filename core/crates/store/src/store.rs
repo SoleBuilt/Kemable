@@ -1,9 +1,12 @@
-use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use paboable_core::DriverError;
 use paboable_core::catalog::ColumnMeta;
 use paboable_core::format::{hex_preview, write_display};
+use paboable_core::sql::ResultFilter;
 use paboable_core::value::{Value, ValueKind};
 
+use crate::filter::{RowFilter, Scratch};
 use crate::order::{SortCell, compare};
 use crate::window::{self, WindowRequest};
 
@@ -22,11 +25,19 @@ pub struct ResultStore {
     columns: Vec<ColumnMeta>,
     row_limit: Option<u64>,
     inner: RwLock<Inner>,
+    /// Held while a filter or a sort builds its row order, so two of them
+    /// never build from each other's half.
+    arranging: Mutex<()>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreState {
+    /// The rows the set holds.
     pub total_rows: u64,
+    /// The rows windows show: those a filter keeps, else every row held.
+    pub shown_rows: u64,
+    /// A filter is on (`ResultStore::filter`).
+    pub filtered: bool,
     pub finished: bool,
     /// The set stopped at the row limit with rows still unread.
     pub limited: bool,
@@ -74,10 +85,14 @@ pub(crate) struct Inner {
     pub(crate) total_rows: u64,
     pub(crate) finished: bool,
     pub(crate) limited: bool,
-    /// The sorted order: display row `i` is stored row `order[i]`. Rows that
-    /// arrived after the sort follow in arrival order.
-    pub(crate) order: Option<Arc<Vec<u64>>>,
+    /// The rows shown, in order: display row `i` is stored row `order[i]`.
+    /// Without a filter, rows that arrived after the sort follow in arrival
+    /// order; with one, it lists every row shown, the late ones that match
+    /// appended as they arrive.
+    pub(crate) order: Option<Vec<u64>>,
     pub(crate) sort_keys: Vec<SortKey>,
+    /// Set only together with `order`.
+    pub(crate) filter: Option<Arc<RowFilter>>,
 }
 
 /// One key of a sort: a column, and its direction.
@@ -151,18 +166,30 @@ impl ColumnChunk {
 }
 
 impl Inner {
-    /// The stored row a display row shows: itself, unless the set is sorted.
-    pub(crate) fn physical(&self, row: u64) -> u64 {
-        self.order
+    /// How many rows windows show.
+    pub(crate) fn shown_rows(&self) -> u64 {
+        match (&self.filter, &self.order) {
+            (Some(_), Some(order)) => order.len() as u64,
+            _ => self.total_rows,
+        }
+    }
+
+    /// The stored row a display row shows: itself, unless the set is sorted
+    /// or filtered. `None` past the rows shown.
+    pub(crate) fn physical(&self, row: u64) -> Option<u64> {
+        if row >= self.shown_rows() {
+            return None;
+        }
+        let ordered = self
+            .order
             .as_ref()
-            .and_then(|order| usize::try_from(row).ok().and_then(|index| order.get(index)))
-            .copied()
-            .unwrap_or(row)
+            .and_then(|order| usize::try_from(row).ok().and_then(|index| order.get(index)));
+        Some(ordered.copied().unwrap_or(row))
     }
 
     /// The chunk and index that hold display row `row`.
     pub(crate) fn locate_display(&self, row: u64) -> Option<(usize, usize)> {
-        self.locate(self.physical(row))
+        self.locate(self.physical(row)?)
     }
 
     /// The chunk that holds stored row `row`, and the row's index inside it.
@@ -197,6 +224,7 @@ impl ResultStore {
             columns,
             row_limit,
             inner: RwLock::new(Inner::default()),
+            arranging: Mutex::new(()),
         }
     }
 
@@ -226,6 +254,10 @@ impl ResultStore {
             return false;
         }
         let mut scratch = String::new();
+        // Rows arriving under a filter are tested as they come, so a filter
+        // set while a result streams keeps applying to it.
+        let filter = inner.filter.clone();
+        let mut tests = Scratch::default();
         for row in values.chunks_exact(width) {
             if self.row_limit.is_some_and(|limit| inner.total_rows >= limit) {
                 inner.limited = true;
@@ -235,8 +267,16 @@ impl ResultStore {
             for (column, value) in chunk.columns.iter_mut().zip(row) {
                 column.push(value, &mut scratch);
             }
+            let local = chunk.rows;
             chunk.rows += 1;
+            let kept = filter
+                .as_ref()
+                .is_some_and(|filter| filter.matches(chunk, local, &mut tests));
+            let stored = inner.total_rows;
             inner.total_rows += 1;
+            if kept && let Some(order) = inner.order.as_mut() {
+                order.push(stored);
+            }
         }
         true
     }
@@ -249,6 +289,8 @@ impl ResultStore {
         let inner = self.read();
         StoreState {
             total_rows: inner.total_rows,
+            shown_rows: inner.shown_rows(),
+            filtered: inner.filter.is_some(),
             finished: inner.finished,
             limited: inner.limited,
         }
@@ -300,8 +342,9 @@ impl ResultStore {
     /// more than [`MAX_COPY_CELLS`] cells.
     pub fn copy_tsv(&self, range: CellRange, headers: bool) -> Option<String> {
         let inner = self.read();
-        let first_row = range.first_row.min(inner.total_rows);
-        let rows = range.row_count.min(inner.total_rows - first_row);
+        let shown = inner.shown_rows();
+        let first_row = range.first_row.min(shown);
+        let rows = range.row_count.min(shown - first_row);
         let first_column = range.first_column.min(self.columns.len());
         let columns = range.column_count.min(self.columns.len() - first_column);
         if rows.saturating_mul(columns as u64) > MAX_COPY_CELLS {
@@ -324,55 +367,111 @@ impl ResultStore {
 }
 
 impl ResultStore {
-    /// Sorts the rows held by `keys` (`order` module), or clears the sort
-    /// when `keys` is empty. The rows stay where they are: windows read
-    /// through the new order. Holds the read lock while it sorts, so rows
-    /// arriving meanwhile wait, and are not in the order.
+    /// Sorts the rows shown by `keys` (`order` module), or clears the sort
+    /// when `keys` is empty. With a filter on, it sorts the rows the filter
+    /// keeps. The rows stay where they are: windows read through the new
+    /// order. Rows arriving while it sorts are not in the sort: they follow
+    /// in arrival order.
     pub fn sort(&self, keys: &[SortKey]) {
-        let order = if keys.is_empty() {
-            None
-        } else {
-            let inner = self.read();
-            let keys: Vec<SortKey> = keys
-                .iter()
-                .copied()
-                .filter(|key| key.column < self.columns.len())
-                .collect();
-            let cell = |row: u64, column: usize| -> SortCell<'_> {
-                match inner.locate(row) {
-                    Some((chunk, local)) => {
-                        let data = &inner.chunks[chunk].columns[column];
-                        SortCell::read(
-                            data.kinds[local],
-                            data.raw[local],
-                            data.bytes(local),
-                            data.is_null(local),
-                        )
-                    }
-                    None => SortCell::Null,
-                }
-            };
-            let mut rows: Vec<u64> = (0..inner.total_rows).collect();
-            rows.sort_by(|&a, &b| {
-                keys.iter()
-                    .map(|key| {
-                        let order = compare(cell(a, key.column), cell(b, key.column));
-                        if key.descending { order.reverse() } else { order }
-                    })
-                    .find(|order| order.is_ne())
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-            Some(Arc::new(rows))
-        };
-        let mut inner = self.write();
-        inner.sort_keys = if order.is_some() { keys.to_vec() } else { Vec::new() };
-        inner.order = order;
+        self.arrange(None, Some(keys.to_vec()));
     }
 
     /// The keys the set is sorted by; empty when it shows arrival order.
     pub fn sort_keys(&self) -> Vec<SortKey> {
         self.read().sort_keys.clone()
     }
+
+    /// Shows only the rows held that match `filters`, all of them or, with
+    /// `match_any`, any (`filter` module for how a value compares), then
+    /// sorts them by the sort already set. No filters shows every row again,
+    /// still sorted. Rows arriving later are tested as they arrive. Refused
+    /// with `filter.raw` or `filter.invalid`, the filter in place unchanged
+    /// (`paboable_core::sql::ResultFilter::check`).
+    pub fn filter(&self, filters: &[ResultFilter], match_any: bool) -> Result<(), DriverError> {
+        let filter = RowFilter::compile(filters, match_any, self.columns.len())?;
+        self.arrange(Some(filter.map(Arc::new)), None);
+        Ok(())
+    }
+
+    /// Builds and sets the row order for a filter and a sort; `None` keeps
+    /// the one set. The order is built under the read lock, so windows keep
+    /// reading meanwhile, and set under the write lock with the rows that
+    /// arrived in between tested then.
+    fn arrange(&self, filter: Option<Option<Arc<RowFilter>>>, keys: Option<Vec<SortKey>>) {
+        let _arranging = self.arranging.lock().unwrap_or_else(PoisonError::into_inner);
+        let (filter, keys, mut order, covered) = {
+            let inner = self.read();
+            let filter = filter.unwrap_or_else(|| inner.filter.clone());
+            let keys = keys.unwrap_or_else(|| inner.sort_keys.clone());
+            let mut rows = match &filter {
+                Some(filter) => kept_rows(&inner, filter),
+                None if keys.is_empty() => Vec::new(),
+                None => (0..inner.total_rows).collect(),
+            };
+            sort_rows(&inner, &mut rows, &keys, self.columns.len());
+            let order = (filter.is_some() || !keys.is_empty()).then_some(rows);
+            (filter, keys, order, inner.total_rows)
+        };
+        let mut inner = self.write();
+        if let (Some(filter), Some(order)) = (&filter, order.as_mut()) {
+            let mut scratch = Scratch::default();
+            for stored in covered..inner.total_rows {
+                if let Some((chunk, local)) = inner.locate(stored)
+                    && filter.matches(&inner.chunks[chunk], local, &mut scratch)
+                {
+                    order.push(stored);
+                }
+            }
+        }
+        inner.order = order;
+        inner.filter = filter;
+        inner.sort_keys = keys;
+    }
+}
+
+/// The stored rows `filter` keeps, in arrival order.
+fn kept_rows(inner: &Inner, filter: &RowFilter) -> Vec<u64> {
+    let mut rows = Vec::new();
+    let mut scratch = Scratch::default();
+    for (chunk, start) in inner.chunks.iter().zip(&inner.starts) {
+        for local in 0..chunk.rows {
+            if filter.matches(chunk, local, &mut scratch) {
+                rows.push(start + local as u64);
+            }
+        }
+    }
+    rows
+}
+
+/// Sorts stored rows by `keys`, stably; keys past the last column are skipped.
+fn sort_rows(inner: &Inner, rows: &mut [u64], keys: &[SortKey], width: usize) {
+    let keys: Vec<SortKey> = keys.iter().copied().filter(|key| key.column < width).collect();
+    if keys.is_empty() {
+        return;
+    }
+    let cell = |row: u64, column: usize| -> SortCell<'_> {
+        match inner.locate(row) {
+            Some((chunk, local)) => {
+                let data = &inner.chunks[chunk].columns[column];
+                SortCell::read(
+                    data.kinds[local],
+                    data.raw[local],
+                    data.bytes(local),
+                    data.is_null(local),
+                )
+            }
+            None => SortCell::Null,
+        }
+    };
+    rows.sort_by(|&a, &b| {
+        keys.iter()
+            .map(|key| {
+                let order = compare(cell(a, key.column), cell(b, key.column));
+                if key.descending { order.reverse() } else { order }
+            })
+            .find(|order| order.is_ne())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
 /// The most cells one copy takes, so selecting everything in a huge result

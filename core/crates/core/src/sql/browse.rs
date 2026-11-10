@@ -10,6 +10,7 @@
 use serde::Deserialize;
 
 use super::literal::typed as literal;
+use super::result_filter::in_items;
 use super::{SqlGrammar, StatementKind, quote_name as ident, split, table_name};
 use crate::catalog::TableRef;
 use crate::error::DriverError;
@@ -150,7 +151,7 @@ fn push_where(sql: &mut String, grammar: SqlGrammar, query: &BrowseQuery) -> Res
     Ok(())
 }
 
-fn condition(grammar: SqlGrammar, filter: &Filter) -> Result<String, DriverError> {
+pub(super) fn condition(grammar: SqlGrammar, filter: &Filter) -> Result<String, DriverError> {
     let column = if filter.op == FilterOp::Raw {
         String::new()
     } else if filter.column.is_empty() {
@@ -191,13 +192,7 @@ fn condition(grammar: SqlGrammar, filter: &Filter) -> Result<String, DriverError
             false,
         ),
         FilterOp::In => {
-            let items: Vec<String> = filter
-                .value
-                .split(',')
-                .map(str::trim)
-                .filter(|item| !item.is_empty())
-                .map(|item| literal(grammar, item))
-                .collect();
+            let items: Vec<String> = in_items(&filter.value).map(|item| literal(grammar, item)).collect();
             if items.is_empty() {
                 return Err(DriverError::config("an IN filter needs at least one value"));
             }

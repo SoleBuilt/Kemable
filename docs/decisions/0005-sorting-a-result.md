@@ -1,6 +1,6 @@
 # 0005: A sort runs the statement again with ORDER BY when it can name the column, else the core sorts the rows held
 
-- **Status**: Accepted
+- **Status**: Accepted; amended by `docs/decisions/0011-filtering-a-result.md` (while a filter is on, a sort sorts the rows held)
 - **Date**: 2026-11-09
 - **Follows**: `docs/decisions/0002-result-windows.md` (result sets held in the core).
 

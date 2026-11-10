@@ -320,3 +320,34 @@ export interface EditRequest {
   deletes: number[];
   inserts: CellEdit[][];
 }
+
+/** A condition on a query result's rows (docs/decisions/0011-filtering-a-result.md): the table tab's, without `raw`. */
+export type ResultFilterOp = Exclude<FilterOp, "raw">;
+
+/** One condition on a query result. `column` is the column's index: two columns can share a name. */
+export interface ResultFilter {
+  column: number;
+  op: ResultFilterOp;
+  value: string;
+  /** The upper end of `between`. */
+  second: string;
+}
+
+/** What a result shows under its filter. */
+export interface ResultCounts {
+  /** The rows the filter keeps; every row held when no filter is on. */
+  shownRows: number;
+  /** The rows the result holds. */
+  totalRows: number;
+  filtered: boolean;
+  /** The result stopped at its row limit: the filter covers only the rows loaded. */
+  limited: boolean;
+}
+
+/** A result's filter as a WHERE clause to copy, never run. */
+export interface ResultWhere {
+  /** `WHERE ...` without a trailing `;`; empty when no condition could be written. */
+  sql: string;
+  /** Indexes into the filters of the conditions left out: their column's name is empty or shared. */
+  leftOut: number[];
+}

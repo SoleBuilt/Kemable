@@ -9,7 +9,7 @@
 //! | 0 | u32 | magic `PBW1` |
 //! | 4 | u32 | header length, 64 |
 //! | 8 | u64 | first row |
-//! | 16 | u64 | rows the set held when the window was read |
+//! | 16 | u64 | rows the set showed when the window was read: those its filter keeps, else every row held |
 //! | 24 | u32 | row count |
 //! | 28 | u32 | first column |
 //! | 32 | u32 | column count |
@@ -51,7 +51,7 @@ pub struct WindowRequest {
 }
 
 pub(crate) fn pack(columns: &[ColumnMeta], inner: &Inner, request: WindowRequest) -> Vec<u8> {
-    let total = inner.total_rows;
+    let total = inner.shown_rows();
     let first_row = request.first_row.min(total);
     let rows = usize::try_from((total - first_row).min(u64::from(request.row_count))).unwrap_or(0);
     let first_column = (request.first_column as usize).min(columns.len());

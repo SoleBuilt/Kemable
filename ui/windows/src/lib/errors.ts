@@ -15,6 +15,8 @@ const TITLES: Record<string, string> = {
   "driver.unsupported": "Not supported by this database",
   not_found: "That item is no longer open",
   "edit.row_gone": "A row being saved is no longer there; nothing was saved",
+  "filter.raw": "A SQL condition can filter a table, not a query result",
+  "filter.invalid": "This filter needs a column of the result and a value",
   internal: "Something went wrong inside Paboable",
 };
 

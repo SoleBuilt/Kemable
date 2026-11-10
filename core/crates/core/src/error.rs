@@ -31,6 +31,14 @@ pub enum ErrorCode {
     /// the row is gone, or the key is not unique. Nothing was saved.
     #[serde(rename = "edit.row_gone")]
     RowGone,
+    /// A filter on a result's rows was a SQL condition, which only a server
+    /// can read (`docs/decisions/0011-filtering-a-result.md`).
+    #[serde(rename = "filter.raw")]
+    FilterRaw,
+    /// A filter on a result's rows named no column of the result, or gave an
+    /// `in` with no values.
+    #[serde(rename = "filter.invalid")]
+    FilterInvalid,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -50,6 +58,8 @@ impl ErrorCode {
             Self::Unsupported => "driver.unsupported",
             Self::NotFound => "not_found",
             Self::RowGone => "edit.row_gone",
+            Self::FilterRaw => "filter.raw",
+            Self::FilterInvalid => "filter.invalid",
             Self::Internal => "internal",
         }
     }

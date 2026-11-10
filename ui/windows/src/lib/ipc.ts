@@ -18,6 +18,9 @@ import type {
   KeyScan,
   ObjectInfo,
   OpenedConnection,
+  ResultCounts,
+  ResultFilter,
+  ResultWhere,
   RunEvent,
   RunStarted,
   SavedConnection,
@@ -170,6 +173,21 @@ export const ipc = {
   rowValues: (result: number, row: number) => invoke<(string | null)[]>("row_values", { result, row }),
 
   releaseResult: (result: number) => invoke<void>("release_result", { result }),
+
+  /**
+   * Filters the rows a result holds, in the core; the statement never runs
+   * again. No filters clears it; a core sort stays. Windows, copies and row
+   * reads then go through the filter: row numbers are rows shown.
+   */
+  filterResult: (result: number, filters: ResultFilter[], matchAny: boolean) =>
+    invoke<ResultCounts>("filter_result", { result, filters, matchAny }),
+
+  /** The rows a result shows and holds; run events count only the rows held. */
+  resultCounts: (result: number) => invoke<ResultCounts>("result_counts", { result }),
+
+  /** A result's filter as a WHERE for the connection's engine, to copy. */
+  resultWhere: (conn: number, result: number, filters: ResultFilter[], matchAny: boolean) =>
+    invoke<ResultWhere>("result_where", { conn, result, filters, matchAny }),
 };
 
 export function asCoreError(error: unknown): CoreError {
