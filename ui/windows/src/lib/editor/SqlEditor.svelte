@@ -58,21 +58,41 @@
   ]);
 
   const theme = EditorView.theme({
-    "&": { height: "100%", backgroundColor: "var(--surface)", color: "var(--text)", fontSize: "13px" },
+    "&": { height: "100%", backgroundColor: "var(--canvas)", color: "var(--fg)", fontSize: "13px" },
     "&.cm-focused": { outline: "none" },
-    ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.55" },
+    ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "20px" },
     ".cm-content": { caretColor: "var(--accent)" },
     ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
-    ".cm-gutters": { backgroundColor: "var(--surface)", color: "var(--text-muted)", border: "none" },
+    ".cm-gutters": { backgroundColor: "var(--canvas)", color: "var(--fg-faint)", border: "none" },
     ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "var(--active-line)" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
       backgroundColor: "var(--selection) !important",
     },
-    ".cm-tooltip": { backgroundColor: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)" },
-    ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
-      backgroundColor: "var(--accent)",
-      color: "var(--accent-text)",
+    ".cm-tooltip": {
+      backgroundColor: "var(--raised)",
+      border: "none",
+      borderRadius: "var(--radius-md)",
+      boxShadow: "var(--shadow-popover)",
+      color: "var(--fg)",
+      overflow: "hidden",
     },
+    ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
+      backgroundColor: "var(--selection)",
+      color: "var(--fg)",
+    },
+    // The statement behind the result shown: a thin frame and a faint tint, behind the text (D23).
+    ".cm-stmt": { backgroundColor: "var(--muted)", boxShadow: "inset 1px 0 var(--input), inset -1px 0 var(--input)" },
+    ".cm-stmt.cm-stmt-first": {
+      boxShadow: "inset 1px 0 var(--input), inset -1px 0 var(--input), inset 0 1px var(--input)",
+      borderTopLeftRadius: "var(--radius-sm)",
+      borderTopRightRadius: "var(--radius-sm)",
+    },
+    ".cm-stmt.cm-stmt-last": {
+      boxShadow: "inset 1px 0 var(--input), inset -1px 0 var(--input), inset 0 -1px var(--input)",
+      borderBottomLeftRadius: "var(--radius-sm)",
+      borderBottomRightRadius: "var(--radius-sm)",
+    },
+    ".cm-stmt.cm-stmt-first.cm-stmt-last": { boxShadow: "inset 0 0 0 1px var(--input)" },
   });
 
   /** CodeMirror's icon for each kind of name. */
@@ -201,12 +221,57 @@
     ranTimer = setTimeout(() => view?.dispatch({ effects: setRan.of([]) }), 1400);
   }
 
-  onMount(() => {
-    view = new EditorView({
-      parent: host,
-      state: EditorState.create({
-        doc: initial,
-        extensions: [
+  // The statement a result tab came from, framed while that tab is shown.
+  const setFrame = StateEffect.define<{ from: number; to: number } | null>();
+  const frameField = StateField.define<DecorationSet>({
+    create: () => Decoration.none,
+    update(lines, transaction) {
+      let next = lines.map(transaction.changes);
+      for (const effect of transaction.effects) {
+        if (!effect.is(setFrame)) continue;
+        const range = effect.value;
+        if (!range || range.to <= range.from) {
+          next = Decoration.none;
+          continue;
+        }
+        const doc = transaction.state.doc;
+        const first = doc.lineAt(range.from).number;
+        // A statement's range ends after its last character, which may sit at the start of the next line.
+        const last = doc.lineAt(Math.max(range.from, range.to - 1)).number;
+        const marks = [];
+        for (let number = first; number <= last; number++) {
+          const classes = ["cm-stmt", number === first ? "cm-stmt-first" : "", number === last ? "cm-stmt-last" : ""];
+          marks.push(Decoration.line({ class: classes.join(" ").trim() }).range(doc.line(number).from));
+        }
+        next = Decoration.set(marks);
+      }
+      return next;
+    },
+    provide: (field) => EditorView.decorations.from(field),
+  });
+
+  /** Frames the statement at `range` (UTF-8 bytes into `request.sql`), or clears the frame. */
+  export function frame(request: RunRequest | null, range: ByteRange | null): void {
+    if (!view) return;
+    if (!request || !range) {
+      view.dispatch({ effects: setFrame.of(null) });
+      return;
+    }
+    const bytes = encoder.encode(request.sql);
+    const units = (byte: number) => decoder.decode(bytes.subarray(0, byte)).length;
+    const length = view.state.doc.length;
+    view.dispatch({
+      effects: setFrame.of({
+        from: Math.min(length, request.origin + units(range.start)),
+        to: Math.min(length, request.origin + units(range.end)),
+      }),
+    });
+  }
+
+  function makeState(doc: string): EditorState {
+    return EditorState.create({
+      doc,
+      extensions: [
           Prec.highest(
             keymap.of([
               { key: "Mod-Enter", run: () => run("statement") },
@@ -222,9 +287,28 @@
           EditorState.languageData.of(() => [{ autocomplete: catalogNames }]),
           theme,
           ranField,
+          frameField,
         ],
-      }),
     });
+  }
+
+  /**
+   * One editor serves every query tab: a tab keeps its own state (text, selection,
+   * undo history) while another is shown (docs/decisions/0013-pages-and-tabs.md).
+   */
+  export function saveState(): EditorState | null {
+    return view?.state ?? null;
+  }
+
+  /** Shows `state` (a tab's saved one), or a fresh empty editor when null. */
+  export function restoreState(state: EditorState | null): void {
+    if (!view) return;
+    view.setState(state ?? makeState(""));
+    view.dispatch({ effects: language.reconfigure(languageFor(grammar, plain)) });
+  }
+
+  onMount(() => {
+    view = new EditorView({ parent: host, state: makeState(initial) });
     return () => view?.destroy();
   });
 

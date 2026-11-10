@@ -3,6 +3,7 @@
   import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
   import type { CoreError, SavedQuery } from "../types";
+  import Icon from "../ui/Icon.svelte";
 
   interface Props {
     /** The query to edit, or a new one with its SQL filled in. */
@@ -48,42 +49,39 @@
   }}
 />
 
-<div class="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[12vh]" role="presentation">
-  <form class="w-130 rounded-lg border border-line bg-surface p-5 shadow-xl" onsubmit={submit}>
-    <h2 class="mb-4 text-[14px] font-semibold">{query.id ? "Edit saved query" : "Save query"}</h2>
-    <label class="mb-3 flex flex-col gap-1 text-[12px]">
-      <span class="text-muted">Name</span>
-      <input
-        bind:this={nameInput}
-        bind:value={name}
-        required
-        class="h-7 rounded border border-line bg-surface px-2 outline-none select-text focus:border-accent"
-        spellcheck="false"
-      />
-    </label>
-    <label class="mb-3 flex flex-col gap-1 text-[12px]">
-      <span class="text-muted">SQL</span>
-      <textarea
-        bind:value={sql}
-        rows="8"
-        class="rounded border border-line bg-surface p-2 font-mono outline-none select-text focus:border-accent"
-        spellcheck="false"
-      ></textarea>
-    </label>
-    <label class="mb-3 flex items-center gap-2 text-[12px]">
-      <input type="checkbox" bind:checked={everywhere} disabled={connectionId === null} />
-      Show it for every connection
-      {#if connectionId === null}<span class="text-muted">(this connection is not saved)</span>{/if}
-    </label>
-    {#if error}
-      <div class="mb-3 text-[12px]">
-        <span class="font-semibold text-danger">{errorTitle(error)}</span>
-        <span class="text-muted">{error.message}</span>
-      </div>
-    {/if}
-    <div class="flex justify-end gap-2">
-      <button type="button" class="toolbar-button" onclick={onClose} disabled={busy}>Cancel</button>
-      <button type="submit" class="toolbar-button font-semibold text-accent" disabled={busy || name.trim() === ""}>Save</button>
+<div class="pb-overlay pb-overlay--fixed" role="presentation">
+  <form class="pb-dialog" style="width: 560px" onsubmit={submit} aria-labelledby="save-query-title">
+    <div class="pb-dialog-head">
+      <h2 class="pb-dialog-title" id="save-query-title">{query.id ? "Edit saved query" : "Save query"}</h2>
+      <button type="button" class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Close" data-tip-end="" data-tip="Close  Esc" onclick={onClose}
+        ><Icon name="x" /></button
+      >
+    </div>
+    <div class="pb-dialog-body">
+      <label class="pb-field">
+        <span class="pb-label">Name</span>
+        <input class="pb-input" bind:this={nameInput} bind:value={name} required spellcheck="false" />
+      </label>
+      <label class="pb-field">
+        <span class="pb-label">SQL</span>
+        <textarea class="pb-input pb-mono pb-textarea" bind:value={sql} rows="8" spellcheck="false"></textarea>
+        <span class="pb-hint">The editor's selection, or all of its text when nothing is selected.</span>
+      </label>
+      <label class="pb-check">
+        <input type="checkbox" bind:checked={everywhere} disabled={connectionId === null} />
+        Show it for every connection{#if connectionId === null}<span class="pb-meta">&nbsp;(this connection is not saved)</span>{/if}
+      </label>
+      {#if error}
+        <div class="pb-info pb-info--danger" role="alert">
+          <Icon name="error" />
+          <div class="pb-info-text"><span class="pb-info-title">{errorTitle(error)}</span><span class="pb-info-msg">{error.message}</span></div>
+        </div>
+      {/if}
+    </div>
+    <div class="pb-dialog-foot">
+      <span class="pb-spacer"></span>
+      <button type="button" class="pb-btn pb-btn--ghost" onclick={onClose} disabled={busy}>Cancel</button>
+      <button type="submit" class="pb-btn pb-btn--primary" disabled={busy || name.trim() === ""} data-tip-end="" data-tip="Save  Enter">Save</button>
     </div>
   </form>
 </div>

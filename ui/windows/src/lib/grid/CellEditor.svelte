@@ -65,7 +65,7 @@
 </script>
 
 <div
-  class="absolute z-20 flex border-2 border-accent bg-surface shadow-lg"
+  class="pb-cell-editor"
   style:left="{box.left}px"
   style:top="{box.top}px"
   style:min-width="{Math.max(box.width, 160)}px"
@@ -78,15 +78,16 @@
     onkeydown={onKeydown}
     onblur={() => commit(isNull ? null : text, null)}
     rows={Math.min(8, Math.max(1, text.split("\n").length))}
-    class="min-w-0 flex-1 resize-none bg-surface px-1.5 py-0.5 font-mono text-[12px] leading-[18px] outline-none select-text"
+    class="pb-cell-editor-input"
     placeholder={isNull ? "NULL" : ""}
     spellcheck="false"
     aria-label="Cell value"
   ></textarea>
   <button
     type="button"
-    class="shrink-0 px-1.5 text-[10.5px] text-muted hover:text-fg"
-    title="Set NULL (Ctrl+Shift+N)"
+    class="pb-btn pb-btn--ghost pb-btn--sm pb-cell-editor-null"
+    data-tip-end=""
+    data-tip="Set NULL  Ctrl+Shift+N"
     onmousedown={(event) => event.preventDefault()}
     onclick={() => commit(null, "down")}>NULL</button
   >

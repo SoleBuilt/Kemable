@@ -2,6 +2,7 @@
   import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
   import type { CoreError, HistoryEntry } from "../types";
+  import Icon from "../ui/Icon.svelte";
 
   interface Props {
     /** The connection's title: the list shows its entries, or every entry. */
@@ -10,9 +11,11 @@
     refreshKey: number;
     onInsert: (sql: string) => void;
     onRun: (entry: HistoryEntry) => void;
+    /** How many entries are loaded, for the pane's header. */
+    onCount?: (count: number) => void;
   }
 
-  let { connection, refreshKey, onInsert, onRun }: Props = $props();
+  let { connection, refreshKey, onInsert, onRun, onCount }: Props = $props();
 
   const PAGE = 100;
 
@@ -36,6 +39,7 @@
       entries = append ? [...entries, ...page] : page;
       more = page.length === PAGE;
       error = null;
+      onCount?.(entries.length);
     } catch (caught) {
       error = asCoreError(caught);
     }
@@ -56,6 +60,7 @@
   async function remove(entry: HistoryEntry) {
     await ipc.historyDelete(entry.id);
     entries = entries.filter((other) => other.id !== entry.id);
+    onCount?.(entries.length);
   }
 
   async function clearAll() {
@@ -73,67 +78,60 @@
   }
 </script>
 
-<div class="flex h-full flex-col text-[12px]">
-  <div class="flex flex-col gap-1.5 border-b border-line p-2">
-    <input
-      class="h-7 w-full rounded border border-line bg-surface px-2 outline-none select-text placeholder:text-muted focus:border-accent"
-      placeholder="Search history"
-      spellcheck="false"
-      bind:value={text}
-      oninput={search}
-    />
-    <div class="flex items-center gap-2 text-[11.5px] text-muted">
-      <label class="flex items-center gap-1"><input type="checkbox" bind:checked={onlyThis} /> This connection</label>
-      <span class="ml-auto">
-        {#if confirmClear}
-          Clear all?
-          <button class="rounded px-1 text-danger hover:bg-surface" onclick={clearAll}>Yes</button>
-          <button class="rounded px-1 hover:bg-surface" onclick={() => (confirmClear = false)}>No</button>
-        {:else}
-          <button class="rounded px-1 hover:bg-surface-3 hover:text-fg" onclick={() => (confirmClear = true)}>Clear</button>
-        {/if}
-      </span>
-    </div>
-  </div>
-
-  <div class="min-h-0 flex-1 overflow-auto">
-    {#if error}
-      <div class="px-3 py-2">
-        <div class="font-semibold text-danger">{errorTitle(error)}</div>
-        <div class="text-[11.5px] wrap-break-word text-muted">{error.message}</div>
-      </div>
-    {/if}
+<div class="pb-search">
+  <Icon name="search" />
+  <input placeholder="Find in history" aria-label="Find in history" spellcheck="false" bind:value={text} oninput={search} />
+</div>
+<div class="pb-side-tools">
+  <label class="pb-check"><input type="checkbox" bind:checked={onlyThis} /> This connection</label>
+  <span class="pb-spacer"></span>
+  {#if confirmClear}
+    <span class="pb-meta">Clear it all?</span>
+    <button class="pb-btn pb-btn--ghost pb-btn--sm is-danger" onclick={clearAll}>Clear</button>
+    <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => (confirmClear = false)}>Keep</button>
+  {:else}
+    <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => (confirmClear = true)}>Clear</button>
+  {/if}
+</div>
+<div class="pb-side-body">
+  {#if error}
+    <div class="pb-tree-error"><span class="pb-tree-error-title">{errorTitle(error)}</span><span>{error.message}</span></div>
+  {/if}
+  <div class="pb-list">
     {#each entries as entry (entry.id)}
-      <div class="group border-b border-line/60 px-2 py-1.5 hover:bg-surface-3">
-        <button
-          class="block w-full text-left"
-          title={`${entry.statement}\n\nDouble-click to insert it in the editor`}
-          ondblclick={() => onInsert(entry.statement)}
-        >
-          <span class="block truncate font-mono">{firstLine(entry.statement)}</span>
-          <span class="flex gap-2 text-[11px] text-muted">
-            <span class:text-danger={entry.outcome === "failed"}>
-              {entry.outcome === "succeeded" ? "✓" : entry.outcome === "failed" ? "✕" : "■"}
-            </span>
-            <span>{time.format(entry.ranAt)}</span>
-            <span>{number.format(entry.durationMs)} ms</span>
-            {#if entry.rows !== null}<span>{number.format(entry.rows)} rows</span>{/if}
-            {#if entry.database}<span class="truncate">{entry.database}</span>{/if}
+      <div class="pb-list-entry">
+        <button class="pb-list-item" data-tip-start="" data-tip="Double-click to put it in the editor" ondblclick={() => onInsert(entry.statement)}>
+          <span class="pb-list-line">
+            {#if entry.outcome === "succeeded"}
+              <Icon name="check-circle" size="sm" class="pb-ok" />
+            {:else if entry.outcome === "failed"}
+              <Icon name="error" size="sm" class="pb-bad" />
+            {:else}
+              <Icon name="stop" size="sm" class="pb-muted" />
+            {/if}
+            <span class="pb-meta pb-num">{time.format(entry.ranAt)}</span>
           </span>
+          <span class="pb-code-line">{firstLine(entry.statement)}</span>
+          <span class="pb-meta"
+            >{[entry.database, `${number.format(entry.durationMs)} ms`, entry.rows === null ? null : `${number.format(entry.rows)} rows`]
+              .filter(Boolean)
+              .join(" · ")}</span
+          >
         </button>
-        <span class="hidden gap-1 pt-1 text-[11px] group-focus-within:flex group-hover:flex">
-          <button class="rounded px-1.5 hover:bg-surface hover:text-accent" onclick={() => onInsert(entry.statement)}>Insert</button>
-          <button class="rounded px-1.5 hover:bg-surface hover:text-accent" onclick={() => onRun(entry)}>Run</button>
-          <button class="ml-auto rounded px-1.5 text-muted hover:bg-surface hover:text-danger" onclick={() => remove(entry)}
-            >Delete</button
+        <span class="pb-list-actions">
+          <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => onInsert(entry.statement)}>Insert</button>
+          <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => onRun(entry)}><Icon name="play" />Run</button>
+          <span class="pb-spacer"></span>
+          <button class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Delete from the history" onclick={() => remove(entry)}
+            ><Icon name="trash" /></button
           >
         </span>
       </div>
     {:else}
-      {#if !error}<div class="p-3 text-muted">No queries yet. What you run from the editor shows here.</div>{/if}
+      {#if !error}<p class="pb-side-hint">No queries yet. What you run from the editor shows here.</p>{/if}
     {/each}
     {#if more}
-      <button class="w-full py-2 text-accent hover:bg-surface-3" onclick={() => load(true)}>Load more</button>
+      <button class="pb-btn pb-btn--link" style="margin: 8px 12px" onclick={() => load(true)}>Load more</button>
     {/if}
   </div>
 </div>

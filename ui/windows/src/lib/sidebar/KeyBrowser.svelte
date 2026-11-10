@@ -3,6 +3,8 @@
   import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
   import type { CoreError, KeyInfo, KeyKind } from "../types";
+  import Combobox from "../ui/Combobox.svelte";
+  import Icon from "../ui/Icon.svelte";
 
   interface Props {
     conn: number;
@@ -12,32 +14,34 @@
     /** The key open in the results, to mark it. */
     openKey: string | null;
     onOpen: (key: KeyInfo) => void;
+    /** Whether a scan is going, for the pane header's spinning icon. */
+    onBusy?: (busy: boolean) => void;
   }
 
-  let { conn, database, refreshKey, openKey, onOpen }: Props = $props();
+  let { conn, database, refreshKey, openKey, onOpen, onBusy }: Props = $props();
 
   /** Keys gathered per click: SCAN steps are a hint, and a step may find none. */
   const WANTED = 200;
   /** Steps per click at most, so a pattern that matches nothing still returns. */
   const MAX_STEPS = 50;
 
-  const KINDS: { kind: KeyKind | null; label: string }[] = [
-    { kind: null, label: "All types" },
-    { kind: "string", label: "String" },
-    { kind: "hash", label: "Hash" },
-    { kind: "list", label: "List" },
-    { kind: "set", label: "Set" },
-    { kind: "sortedSet", label: "Sorted set" },
-    { kind: "stream", label: "Stream" },
+  const KINDS: { value: KeyKind | null; label: string }[] = [
+    { value: null, label: "All types" },
+    { value: "string", label: "String" },
+    { value: "hash", label: "Hash" },
+    { value: "list", label: "List" },
+    { value: "set", label: "Set" },
+    { value: "sortedSet", label: "Sorted set" },
+    { value: "stream", label: "Stream" },
   ];
   const BADGES: Record<KeyKind, string> = {
-    string: "STR",
-    hash: "HASH",
-    list: "LIST",
-    set: "SET",
-    sortedSet: "ZSET",
-    stream: "XADD",
-    other: "?",
+    string: "string",
+    hash: "hash",
+    list: "list",
+    set: "set",
+    sortedSet: "zset",
+    stream: "stream",
+    other: "other",
   };
 
   let pattern = $state("");
@@ -65,6 +69,7 @@
       done = false;
     }
     loading = true;
+    onBusy?.(true);
     error = null;
     let found: KeyInfo[] = [];
     let at = cursor;
@@ -82,7 +87,10 @@
     } catch (caught) {
       if (mine === generation) error = asCoreError(caught);
     } finally {
-      if (mine === generation) loading = false;
+      if (mine === generation) {
+        loading = false;
+        onBusy?.(false);
+      }
     }
   }
 
@@ -101,68 +109,59 @@
   });
 
   function ttl(ms: number | null): string {
-    if (ms === null) return "";
+    if (ms === null) return "no expiry";
     const seconds = Math.ceil(ms / 1000);
-    if (seconds < 120) return `${seconds} s`;
-    if (seconds < 7200) return `${Math.round(seconds / 60)} min`;
-    if (seconds < 172_800) return `${Math.round(seconds / 3600)} h`;
-    return `${Math.round(seconds / 86_400)} d`;
+    if (seconds < 120) return `expires in ${seconds} s`;
+    if (seconds < 7200) return `expires in ${Math.round(seconds / 60)} min`;
+    if (seconds < 172_800) return `expires in ${Math.round(seconds / 3600)} h`;
+    return `expires in ${Math.round(seconds / 86_400)} days`;
   }
 
   const numberFormat = new Intl.NumberFormat();
 </script>
 
-<div class="flex h-full flex-col text-[12px]">
-  <div class="flex flex-col gap-1.5 border-b border-line p-2">
-    <input
-      class="h-7 w-full rounded border border-line bg-surface px-2 font-mono outline-none select-text placeholder:font-sans placeholder:text-muted focus:border-accent"
-      placeholder="Filter keys: text, or a glob like user:*"
-      spellcheck="false"
-      bind:value={pattern}
-      onkeydown={(event) => {
-        if (event.key === "Enter") void scan(true);
-      }}
-    />
-    <div class="flex items-center gap-2">
-      <select class="h-6 rounded border border-line bg-surface px-1 text-[11.5px]" bind:value={kind} aria-label="Key type">
-        {#each KINDS as choice (choice.label)}
-          <option value={choice.kind}>{choice.label}</option>
-        {/each}
-      </select>
-      <span class="ml-auto text-[11.5px] text-muted">
-        {numberFormat.format(keys.length)}{done ? "" : "+"} keys
-      </span>
-      <button class="rounded px-1.5 text-[11.5px] hover:bg-surface-3" onclick={() => scan(true)} disabled={loading} title="Scan again (Ctrl+R)"
-        >↻</button
-      >
-    </div>
-  </div>
-
-  <div class="min-h-0 flex-1 overflow-auto py-1">
-    {#if error}
-      <div class="px-3 py-2">
-        <div class="font-semibold text-danger">{errorTitle(error)}</div>
-        <div class="text-[11.5px] wrap-break-word text-muted">{error.message}</div>
-      </div>
-    {/if}
+<div class="pb-search">
+  <Icon name="search" />
+  <input
+    class="pb-mono"
+    placeholder="Text, or a glob like user:*"
+    aria-label="Key pattern"
+    spellcheck="false"
+    bind:value={pattern}
+    onkeydown={(event) => {
+      if (event.key === "Enter") void scan(true);
+    }}
+  />
+  {#if database !== null}<span class="pb-badge pb-badge--sm pb-badge--outline">db {database}</span>{/if}
+</div>
+<div class="pb-side-tools">
+  <Combobox label="Key type" small width={128} options={KINDS} value={kind} onPick={(value) => (kind = value)} />
+</div>
+<div class="pb-side-body">
+  {#if error}
+    <div class="pb-tree-error"><span class="pb-tree-error-title">{errorTitle(error)}</span><span>{error.message}</span></div>
+  {/if}
+  <div class="pb-list">
     {#each keys as key (key.name)}
-      <button
-        class="flex w-full items-center gap-2 px-2 py-0.5 text-left hover:bg-surface-3"
-        class:bg-surface-3={openKey === key.name}
-        onclick={() => onOpen(key)}
-        title={key.name}
-      >
-        <span class="w-9 shrink-0 rounded bg-surface px-1 text-center text-[10px] font-semibold text-muted">{BADGES[key.kind]}</span>
-        <span class="min-w-0 flex-1 truncate font-mono">{key.name}</span>
-        {#if key.ttlMs !== null}<span class="shrink-0 text-[10.5px] text-muted" title="Expires in">{ttl(key.ttlMs)}</span>{/if}
+      <button class="pb-list-item" class:is-selected={openKey === key.name} onclick={() => onOpen(key)}>
+        <span class="pb-list-line"
+          ><span class="pb-badge pb-badge--sm pb-badge--outline pb-key-kind">{BADGES[key.kind]}</span><span class="pb-list-name pb-mono"
+            >{key.name}</span
+          ></span
+        >
+        <span class="pb-meta pb-key-meta">{ttl(key.ttlMs)}</span>
       </button>
     {:else}
-      {#if !loading && !error}<div class="p-3 text-muted">No keys match.</div>{/if}
+      {#if !loading && !error}<p class="pb-side-hint">No keys match.</p>{/if}
     {/each}
-    {#if loading}
-      <div class="px-3 py-2 text-muted">Scanning…</div>
-    {:else if !done}
-      <button class="w-full py-2 text-accent hover:bg-surface-3" onclick={() => scan(false)}>Load more</button>
-    {/if}
   </div>
+</div>
+<div class="pb-side-foot">
+  {#if loading}
+    <span>Scanning…</span>
+  {:else}
+    <span>{numberFormat.format(keys.length)}{done ? "" : "+"} keys</span>
+    <span class="pb-spacer"></span>
+    {#if !done}<button class="pb-btn pb-btn--link" onclick={() => scan(false)}>Scan more</button>{/if}
+  {/if}
 </div>

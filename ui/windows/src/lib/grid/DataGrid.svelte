@@ -107,6 +107,6 @@
 <style>
   .grid-scroller {
     scrollbar-width: thin;
-    scrollbar-color: var(--surface-3) transparent;
+    scrollbar-color: var(--scroll-thumb) transparent;
   }
 </style>

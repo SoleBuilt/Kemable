@@ -9,8 +9,14 @@
 import type { ColumnMeta } from "../types";
 import { isNumericKind, ResultWindow } from "./window";
 
-export const ROW_HEIGHT = 24;
-export const HEADER_HEIGHT = 28;
+/** A row: 28px, or 24px in the compact density Settings offers (docs/decisions/0012-design-system.md, D9). */
+export let ROW_HEIGHT = 28;
+export const HEADER_HEIGHT = 32;
+
+/** Sets the row height for every grid; the owner redraws after. */
+export function setCompactRows(compact: boolean): void {
+  ROW_HEIGHT = compact ? 24 : 28;
+}
 const BLOCK_ROWS = 128;
 const MAX_CHARS = 300;
 const MAX_BLOCKS = 96;
@@ -22,8 +28,10 @@ const RESIZE_HANDLE = 4;
 // position is scaled onto the rows.
 const MAX_SCROLL_PIXELS = 16_000_000;
 
-const FONT = '12px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
-const HEADER_FONT = '600 12px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
+const FAMILY = '"Geist Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
+const FONT = `13px ${FAMILY}`;
+const NULL_FONT = `italic 13px ${FAMILY}`;
+const HEADER_FONT = `550 12px ${FAMILY}`;
 
 export interface GridSource {
   result: number;
@@ -102,16 +110,16 @@ interface Selection {
 
 interface Theme {
   surface: string;
-  surface2: string;
+  header: string;
   border: string;
   text: string;
   muted: string;
   accent: string;
   selection: string;
   line: string;
-  stripe: string;
   edited: string;
   deleted: string;
+  added: string;
 }
 
 export interface Cell {
@@ -423,10 +431,13 @@ export class GridEngine {
     }
     this.ensureBlocks(firstRow, endRow);
 
-    // Stripes.
-    context.fillStyle = theme.stripe;
-    for (let row = firstRow; row < endRow; row++) {
-      if (row % 2 === 1) context.fillRect(this.gutterWidth, firstY + (row - firstRow) * ROW_HEIGHT, width, ROW_HEIGHT);
+    // New rows, tinted across (no stripes: the lines both ways separate rows, D7).
+    if (this.edits) {
+      const right = Math.min(width, originX + this.dataWidth);
+      context.fillStyle = theme.added;
+      for (let row = Math.max(firstRow, this.edits.baseRows); row < endRow; row++) {
+        context.fillRect(this.gutterWidth, firstY + (row - firstRow) * ROW_HEIGHT, right - this.gutterWidth, ROW_HEIGHT);
+      }
     }
 
     // The selection, clipped to the body: only its visible part is filled.
@@ -473,9 +484,12 @@ export class GridEngine {
         const window = this.windowFor(row);
         if (!window) continue;
         if (window.isNull(row, column)) {
+          // NULL is italic (D11). Few cells are NULL, so the font switch stays off the common path.
+          context.font = NULL_FONT;
           context.fillStyle = theme.muted;
           context.textAlign = "left";
           context.fillText("NULL", x + CELL_PADDING, y);
+          context.font = FONT;
           continue;
         }
         context.fillStyle = theme.text;
@@ -542,7 +556,7 @@ export class GridEngine {
     }
 
     // Row numbers, marked where the selection spans the row.
-    context.fillStyle = theme.surface2;
+    context.fillStyle = theme.header;
     context.fillRect(0, HEADER_HEIGHT, this.gutterWidth, height);
     context.textAlign = "right";
     for (let row = firstRow; row < endRow; row++) {
@@ -554,12 +568,12 @@ export class GridEngine {
       }
       if (y + ROW_HEIGHT / 2 < HEADER_HEIGHT) continue;
       context.fillStyle = selected ? theme.text : theme.muted;
-      const label = this.edits && row >= this.edits.baseRows ? "*" : String(row + 1);
+      const label = this.edits && row >= this.edits.baseRows ? "+" : this.edits?.deleted(row) ? `− ${row + 1}` : String(row + 1);
       context.fillText(label, this.gutterWidth - CELL_PADDING, y + ROW_HEIGHT / 2);
     }
 
     // Header, marked where the selection spans the column.
-    context.fillStyle = theme.surface2;
+    context.fillStyle = theme.header;
     context.fillRect(0, 0, width, HEADER_HEIGHT);
     context.font = HEADER_FONT;
     context.textAlign = "left";
@@ -583,14 +597,39 @@ export class GridEngine {
       const keyIndex = this.sortKeys.findIndex((key) => key.column === column);
       const key = this.sortKeys[keyIndex];
       if (key) {
-        const label = `${key.descending ? "▼" : "▲"}${this.sortKeys.length > 1 ? keyIndex + 1 : ""}`;
-        const labelWidth = context.measureText(label).width + CELL_PADDING;
-        context.fillStyle = theme.surface2;
-        context.fillRect(x + columnWidth - labelWidth - CELL_PADDING / 2, 1, labelWidth + CELL_PADDING / 2, HEADER_HEIGHT - 2);
-        context.fillStyle = theme.accent;
-        context.textAlign = "right";
-        context.fillText(label, x + columnWidth - CELL_PADDING, HEADER_HEIGHT / 2);
-        context.textAlign = "left";
+        // An arrow drawn as Lucide's arrow-up/down at 12px, never a text glyph; the key's number when there are several.
+        const number = this.sortKeys.length > 1 ? String(keyIndex + 1) : "";
+        // A key number is one or two digits: a fixed width keeps measureText out of the draw loop.
+        const numberWidth = number ? number.length * 7 + 2 : 0;
+        const boxWidth = 12 + numberWidth + CELL_PADDING;
+        const right = x + columnWidth - CELL_PADDING;
+        context.fillStyle = theme.header;
+        context.fillRect(right - boxWidth, 1, boxWidth + CELL_PADDING / 2, HEADER_HEIGHT - 2);
+        const ax = right - numberWidth - 6;
+        const mid = HEADER_HEIGHT / 2;
+        context.strokeStyle = theme.text;
+        context.lineWidth = 1.5;
+        context.lineCap = "round";
+        context.lineJoin = "round";
+        context.beginPath();
+        context.moveTo(ax, mid - 5);
+        context.lineTo(ax, mid + 5);
+        if (key.descending) {
+          context.moveTo(ax - 4, mid + 1);
+          context.lineTo(ax, mid + 5);
+          context.lineTo(ax + 4, mid + 1);
+        } else {
+          context.moveTo(ax - 4, mid - 1);
+          context.lineTo(ax, mid - 5);
+          context.lineTo(ax + 4, mid - 1);
+        }
+        context.stroke();
+        if (number) {
+          context.fillStyle = theme.muted;
+          context.textAlign = "right";
+          context.fillText(number, right, mid);
+          context.textAlign = "left";
+        }
       }
       context.restore();
     }
@@ -893,17 +932,17 @@ function readTheme(): Theme {
   const style = getComputedStyle(document.documentElement);
   const read = (name: string) => style.getPropertyValue(name).trim();
   return {
-    surface: read("--surface"),
-    surface2: read("--surface-2"),
-    border: read("--border"),
-    text: read("--text"),
-    muted: read("--text-muted"),
+    surface: read("--canvas"),
+    header: read("--grid-header"),
+    border: read("--line"),
+    text: read("--fg"),
+    muted: read("--fg-muted"),
     accent: read("--accent"),
     selection: read("--selection"),
     line: read("--grid-line"),
-    stripe: read("--grid-stripe"),
-    edited: read("--grid-edited"),
-    deleted: read("--grid-deleted"),
+    edited: read("--edit-changed"),
+    deleted: read("--edit-deleted"),
+    added: read("--edit-added"),
   };
 }
 

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { errorTitle } from "../errors";
   import type { CoreError } from "../types";
+  import Icon from "../ui/Icon.svelte";
 
   interface Props {
     /** The statements Save runs, in order, in one transaction. */
@@ -30,34 +31,33 @@
   }}
 />
 
-<div class="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[10vh]" role="presentation">
-  <div class="flex max-h-[75vh] w-180 flex-col rounded-lg border border-line bg-surface p-5 shadow-xl" role="dialog" aria-labelledby="preview-title">
-    <h2 id="preview-title" class="mb-1 text-[14px] font-semibold">
-      Save {statements.length} {statements.length === 1 ? "change" : "changes"}
-    </h2>
-    <p class="mb-3 text-[12px] text-muted">
-      These run in one transaction: all of them, or none if one fails or names a row that is gone.
-    </p>
-    <pre class="min-h-0 flex-1 overflow-auto rounded border border-line bg-surface-2 p-3 font-mono text-[12px] leading-relaxed select-text">{statements
-        .map((statement) => `${statement};`)
-        .join("\n")}</pre>
-    {#if error}
-      <div class="mt-3 rounded border border-line bg-surface-2 p-2 text-[12px]">
-        <div class="font-semibold text-danger">{errorTitle(error)}</div>
-        <div class="mt-1 whitespace-pre-wrap wrap-break-word text-muted select-text">{error.message}</div>
-      </div>
-    {/if}
-    <div class="mt-4 flex items-center justify-end gap-2">
-      <button type="button" class="toolbar-button mr-auto" onclick={copy}>{copied ? "Copied" : "Copy SQL"}</button>
-      <button type="button" class="toolbar-button" onclick={onClose} disabled={busy}>Cancel</button>
-      <button
-        bind:this={saveButton}
-        type="button"
-        class="toolbar-button font-semibold text-accent"
-        onclick={onSave}
-        disabled={busy}
-        title="Run these statements (Ctrl+Enter)">{busy ? "Saving…" : "Save"}</button
+<div class="pb-overlay pb-overlay--fixed" role="presentation">
+  <div class="pb-dialog" style="width: 760px; max-height: 80vh" role="dialog" aria-labelledby="preview-title">
+    <div class="pb-dialog-head">
+      <h2 class="pb-dialog-title" id="preview-title">Save {statements.length} {statements.length === 1 ? "change" : "changes"}</h2>
+      <button type="button" class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Close" data-tip-end="" data-tip="Close  Esc" onclick={onClose} disabled={busy}
+        ><Icon name="x" /></button
       >
+    </div>
+    <div class="pb-dialog-body" style="min-height: 0; overflow: auto">
+      {#if error}
+        <div class="pb-info pb-info--danger" role="alert">
+          <Icon name="error" />
+          <div class="pb-info-text"><span class="pb-info-title">{errorTitle(error)}</span><span class="pb-info-msg">{error.message}</span></div>
+        </div>
+      {/if}
+      <p class="pb-dialog-text">These statements run in one transaction. If one fails, or names a row that is gone, none of them are saved.</p>
+      <pre class="pb-codebox">{statements.map((statement) => `${statement};`).join("\n")}</pre>
+    </div>
+    <div class="pb-dialog-foot">
+      <button type="button" class="pb-btn pb-btn--ghost" onclick={copy} data-tip-start="" data-tip="Copy the statements"
+        ><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy SQL"}</button
+      >
+      <span class="pb-spacer"></span>
+      <button type="button" class="pb-btn pb-btn--ghost" onclick={onClose} disabled={busy}>Back to the edits</button>
+      <button bind:this={saveButton} type="button" class="pb-btn pb-btn--primary" onclick={onSave} disabled={busy} data-tip-end="" data-tip="Save  Ctrl+Enter">
+        {#if busy}<Icon name="loader" spin />Saving…{:else}Save {statements.length} {statements.length === 1 ? "change" : "changes"}{/if}
+      </button>
     </div>
   </div>
 </div>
