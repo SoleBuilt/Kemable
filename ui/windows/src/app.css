@@ -1,85 +1,102 @@
 @import "tailwindcss";
+@import "./components.css";
 
 /*
- * Colour tokens. Every component, the canvas grid included, reads these, so a
- * theme is one block here (.claude/rules/ui-theme.md).
+ * Tokens of the Paboable design system (docs/decisions/0012-design-system.md).
+ * Every component, the canvas grid and the editor read these, so a theme is one
+ * block here (.claude/rules/ui-theme.md). Settings sets data-theme on <html>;
+ * without it the system's scheme picks light or dark.
  */
 :root {
-  color-scheme: light;
-  --bg: #f5f5f7;
-  --surface: #ffffff;
-  --surface-2: #f0f0f3;
-  --surface-3: #e6e6ea;
-  --border: #dcdce1;
-  --text: #1c1c1f;
-  --text-muted: #6b6b75;
-  --accent: #2563eb;
-  --accent-text: #ffffff;
-  --selection: rgb(37 99 235 / 0.14);
-  --active-line: rgb(0 0 0 / 0.035);
-  --grid-line: #ececf0;
-  --grid-stripe: #fafafc;
-  /* A cell with an unsaved edit, and a row marked for delete. */
-  --grid-edited: rgb(234 179 8 / 0.22);
-  --grid-deleted: rgb(198 40 40 / 0.12);
-  --danger: #c62828;
-  --success: #2e7d32;
+  --font-sans: "Geist Variable", Geist, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --space-0-5: 2px; --space-1: 4px; --space-1-5: 6px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px;
+  --size-icon: 16px; --size-row-compact: 24px; --size-row: 28px; --size-control-sm: 28px; --size-control: 32px; --size-status: 28px; --size-bar: 40px; --size-toolbar: 48px;
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-full: 9999px;
+  --ease: cubic-bezier(.2, 0, 0, 1);
+}
 
-  --syntax-keyword: #8a2bd8;
-  --syntax-string: #0b7a3e;
-  --syntax-number: #b35900;
-  --syntax-comment: #8a8a94;
-  --syntax-name: #1c1c1f;
-  --syntax-type: #0b62a8;
-  --syntax-operator: #4a4a55;
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --chrome: #fafafa; --canvas: #ffffff; --raised: #ffffff; --muted: #f5f5f5; --grid-header: #f7f7f7;
+  --hover: #0000000a; --pressed: #00000014; --selection: #0a0a0a14;
+  --line: #e5e5e5; --input: #d4d4d4; --grid-line: #ededed; --scroll-thumb: #d4d4d4; --scroll-thumb-hover: #a3a3a3;
+  --fg: #0a0a0a; --fg-secondary: #404040; --fg-muted: #737373; --fg-faint: #a3a3a3;
+  --accent: #171717; --accent-hover: #383838; --on-accent: #fafafa; --focus: #737373; --focus-halo: #7373732e;
+  --danger: #c42b1c; --danger-soft: #fde7e9; --on-danger: #ffffff;
+  --warning: #8a5300; --warning-soft: #fff4ce; --success: #0f7b0f; --success-soft: #dff6dd;
+  --edit-changed: #f2b70038; --edit-deleted: #c42b1c1f; --edit-added: #0f7b0f1a;
+  --tooltip: #171717; --on-tooltip: #fafafa; --scrim: #0000004d;
+  --conn-red: #d13438; --conn-orange: #ca5010; --conn-green: #107c10; --conn-teal: #038387; --conn-blue: #0f6cbd; --conn-purple: #8764b8; --conn-gray: #737373;
+  --syntax-keyword: #8a2bd8; --syntax-string: #0b7a3e; --syntax-number: #b35900; --syntax-comment: #8a8a8a; --syntax-type: #0b62a8; --syntax-operator: #525252; --syntax-name: #0a0a0a; --active-line: #00000008;
+  --shadow-xs: 0 1px 2px #0000000f;
+  --shadow-popover: 0 10px 30px -8px #00000029, 0 0 0 1px #0000000d;
+  --shadow-dialog: 0 24px 48px -12px #00000040, 0 0 0 1px #0000000d;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --chrome: #0a0a0a; --canvas: #171717; --raised: #1f1f1f; --muted: #262626; --grid-header: #1c1c1c;
+  --hover: #ffffff0f; --pressed: #ffffff1a; --selection: #ffffff1f;
+  --line: #ffffff1a; --input: #ffffff26; --grid-line: #ffffff12; --scroll-thumb: #404040; --scroll-thumb-hover: #5c5c5c;
+  --fg: #fafafa; --fg-secondary: #d4d4d4; --fg-muted: #a1a1a1; --fg-faint: #5c5c5c;
+  --accent: #e5e5e5; --accent-hover: #cfcfcf; --on-accent: #171717; --focus: #a1a1a1; --focus-halo: #a1a1a133;
+  --danger: #ff8a80; --danger-soft: #3a1e1e; --on-danger: #1a0a0a;
+  --warning: #f2c14e; --warning-soft: #3a2f12; --success: #6ccb5f; --success-soft: #1d3320;
+  --edit-changed: #f2c14e33; --edit-deleted: #ff8a8024; --edit-added: #6ccb5f24;
+  --tooltip: #fafafa; --on-tooltip: #171717; --scrim: #00000099;
+  --conn-red: #f1707b; --conn-orange: #f7894a; --conn-green: #54b054; --conn-teal: #4cc2c5; --conn-blue: #4fa3f7; --conn-purple: #b49fdb; --conn-gray: #a1a1a1;
+  --syntax-keyword: #c792ea; --syntax-string: #a5d6a7; --syntax-number: #f5b062; --syntax-comment: #6f6f6f; --syntax-type: #82b1ff; --syntax-operator: #b0b0b0; --syntax-name: #fafafa; --active-line: #ffffff0a;
+  --shadow-xs: 0 1px 2px #00000066;
+  --shadow-popover: 0 10px 30px -8px #00000099, 0 0 0 1px #ffffff14;
+  --shadow-dialog: 0 24px 48px -12px #000000b3, 0 0 0 1px #ffffff1a;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #1a1a1d;
-    --surface: #1f1f23;
-    --surface-2: #26262b;
-    --surface-3: #303036;
-    --border: #35353c;
-    --text: #e6e6ea;
-    --text-muted: #9a9aa5;
-    --accent: #4f8cff;
-    --accent-text: #0b0b0d;
-    --selection: rgb(79 140 255 / 0.24);
-    --active-line: rgb(255 255 255 / 0.04);
-    --grid-line: #2c2c32;
-    --grid-stripe: #222226;
-    --grid-edited: rgb(234 179 8 / 0.2);
-    --grid-deleted: rgb(255 107 107 / 0.14);
-    --danger: #ff6b6b;
-    --success: #5cc26a;
-
-    --syntax-keyword: #c792ea;
-    --syntax-string: #a5d6a7;
-    --syntax-number: #f5b062;
-    --syntax-comment: #6f6f7a;
-    --syntax-name: #e6e6ea;
-    --syntax-type: #82b1ff;
-    --syntax-operator: #b0b0ba;
+    --chrome: #0a0a0a; --canvas: #171717; --raised: #1f1f1f; --muted: #262626; --grid-header: #1c1c1c;
+    --hover: #ffffff0f; --pressed: #ffffff1a; --selection: #ffffff1f;
+    --line: #ffffff1a; --input: #ffffff26; --grid-line: #ffffff12; --scroll-thumb: #404040; --scroll-thumb-hover: #5c5c5c;
+    --fg: #fafafa; --fg-secondary: #d4d4d4; --fg-muted: #a1a1a1; --fg-faint: #5c5c5c;
+    --accent: #e5e5e5; --accent-hover: #cfcfcf; --on-accent: #171717; --focus: #a1a1a1; --focus-halo: #a1a1a133;
+    --danger: #ff8a80; --danger-soft: #3a1e1e; --on-danger: #1a0a0a;
+    --warning: #f2c14e; --warning-soft: #3a2f12; --success: #6ccb5f; --success-soft: #1d3320;
+    --edit-changed: #f2c14e33; --edit-deleted: #ff8a8024; --edit-added: #6ccb5f24;
+    --tooltip: #fafafa; --on-tooltip: #171717; --scrim: #00000099;
+    --conn-red: #f1707b; --conn-orange: #f7894a; --conn-green: #54b054; --conn-teal: #4cc2c5; --conn-blue: #4fa3f7; --conn-purple: #b49fdb; --conn-gray: #a1a1a1;
+    --syntax-keyword: #c792ea; --syntax-string: #a5d6a7; --syntax-number: #f5b062; --syntax-comment: #6f6f6f; --syntax-type: #82b1ff; --syntax-operator: #b0b0b0; --syntax-name: #fafafa; --active-line: #ffffff0a;
+    --shadow-xs: 0 1px 2px #00000066;
+    --shadow-popover: 0 10px 30px -8px #00000099, 0 0 0 1px #ffffff14;
+    --shadow-dialog: 0 24px 48px -12px #000000b3, 0 0 0 1px #ffffff1a;
   }
 }
 
 @theme inline {
-  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --font-sans: "Geist Variable", Geist, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  --color-bg: var(--bg);
-  --color-surface: var(--surface);
-  --color-surface-2: var(--surface-2);
-  --color-surface-3: var(--surface-3);
-  --color-line: var(--border);
-  --color-fg: var(--text);
-  --color-muted: var(--text-muted);
+  --color-chrome: var(--chrome);
+  --color-canvas: var(--canvas);
+  --color-raised: var(--raised);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-input: var(--input);
+  --color-fg: var(--fg);
+  --color-secondary: var(--fg-secondary);
+  --color-muted: var(--fg-muted);
+  --color-faint: var(--fg-faint);
   --color-accent: var(--accent);
-  --color-accent-fg: var(--accent-text);
+  --color-accent-fg: var(--on-accent);
   --color-danger: var(--danger);
+  --color-warning: var(--warning);
   --color-success: var(--success);
+  /* The names the first components used, on the new tokens until they are rewritten. */
+  --color-bg: var(--chrome);
+  --color-surface: var(--canvas);
+  --color-surface-2: var(--chrome);
+  --color-surface-3: var(--hover);
 }
 
 html,
@@ -91,10 +108,11 @@ body,
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--chrome);
+  color: var(--fg);
   font-family: var(--font-sans);
   font-size: 13px;
+  line-height: 20px;
   /* A desktop app: text is selectable in editors and fields, not in chrome. */
   user-select: none;
   -webkit-font-smoothing: antialiased;
