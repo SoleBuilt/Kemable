@@ -20,9 +20,10 @@ The grid is `GridEngine` (`engine.ts`): one canvas laid over a native scroll con
 ## Behaviour
 
 - Numbers align right, everything else left, by each cell's own kind (SQLite mixes kinds in a column).
-- NULL is drawn as `NULL` in the muted colour. The core never sends that word.
+- NULL is drawn as `NULL` in italics, in the muted colour. The core never sends that word.
+- Rows are `ROW_HEIGHT` (28 px, or 24 px after `setCompactRows(true)`); the owner reloads the grid after the change. There are no stripes: new rows of an edit are tinted instead.
 - **Sorting is the core's.** A header click asks the owner to sort (ascending, descending, unsorted; Shift adds a key); the grid only draws the arrow. The owner runs the statement again or asks the core for a sorted view (`docs/decisions/0005-sorting-a-result.md`). The grid never reorders rows itself.
-- Colours come from the CSS tokens through `readTheme()`, re-read when the system scheme changes. No colour is written in this folder.
+- Colours come from the CSS tokens through `readTheme()`, re-read when the system scheme or the theme picked in Settings changes. No colour is written in this folder.
 - **A selection is an anchor, a focus (the cell cursor) and a mode**: cells, rows, columns or all. Click a cell, drag or Shift+click for cells; the row numbers for rows; Ctrl+click a header for columns (a plain header click is the sort's); the corner or Ctrl+A for all. The grid reports every change through `selectionChanged`.
 - Keys: arrows, Ctrl+arrows, Tab, Page Up/Down, Home/End, Ctrl+Home/End move the cursor; with Shift they extend the selection; Escape collapses it.
 - **Copy is the core's.** Ctrl+C copies the selection as tab-separated text built by `ResultStore::copy_tsv` (CRLF rows, NULL as an empty field, quoting as spreadsheets read it); Ctrl+Shift+C adds the column names. Never assemble copied text from windows: they are cut at the character cap.

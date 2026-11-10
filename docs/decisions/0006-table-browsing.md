@@ -1,6 +1,6 @@
 # 0006: A table tab reads one page at a time, filtered, sorted and counted on the server
 
-- **Status**: Accepted
+- **Status**: Accepted; amended by `docs/decisions/0013-pages-and-tabs.md` (a table opens on a page of its own, its pager in the status bar)
 - **Date**: 2026-11-09
 - **Follows**: `docs/decisions/0005-sorting-a-result.md` (a table tab: the server sorts).
 

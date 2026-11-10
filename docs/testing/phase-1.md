@@ -21,13 +21,13 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 ## 1. Kết nối
 
 ### 1.1 SQLite
-- [ ] Bấm **In memory**, gõ `select 1 as one, 'xin chào' as greeting;`, nhấn **Ctrl+Enter**.
-  **Đúng:** grid hiện 1 dòng, chữ tiếng Việt hiển thị đúng; toolbar ghi "In memory · SQLite 3.x".
-- [ ] Bấm **Open SQLite…**, chọn một file `.db` hoặc `.sqlite` có sẵn.
-  **Đúng:** sidebar hiện schema `main` và các bảng; double-click một bảng thì grid hiện dữ liệu.
+- [ ] Ở màn Welcome bấm **Open an in-memory database**, gõ `select 1 as one, 'xin chào' as greeting;`, nhấn **Ctrl+Enter**.
+  **Đúng:** grid hiện 1 dòng, chữ tiếng Việt hiển thị đúng; combobox kết nối trên toolbar ghi tên kết nối và "SQLite 3.x".
+- [ ] Bấm **Open file…** (Ctrl+O), chọn một file `.db` hoặc `.sqlite` có sẵn.
+  **Đúng:** sidebar hiện schema `main` và các bảng; double-click một bảng thì bảng mở trên một tab riêng.
 
 ### 1.2 PostgreSQL
-- [ ] Bấm **PostgreSQL…**, dán URL `postgres://postgres:<mật khẩu>@localhost:5432/postgres` vào ô URL.
+- [ ] Bấm **New connection…** (Ctrl+N), Engine chọn **PostgreSQL**, dán URL `postgres://postgres:<mật khẩu>@localhost:5432/postgres` vào ô URL.
   **Đúng:** Host, Port, User, Password tự điền; ô Database để trống cũng được.
 - [ ] Nhập Name `Local PG`, giữ tick **Save this connection** và **Keep the password…**, bấm **Connect**.
   **Đúng:** kết nối thành công; sidebar hiện **tất cả database** (`demo_sales`, `postgres`), database đang dùng in đậm, có chấm xanh.
@@ -37,24 +37,26 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** hộp thoại báo "Access denied" và dòng lỗi của Postgres, không treo.
 
 ### 1.3 SQL Server
-- [ ] Bấm **SQL Server…**, Host `localhost`, Authentication **Windows Authentication**, Name `Local MSSQL`, bấm **Connect**.
+- [ ] **New connection…**, Engine **SQL Server**, Host `localhost`, Sign in with **Windows account**, Name `Local MSSQL`, bấm **Connect**.
   **Đúng:** sidebar hiện `master`, `model`, `msdb`, `tempdb` (và database của bạn nếu có); database người dùng đứng trước database hệ thống.
 - [ ] Nếu có instance `SERVERAPP`: Host `localhost\SERVERAPP`, để trống Port.
   **Đúng:** kết nối qua SQL Server Browser.
 
 ### 1.4 Connection đã lưu
-- [ ] Bấm **Disconnect** trên toolbar.
-  **Đúng:** sidebar hiện **Saved connections**, `Local PG` và `Local MSSQL` ở đầu (mới dùng nhất đứng trước).
-- [ ] Double-click `Local PG`.
+- [ ] Bấm combobox kết nối trên toolbar, chọn **Disconnect**.
+  **Đúng:** về màn Welcome, không có sidebar.
+- [ ] Nhấn **Ctrl+K**.
+  **Đúng:** nhóm **Saved connections** có `Local PG` và `Local MSSQL`.
+- [ ] Chọn `Local PG`, Enter.
   **Đúng:** kết nối ngay, không hỏi mật khẩu.
 - [ ] Mở **Windows Credential Manager** → **Windows Credentials** → **Generic Credentials**.
   **Đúng:** có mục tên kiểu `connection/<id>/password.Paboable`.
 - [ ] Mở `%APPDATA%\dev.paboable.app\connections.json` bằng Notepad.
   **Đúng:** có connection nhưng **không có mật khẩu**.
-- [ ] Bấm ✎ trên một connection, đổi tên, bỏ tick **Keep the password…**, bấm **Save**.
-  **Đúng:** mục trong Credential Manager biến mất; double-click connection đó thì app hỏi mật khẩu.
-- [ ] Bấm ✕, rồi **Yes**.
-  **Đúng:** connection biến mất khỏi danh sách.
+- [ ] Bấm combobox kết nối → **Edit this connection…**, đổi tên, bỏ tick **Keep the password…**, bấm **Save**.
+  **Đúng:** mục trong Credential Manager biến mất; mở connection đó từ Ctrl+K thì app hỏi mật khẩu.
+- [ ] Trong **New connection…**, combobox **Saved connection** chọn một connection, bấm **Delete…**, rồi xác nhận.
+  **Đúng:** connection biến mất khỏi danh sách và khỏi Ctrl+K.
 
 ---
 
@@ -87,12 +89,12 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 
 ## 3. Database và sidebar
 
-- [ ] Bấm nút database trên toolbar (cạnh tên server), hoặc **Ctrl+K**, gõ để lọc, ↑↓ rồi Enter.
+- [ ] Bấm combobox database trên toolbar (cạnh kết nối), gõ để lọc, ↑↓ rồi Enter.
   **Đúng:** editor chuyển sang database đó; status bar ghi "in <database>"; nhánh của database đó trên sidebar mở ra.
 - [ ] Double-click một database trên sidebar.
   **Đúng:** giống như trên.
 - [ ] Double-click một bảng thuộc database khác database đang dùng.
-  **Đúng:** editor chuyển sang database đó rồi mở bảng.
+  **Đúng:** bảng mở trên tab riêng, đọc từ database của nó.
 - [ ] Gõ vào ô **Filter** của sidebar.
   **Đúng:** chỉ còn các bảng có tên khớp.
 - [ ] Chạy `create table thu_refresh (x int);` rồi xem sidebar.
@@ -173,8 +175,8 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 
 ## 6. Row cap
 
-- [ ] Chọn **Limit 1,000** trên toolbar, chạy `select * from order_items` (10.000 dòng).
-  **Đúng:** dừng ở 1.000; status bar ghi "stopped at the row limit" và có nút **Fetch all**.
+- [ ] Chọn **Limit 1,000** ở bên phải thanh tab, chạy `select * from order_items` (10.000 dòng).
+  **Đúng:** dừng ở 1.000; status bar ghi "Stopped at 1,000 rows" và có nút **Fetch all**.
 - [ ] Bấm **Fetch all**.
   **Đúng:** đủ 10.000 dòng.
 - [ ] Đặt con trỏ trên câu đó, nhấn **Ctrl+Alt+Enter**.
@@ -191,6 +193,68 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Gõ tiếng Việt bằng Unikey/EVKey trong editor và ô Filter.
   **Đúng:** bỏ dấu bình thường.
 - [ ] Kéo thanh chia giữa editor và kết quả, giữa sidebar và editor.
+
+---
+
+## 8. Giao diện mới (design system, tab, bộ lọc kết quả)
+
+Đối chiếu với prototype đã chốt: https://claude.ai/artifact/MGBUywSGe5pUwerFj3W8xz.
+
+### 8.1 Welcome và Ctrl+K
+- [ ] Mở app khi chưa có kết nối.
+  **Đúng:** không có sidebar; giữa màn có **New connection…**, **Open file…**, **Open an in-memory database**; toolbar chỉ có ô Search.
+- [ ] Nhấn **Ctrl+K**, gõ vài chữ, dùng ↑↓ rồi Enter; Esc để đóng.
+  **Đúng:** bảng lệnh có nhóm Start, Saved connections, Settings; **Profile…** bị mờ (Later).
+
+### 8.2 Tab query
+- [ ] Kết nối, nhấn **Ctrl+T** hai lần.
+  **Đúng:** có Query 1, Query 2, Query 3; tab mới chỉ có editor, chưa có vùng kết quả.
+- [ ] Gõ và chạy ở Query 1, chuyển sang Query 2 rồi quay lại.
+  **Đúng:** Query 1 giữ nguyên chữ, con trỏ, Ctrl+Z và kết quả.
+- [ ] Đang chạy `select pg_sleep(10)` thì bấm sang tab khác.
+  **Đúng:** status bar nhắc chờ hoặc Stop; không đổi tab.
+- [ ] **Ctrl+W** đóng hết các tab query.
+  **Đúng:** luôn còn một tab query trống.
+- [ ] Mở nhiều tab đến khi tràn thanh.
+  **Đúng:** thanh tab cuộn ngang (lăn chuột cũng cuộn), thanh cuộn mỏng; công cụ bên phải không bị đẩy ra ngoài.
+- [ ] Chạy script có 3 câu SELECT, bấm lần lượt Result 1, 2, 3.
+  **Đúng:** editor có khung nhẹ quanh câu tạo ra result đang xem.
+- [ ] Kéo đường chia giữa editor và kết quả; double-click nó.
+  **Đúng:** kéo được; double-click trả về chiều cao ban đầu.
+
+### 8.3 Tab bảng
+- [ ] Double-click bảng `order_items`.
+  **Đúng:** mở tab riêng có icon bảng và số dòng; không có editor; pager nằm bên phải status bar.
+- [ ] Bấm qua các trang, đổi số dòng mỗi trang (5 … 1,000); thử **Ctrl+[**, **Ctrl+]**, **Ctrl+Alt+↑/↓**.
+  **Đúng:** đúng trang, đúng số dòng; đóng mở app thì vẫn nhớ số dòng mỗi trang.
+- [ ] Bấm **Filter** (Ctrl+F), thêm hai điều kiện, đổi AND thành OR.
+  **Đúng:** mọi dòng sau đổi theo; Apply lọc trên server, số dòng trên tab cập nhật.
+- [ ] Sửa một ô, xem thanh tab.
+  **Đúng:** bên phải thanh tab hiện "1 changed", **Discard**, **Preview & save**.
+- [ ] Bấm số dòng ở cột trái.
+  **Đúng:** chỉ chọn dòng, không đánh dấu xóa; nhấn **Delete** mới đánh dấu.
+- [ ] Chuột phải lên bảng trong cây.
+  **Đúng:** menu đủ các mục; Open, Open in New Tab, Copy Name, Refresh chạy được; các mục khác mờ với chữ Later.
+
+### 8.4 Lọc kết quả query
+- [ ] Chạy `select * from order_items` (Limit 1,000), bấm **Filter** trên thanh kết quả, thêm điều kiện `quantity > 3`, Apply.
+  **Đúng:** lọc ngay, không chạy lại câu lệnh; status bar ghi "N of 1,000 rows held" và nhắc filter chỉ áp trên các dòng đã tải.
+- [ ] Xem dải **To filter on the server**, bấm **Copy WHERE**, dán ra Notepad.
+  **Đúng:** câu `WHERE "quantity" > 3` đúng cú pháp của engine.
+- [ ] Sort một cột khi đang lọc.
+  **Đúng:** sort ngay trên các dòng đang giữ, status bar ghi "sorted in Paboable".
+- [ ] Chạy lại câu lệnh (Ctrl+Enter).
+  **Đúng:** filter vẫn còn và áp vào kết quả mới. Bấm **Clear** mới bỏ.
+- [ ] Ctrl+A, Ctrl+C rồi dán ra Excel.
+  **Đúng:** chỉ có các dòng đang hiện.
+
+### 8.5 Settings
+- [ ] Nhấn **Ctrl+,**, đổi Theme Light / Dark / System.
+  **Đúng:** đổi ngay cả grid và editor; **Cancel** trả lại theme cũ.
+- [ ] Chọn **Compact · 24 px**, Save.
+  **Đúng:** dòng grid thấp hơn; mở lại app vẫn nhớ.
+- [ ] Bỏ tick "After CREATE DATABASE…", chạy lại script ở 3.1.
+  **Đúng:** không chuyển database.
 
 ---
 

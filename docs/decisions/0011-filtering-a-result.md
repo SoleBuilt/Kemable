@@ -64,7 +64,8 @@ The user's statement is theirs. Paboable does not change it.
 - A sort with a filter on does not see rows the server has but the result does not hold. Clearing the filter brings back ADR 0005's run with `ORDER BY`.
 - Copy and the row detail read through the filter: Ctrl+C copies the filtered rows, and selecting all selects the rows the filter keeps.
 - Built in the core: `ResultStore::filter` (`core/crates/store/src/filter.rs`, with how each kind reads the user's value, and `store.rs`) keeps the matching rows as a row order the sort then orders, tests rows that arrive later as they arrive, and windows, copies and row reads go through it; the window's row count is the rows shown. `sql::result_where` (`core/crates/core/src/sql/result_filter.rs`) writes the `WHERE` and names the conditions it left out. The Windows app's `filter_result`, `result_counts` and `result_where` commands carry them (`ui/windows/src-tauri/src/commands.rs`), and `sort_result` sorts the rows held while a filter is on. A SQL condition is refused with `filter.raw`.
-- Not built yet: the filter row on the result bar and the status bar's words. The prototype shows the behaviour (`docs/roadmap.md`, UX backlog).
+- In the Windows app, Filter on the result bar opens the filter row (no SQL condition), the WHERE strip under it copies the clause, and the status bar says "120 of 1,000 rows held" (`ui/windows/src/App.svelte`). A run keeps each result tab's filter for the set in the same place. While a filtered set streams, the app asks `result_counts`, since run events count the rows held.
+- Not built yet: "Open <table> to edit". The core does not yet say which table a result comes from (`docs/roadmap.md`, UX backlog).
 - Telling that a result comes from exactly one table needs the statement parsed; the first version shows the button only for the simplest `SELECT ... FROM <table>`.
 
 ## Alternatives considered

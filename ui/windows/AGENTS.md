@@ -9,17 +9,18 @@ Tauri 2 over WebView2, with a Svelte 5 and TypeScript UI. The Rust side (`src-ta
 3. **Bytes, not JSON, for rows.** Result rows reach the UI only as packed windows through `tauri::ipc::Response` (an `ArrayBuffer`). JSON carries metadata and events, never rows.
 4. **Events are coalesced.** A run streams events on one `Channel`; row counts go out at most every 50 ms (`src-tauri/src/run.rs`).
 5. **Draw, do not mount.** The data grid paints on a canvas over a native scroller. No DOM node per cell or per row (`.claude/rules/data-grid.md`).
-6. **Small and native-feeling.** Segoe UI, compact density, the system's light or dark scheme, keyboard first. No animation that delays input.
+6. **One design system.** Geist, black and white, the `pb-*` classes in `src/components.css` over the tokens in `src/app.css`, light and dark, keyboard first (`docs/decisions/0012-design-system.md`). No animation that delays input.
 
 ## Map
 
-- `src/App.svelte`: the window: toolbar, sidebar, editor, results, status bar.
+- `src/App.svelte`: the window: toolbar, sidebar panes, the pages (query tabs and table tabs, `docs/decisions/0013-pages-and-tabs.md`) with their tools on the tab bar, the editor, the results, the status bar. A page's state is swapped by `stash` and `unstash`.
+- `src/lib/ui/`: the shared parts. `Icon.svelte` (Lucide paths), `Combobox.svelte` (every picker), `CommandPalette.svelte` (Ctrl+K), `SettingsDialog.svelte` (the settings and where they are kept).
 - `src/lib/ipc.ts`: every command with its types. `src/lib/types.ts`: the Rust types as TypeScript. `src/lib/errors.ts`: the words for each error code.
-- `src/lib/grid/`: `engine.ts` (the canvas grid), `window.ts` (the packed window reader), `DataGrid.svelte` (the thin Svelte wrapper), `TableBar.svelte` (a table tab's pager and filters; the page and count statements are the core's), `CellEditor.svelte` (the editor laid over a cell), `EditPreview.svelte` (the statements a save runs).
+- `src/lib/grid/`: `engine.ts` (the canvas grid), `window.ts` (the packed window reader), `DataGrid.svelte` (the thin Svelte wrapper), `FilterRow.svelte` (the filter conditions of a table tab or a query result), `Pager.svelte` (a table tab's pager, in the status bar; the page and count statements are the core's), `CellEditor.svelte` (the editor laid over a cell), `EditPreview.svelte` (the statements a save runs).
 - `src/lib/editor/SqlEditor.svelte`: CodeMirror 6 with the engine's SQL dialect, and the completion source that asks `complete` for names (`src-tauri/src/catalog.rs` caches the catalog it reads).
-- `src/lib/sidebar/ObjectTree.svelte`: the tree: databases (for an engine with them), their schemas and objects, loaded when opened. Ctrl+R refreshes it. `HistoryList.svelte` (the History tab), `QueryList.svelte` (the Queries tab), `SaveQueryDialog.svelte` (Ctrl+Shift+D). `KeyBrowser.svelte`: a key-value server's keys by `SCAN`, in place of the tree.
-- `src/lib/connect/`: `SavedList.svelte` (saved connections, in the sidebar while nothing is open), `ConnectDialog.svelte` (the connect form for PostgreSQL, SQL Server, Redis and Cloudflare D1, which also saves), `DatabasePicker.svelte` (the toolbar database switcher, Ctrl+K).
-- `src/app.css`: Tailwind and the colour tokens (`.claude/rules/ui-theme.md`).
+- `src/lib/sidebar/ObjectTree.svelte`: the tree: databases (for an engine with them), their schemas and objects, loaded when opened. Ctrl+R refreshes it. `TreeMenu.svelte`: its right-click menu. `HistoryList.svelte` (the History pane), `QueryList.svelte` (the Queries pane), `SaveQueryDialog.svelte` (Ctrl+Shift+D). `KeyBrowser.svelte`: a key-value server's keys by `SCAN`, in place of the tree.
+- `src/lib/connect/`: `ConnectDialog.svelte` (the connect form for PostgreSQL, SQL Server, Redis and Cloudflare D1, which also saves), `DatabasePicker.svelte` (the toolbar database switcher). Saved connections open from the command palette.
+- `src/app.css`: Tailwind and the tokens. `src/components.css`: the design system's `pb-*` classes (`.claude/rules/ui-theme.md`).
 - `src-tauri/src/lib.rs`: the driver registry and the command list. `commands.rs`: the commands; `conn` names a server, `database` one of its databases. `run.rs`: running a script and its events. `library.rs`: the saved-connection library in `%APPDATA%dev.paboable.app`, with `CredentialVault` over Windows Credential Manager (target `connection/<id>/password.Paboable`). `state.rs`: the open servers (`OpenServer`, a session per database in use), result sets and runs, by id.
 - `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`: the window, the CSP and what the UI may call.
 - `assets/app-icon.png`: the source of `src-tauri/icons/` (`pnpm tauri icon assets/app-icon.png -o src-tauri/icons`).

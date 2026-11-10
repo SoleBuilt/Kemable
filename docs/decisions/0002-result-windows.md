@@ -24,7 +24,7 @@ A query can return millions of rows while more are still arriving. The Windows U
 ## Consequences
 
 - The window format is a contract between `window.rs` and `window.ts`. A change updates both and this file.
-- Sorting is decided in `0005-sorting-a-result.md`: the statement runs again with `ORDER BY` when the column can be named, else the core sorts the rows held through a row order over the same chunks. Filtering and editing a result are not designed yet.
+- Sorting is decided in `0005-sorting-a-result.md`: the statement runs again with `ORDER BY` when the column can be named, else the core sorts the rows held through a row order over the same chunks. Filtering is decided in `0011-filtering-a-result.md`: the core keeps a row order of the matching rows, the sort orders that, and a window's row count is then the rows shown, not the rows held. Editing is `0010-editing-rows.md`.
 - Each result set stops at the row cap the run names (the toolbar's Limit, none for Run Without Limit and Fetch All) and says so.
 
 ## Alternatives considered
