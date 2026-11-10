@@ -158,6 +158,8 @@ export class GridEngine {
   private dragging: SelectionMode | null = null;
   private resizing: { column: number; startX: number; startWidth: number } | null = null;
   private readonly colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
+  // Settings picks a theme through data-theme on <html>, which no media query reports.
+  private readonly themeAttribute = new MutationObserver(() => this.onThemeChange());
 
   constructor(
     private readonly scroller: HTMLDivElement,
@@ -170,12 +172,14 @@ export class GridEngine {
     this.context = context;
     this.theme = readTheme();
     this.colorScheme.addEventListener("change", this.onThemeChange);
+    this.themeAttribute.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     scroller.addEventListener("scroll", this.scheduleDraw, { passive: true });
   }
 
   destroy(): void {
     cancelAnimationFrame(this.frame);
     this.colorScheme.removeEventListener("change", this.onThemeChange);
+    this.themeAttribute.disconnect();
     this.scroller.removeEventListener("scroll", this.scheduleDraw);
     this.generation++;
   }
