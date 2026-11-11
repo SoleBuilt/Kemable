@@ -18,7 +18,8 @@ use paboable_core::sink::ResultSink;
 use paboable_core::sql::{
     BrowseQuery, Clause, CompletionItem, Maintenance, NewValue, ObjectAction, ResultFilter, ResultSource, ResultWhere,
     RowEdit, SortColumn, SqlGrammar, action_statements, completion_context, completions, count_statement,
-    edit_statement, maintenance_tasks, page_statement, sorted_statement, split, statement_at, view_definition,
+    edit_statement, export_statement, maintenance_tasks, page_statement, readable_name, sorted_statement, split,
+    statement_at, view_definition,
 };
 use paboable_core::text_file::{self, LineEnding, TextEncoding, TextFile};
 use paboable_core::value::Value;
@@ -677,6 +678,240 @@ fn grammar_of(server: &OpenServer) -> CommandResult<SqlGrammar> {
         .engine
         .sql_grammar
         .ok_or_else(|| DriverError::unsupported("this engine has no SQL"))
+}
+
+/// A table's indexes, the primary key's first, for Show Structure.
+#[tauri::command]
+pub async fn list_indexes(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    table: TableRef,
+) -> CommandResult<Vec<paboable_core::catalog::IndexInfo>> {
+    let session = state.server(conn)?.session(database.as_deref()).await?;
+    session.list_indexes(&table, metadata_options()).await
+}
+
+/// An object's name as a person pastes it into a statement, quoted only where
+/// it must be (Copy Qualified Name).
+#[tauri::command]
+pub async fn qualified_name(state: State<'_, Arc<AppState>>, conn: u64, object: ObjectInfo) -> CommandResult<String> {
+    let server = state.server(conn)?;
+    Ok(readable_name(
+        grammar_of(&server)?,
+        object.schema.as_deref(),
+        &object.name,
+    ))
+}
+
+/// Starts writing a table's rows to `path` (every row `query`'s filters
+/// match, in key order); returns at once with an id `cancel_run` stops, and
+/// reports on `on_event` (`docs/decisions/0018-export-import-generate.md`).
+#[tauri::command]
+pub async fn export_table(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    query: BrowseQuery,
+    options: paboable_core::export::ExportOptions,
+    path: String,
+    on_event: Channel<crate::jobs::JobEvent>,
+) -> CommandResult<u64> {
+    let server = state.server(conn)?;
+    let grammar = grammar_of(&server)?;
+    let statement = export_statement(grammar, &query)?;
+    let session = server.session(database.as_deref()).await?;
+    let cancel = CancellationToken::new();
+    let id = state.add_run(cancel.clone());
+    let export = crate::export::Export {
+        id,
+        session,
+        statement,
+        grammar,
+        table: query.table,
+        options,
+        path: path.into(),
+        cancel,
+        channel: on_event,
+    };
+    tauri::async_runtime::spawn(crate::export::run(Arc::clone(&state), export));
+    Ok(id)
+}
+
+/// A CSV file's separator, header, first rows and the shape of its values, for Import.
+#[tauri::command]
+pub async fn preview_csv(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    path: String,
+    delimiter: Option<char>,
+    header: bool,
+) -> CommandResult<crate::jobs::CsvPreview> {
+    let server = state.server(conn)?;
+    let grammar = grammar_of(&server)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::jobs::read_csv(&path).map(|text| crate::jobs::preview(&text, delimiter, header, grammar))
+    })
+    .await
+    .map_err(|error| DriverError::internal(error.to_string()))?
+}
+
+/// What an import will do: where each field goes, the CREATE TABLE of a new
+/// table, and the first INSERT, before anything runs.
+#[tauri::command]
+pub async fn import_plan(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    path: String,
+    options: crate::jobs::CsvOptions,
+    target: crate::jobs::ImportTarget,
+) -> CommandResult<crate::jobs::ImportPlan> {
+    use paboable_core::import::{CsvReader, create_statement};
+    let server = state.server(conn)?;
+    let grammar = grammar_of(&server)?;
+    let columns = match &target {
+        crate::jobs::ImportTarget::Existing { table } => {
+            server
+                .session(database.as_deref())
+                .await?
+                .fetch_columns(table, metadata_options())
+                .await?
+        }
+        crate::jobs::ImportTarget::New { .. } => Vec::new(),
+    };
+    let text = tauri::async_runtime::spawn_blocking(move || crate::jobs::read_csv(&path))
+        .await
+        .map_err(|error| DriverError::internal(error.to_string()))??;
+    let read = crate::jobs::preview(&text, Some(options.delimiter), options.header, grammar);
+    let targets = crate::jobs::import_columns(&target, &read.header, &columns);
+    let mut records = CsvReader::new(&text, options.delimiter);
+    if options.header {
+        records.next();
+    }
+    let first_insert = if targets.iter().any(Option::is_some) {
+        crate::jobs::insert_batches(
+            grammar,
+            target.table(),
+            &targets,
+            records.take(5),
+            options.empty_is_null,
+            5,
+        )
+        .next()
+        .transpose()?
+        .map(|(sql, _)| sql)
+    } else {
+        None
+    };
+    let create = match &target {
+        crate::jobs::ImportTarget::New { table, columns } => Some(create_statement(grammar, table, columns)?),
+        crate::jobs::ImportTarget::Existing { .. } => None,
+    };
+    Ok(crate::jobs::ImportPlan {
+        mapping: targets.into_iter().map(|target| target.map(|(name, _)| name)).collect(),
+        create,
+        first_insert,
+        records: read.records,
+    })
+}
+
+/// Starts an import; returns at once with an id `cancel_run` stops.
+#[tauri::command]
+pub async fn import_csv(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    path: String,
+    options: crate::jobs::CsvOptions,
+    target: crate::jobs::ImportTarget,
+    on_event: Channel<crate::jobs::JobEvent>,
+) -> CommandResult<u64> {
+    let server = state.server(conn)?;
+    let grammar = grammar_of(&server)?;
+    let session = server.session(database.as_deref()).await?;
+    let columns = match &target {
+        crate::jobs::ImportTarget::Existing { table } => session.fetch_columns(table, metadata_options()).await?,
+        crate::jobs::ImportTarget::New { .. } => Vec::new(),
+    };
+    let text = tauri::async_runtime::spawn_blocking(move || crate::jobs::read_csv(&path))
+        .await
+        .map_err(|error| DriverError::internal(error.to_string()))??;
+    let cancel = CancellationToken::new();
+    let id = state.add_run(cancel.clone());
+    let job = crate::jobs::ImportJob {
+        id,
+        session,
+        grammar,
+        // D1 runs each statement on its own: it has no transaction to roll back.
+        transactional: server.engine.id != "d1",
+        text,
+        options,
+        target,
+        columns,
+        cancel,
+        channel: on_event,
+    };
+    state.catalog.forget(conn);
+    tauri::async_runtime::spawn(crate::jobs::run_import(Arc::clone(&state), job));
+    Ok(id)
+}
+
+/// What Generate Rows will insert into `table`: the columns it fills, the key
+/// it counts up and from where, and the first five rows.
+#[tauri::command]
+pub async fn generate_plan(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    table: TableRef,
+    seed: u64,
+) -> CommandResult<crate::jobs::GeneratePlan> {
+    let server = state.server(conn)?;
+    let grammar = grammar_of(&server)?;
+    let session = server.session(database.as_deref()).await?;
+    let columns = session.fetch_columns(&table, metadata_options()).await?;
+    let start = match paboable_core::generate::counted_key(&columns) {
+        Some(key) => crate::jobs::key_start(&session, grammar, &table, &key.name).await?,
+        None => 1,
+    };
+    Ok(crate::jobs::plan(grammar, &table, &columns, start, seed))
+}
+
+/// Starts inserting `count` made-up rows; returns at once with an id `cancel_run` stops.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn generate_rows(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    table: TableRef,
+    count: u64,
+    seed: u64,
+    key_start: i64,
+    on_event: Channel<crate::jobs::JobEvent>,
+) -> CommandResult<u64> {
+    let server = state.server(conn)?;
+    let grammar = grammar_of(&server)?;
+    let session = server.session(database.as_deref()).await?;
+    let columns = session.fetch_columns(&table, metadata_options()).await?;
+    let cancel = CancellationToken::new();
+    let id = state.add_run(cancel.clone());
+    let job = crate::jobs::GenerateJob {
+        id,
+        session,
+        grammar,
+        transactional: server.engine.id != "d1",
+        table,
+        columns,
+        count,
+        seed,
+        key_start,
+        cancel,
+        channel: on_event,
+    };
+    tauri::async_runtime::spawn(crate::jobs::run_generate(Arc::clone(&state), job));
+    Ok(id)
 }
 
 /// A sink for statements whose rows nobody reads (DBCC's report, say).

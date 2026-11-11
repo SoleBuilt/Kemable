@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::catalog::{ColumnInfo, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
+use crate::catalog::{ColumnInfo, DatabaseInfo, IndexInfo, ObjectInfo, SchemaInfo, TableRef};
 use crate::engine::EngineInfo;
 use crate::keys::{KeyDetail, KeyPage, KeyScan};
 use crate::sink::{ExecOutcome, ResultSink};
@@ -38,6 +38,11 @@ pub trait Connection: Send + Sync {
     async fn list_objects(&self, schema: Option<&str>, options: CallOptions) -> Result<Vec<ObjectInfo>>;
 
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>>;
+
+    /// A table's indexes, the primary key's first, for Show Structure.
+    async fn list_indexes(&self, _table: &TableRef, _options: CallOptions) -> Result<Vec<IndexInfo>> {
+        Err(DriverError::unsupported("this engine does not list indexes"))
+    }
 
     /// The statement that makes `object` as the server holds it now, for Show
     /// DDL and Copy DDL (`docs/decisions/0017-tree-actions.md`): a table with

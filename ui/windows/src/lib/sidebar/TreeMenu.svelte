@@ -32,6 +32,9 @@
     onCopyDdl: (target: TreeTarget & { kind: "object" }) => void;
     onEditView: (target: TreeTarget & { kind: "object" }) => void;
     onAction: (target: TreeTarget & { kind: "object" }, action: ActionKind) => void;
+    /** The name quoted where it must be, as the core writes it for the engine. */
+    onCopyQualified: (target: TreeTarget & { kind: "object" }) => void;
+    onData: (target: TreeTarget & { kind: "object" }, kind: "export" | "import" | "generate") => void;
   }
 
   let {
@@ -50,6 +53,8 @@
     onCopyDdl,
     onEditView,
     onAction,
+    onCopyQualified,
+    onData,
   }: Props = $props();
 
   interface Item {
@@ -80,7 +85,6 @@
     }
     const object = target.object;
     const open = { ...target };
-    const qualified = object.schema ? `${object.schema}.${object.name}` : object.name;
     const table = object.kind === "table";
     const view = object.kind === "view" || object.kind === "materializedView";
     const opens = table || view;
@@ -102,15 +106,15 @@
       ...(view && object.kind === "view" ? [{ label: "Edit View Definition", icon: "settings", run: () => onEditView(open) } satisfies Item] : []),
       "-",
       { label: "Copy Name", icon: "copy", keys: ["Ctrl", "C"], run: () => onCopy(object.name, "the name") },
-      { label: "Copy Qualified Name", icon: "copy", run: () => onCopy(qualified, "the qualified name") },
+      { label: "Copy Qualified Name", icon: "copy", run: () => onCopyQualified(open) },
       "-",
-      { label: "Export…", icon: "arrow-up", run: null },
+      ...(opens ? [{ label: "Export…", icon: "arrow-up", run: () => onData(open, "export") } satisfies Item] : []),
       ...(table
         ? [
-            { label: "Import…", icon: "arrow-down", run: null } satisfies Item,
+            { label: "Import…", icon: "arrow-down", run: () => onData(open, "import") } satisfies Item,
+            { label: "Generate Rows…", icon: "plus", run: () => onData(open, "generate") } satisfies Item,
             { label: "Transfer To…", icon: "database", run: null } satisfies Item,
             { label: "Copy To…", icon: "database", run: null } satisfies Item,
-            { label: "Generate Rows…", icon: "plus", run: null } satisfies Item,
           ]
         : []),
       "-",

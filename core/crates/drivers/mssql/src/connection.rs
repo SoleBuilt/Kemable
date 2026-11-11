@@ -3,7 +3,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::TryStreamExt;
-use paboable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
+use paboable_core::catalog::{
+    ColumnInfo, ColumnMeta, DatabaseInfo, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef,
+};
 use paboable_core::config::{ConnectionConfig, Target, TlsMode};
 use paboable_core::connection::Connection;
 use paboable_core::engine::EngineInfo;
@@ -351,6 +353,10 @@ from sys.objects o join sys.schemas s on s.schema_id = o.schema_id
 where s.name = @P1 and o.is_ms_shipped = 0 and o.type in ('U', 'V', 'SO', 'P', 'PC', 'FN', 'FS', 'IF', 'TF', 'FT')
 order by case rtrim(o.type) when 'U' then 0 when 'V' then 1 when 'SO' then 2 when 'P' then 3 else 4 end, o.name";
 
+/// The last column says whether the server fills the column. A GENERATED
+/// ALWAYS column is read through `COLUMNPROPERTY`, not
+/// `sys.columns.generated_always_type`: servers before 2016 lack that column
+/// and would refuse the whole query, where the property is only `NULL`.
 const COLUMNS: &str = "\
 select c.column_id, c.name,
        t.name + case
@@ -362,7 +368,10 @@ select c.column_id, c.name,
                then '(' + cast(c.precision as varchar(10)) + ',' + cast(c.scale as varchar(10)) + ')'
            when t.name in ('datetime2', 'time', 'datetimeoffset') then '(' + cast(c.scale as varchar(10)) + ')'
            else '' end,
-       c.is_nullable, dc.definition, cast(ic.key_ordinal as int)
+       c.is_nullable, dc.definition, cast(ic.key_ordinal as int),
+       cast(case when c.is_identity = 1 or c.is_computed = 1 or type_name(c.system_type_id) = 'timestamp'
+                   or isnull(columnproperty(c.object_id, c.name, 'GeneratedAlwaysType'), 0) <> 0
+            then 1 else 0 end as bit)
 from sys.columns c
 join sys.types t on t.user_type_id = c.user_type_id
 left join sys.default_constraints dc on dc.object_id = c.default_object_id
@@ -380,7 +389,12 @@ select cast(case when object_id(@P1) is null then 0 else 1 end as bit),
 
 /// Everything a table's script needs, in one round trip. The result sets, in
 /// order: the database's collation, columns, primary and unique keys, checks,
-/// foreign keys, other indexes, descriptions. `@P1` is `[schema].[name]`.
+/// foreign keys, other rowstore indexes, descriptions, columnstore indexes,
+/// their `ORDER` columns, XML indexes, spatial indexes. `@P1` is `[schema].[name]`.
+///
+/// `column_store_order_ordinal` exists from SQL Server 2022; a query naming it
+/// fails to compile on an older server, so it runs as dynamic SQL only where
+/// the column is there, and the set is empty elsewhere.
 const TABLE: &str = "\
 declare @id int = object_id(@P1);
 select cast(databasepropertyex(db_name(), 'Collation') as nvarchar(128));
@@ -430,7 +444,75 @@ from sys.extended_properties ep
 left join sys.columns c on c.object_id = ep.major_id and c.column_id = ep.minor_id
 where ep.class = 1 and ep.major_id = @id and ep.name = N'MS_Description'
   and (ep.minor_id = 0 or c.column_id is not null)
-order by ep.minor_id;";
+order by ep.minor_id;
+select i.name, cast(case when i.type = 5 then 1 else 0 end as bit), i.filter_definition, c.name
+from sys.indexes i
+left join sys.index_columns ic on ic.object_id = i.object_id and ic.index_id = i.index_id
+     and i.type = 6 and ic.is_included_column = 1
+left join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id
+where i.object_id = @id and i.type in (5, 6) and i.is_hypothetical = 0
+order by i.name, ic.index_column_id;
+if exists (select 1 from sys.all_columns
+           where object_id = object_id(N'sys.index_columns') and name = N'column_store_order_ordinal')
+    exec sys.sp_executesql N'select i.name, c.name
+from sys.indexes i
+join sys.index_columns ic on ic.object_id = i.object_id and ic.index_id = i.index_id
+join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id
+where i.object_id = @id and i.type in (5, 6) and ic.column_store_order_ordinal > 0
+order by i.name, ic.column_store_order_ordinal', N'@id int', @id;
+else
+    select cast(null as sysname), cast(null as sysname) where 1 = 0;
+select xi.name, c.name, cast(xi.secondary_type as nvarchar(1)), p.name
+from sys.xml_indexes xi
+join sys.index_columns ic on ic.object_id = xi.object_id and ic.index_id = xi.index_id
+join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id
+left join sys.xml_indexes p on p.object_id = xi.object_id and p.index_id = xi.using_xml_index_id
+where xi.object_id = @id and xi.xml_index_type in (0, 1) and xi.is_hypothetical = 0
+order by case when xi.secondary_type is null then 0 else 1 end, xi.name;
+select si.name, c.name, cast(st.tessellation_scheme as nvarchar(60)),
+       st.bounding_box_xmin, st.bounding_box_ymin, st.bounding_box_xmax, st.bounding_box_ymax,
+       cast(st.level_1_grid_desc as nvarchar(60)), cast(st.level_2_grid_desc as nvarchar(60)),
+       cast(st.level_3_grid_desc as nvarchar(60)), cast(st.level_4_grid_desc as nvarchar(60)),
+       cast(st.cells_per_object as int)
+from sys.spatial_indexes si
+join sys.spatial_index_tessellations st on st.object_id = si.object_id and st.index_id = si.index_id
+join sys.index_columns ic on ic.object_id = si.object_id and ic.index_id = si.index_id
+join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id
+where si.object_id = @id and si.is_hypothetical = 0
+order by si.name;";
+
+/// A table's indexes, heaps and hypothetical ones left out, the primary key's
+/// first. `@P1` is `[schema].[name]`.
+const INDEXES: &str = "\
+select i.name, i.is_unique, i.is_primary_key, i.type_desc, i.filter_definition, cast(i.type as int),
+       c.name, ic.is_descending_key, ic.is_included_column, cast(ic.key_ordinal as int)
+from sys.indexes i
+left join sys.index_columns ic on ic.object_id = i.object_id and ic.index_id = i.index_id
+left join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id
+where i.object_id = object_id(@P1) and i.type <> 0 and i.is_hypothetical = 0
+order by case when i.is_primary_key = 1 then 0 else 1 end, i.name,
+         ic.is_included_column, ic.key_ordinal, ic.index_column_id";
+
+/// Where a row of `sys.index_columns` shows in a table's structure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IndexColumnPlace {
+    Key,
+    Included,
+}
+
+/// A rowstore index lists its key and its INCLUDE columns; a columnstore
+/// marks every column it keeps as included, and they are its columns; an XML
+/// or a spatial index has one column, with no key ordinal. Anything else (a
+/// partitioning column the index did not name) is left out.
+pub(crate) fn index_column_place(index_type: i32, key_ordinal: i32, included: bool) -> Option<IndexColumnPlace> {
+    match index_type {
+        3 | 4 => Some(IndexColumnPlace::Key),
+        5 | 6 => included.then_some(IndexColumnPlace::Key),
+        _ if key_ordinal > 0 => Some(IndexColumnPlace::Key),
+        _ if included => Some(IndexColumnPlace::Included),
+        _ => None,
+    }
+}
 
 /// `@P1` is `[schema].[name]`.
 const SEQUENCE: &str = "\
@@ -615,6 +697,65 @@ impl MssqlConnection {
                 text: name(row, 1)?,
             });
         }
+        let orders = by_name(set(&sets, 8))?;
+        for (index_name, rows) in by_name(set(&sets, 7))? {
+            let Some(first) = rows.first() else { continue };
+            let order = orders
+                .iter()
+                .find(|(ordered, _)| *ordered == index_name)
+                .map(|(_, rows)| rows.iter().map(|row| name(row, 1)).collect::<Result<Vec<_>>>())
+                .transpose()?
+                .unwrap_or_default();
+            out.columnstores.push(ddl::ColumnstoreIndex {
+                clustered: flag(first, 1)?,
+                filter: text(first, 2)?,
+                columns: rows
+                    .iter()
+                    .map(|row| text(row, 3))
+                    .filter_map(Result::transpose)
+                    .collect::<Result<_>>()?,
+                order,
+                name: index_name,
+            });
+        }
+        for row in set(&sets, 9) {
+            let secondary = match (text(row, 2)?, text(row, 3)?) {
+                (None, _) => None,
+                (Some(code), Some(primary)) => match ddl::XmlPurpose::from_code(&code) {
+                    Some(purpose) => Some(ddl::SecondaryXml { primary, purpose }),
+                    // A kind this driver cannot write; leaving it out keeps the script runnable.
+                    None => continue,
+                },
+                (Some(_), None) => continue,
+            };
+            out.xml_indexes.push(ddl::XmlIndex {
+                name: name(row, 0)?,
+                column: name(row, 1)?,
+                secondary,
+            });
+        }
+        for row in set(&sets, 10) {
+            let bounding_box = match (
+                number::<f64>(row, 3)?,
+                number::<f64>(row, 4)?,
+                number::<f64>(row, 5)?,
+                number::<f64>(row, 6)?,
+            ) {
+                (Some(xmin), Some(ymin), Some(xmax), Some(ymax)) => Some([xmin, ymin, xmax, ymax]),
+                _ => None,
+            };
+            out.spatial_indexes.push(ddl::SpatialIndex {
+                name: name(row, 0)?,
+                column: name(row, 1)?,
+                scheme: name(row, 2)?,
+                bounding_box,
+                grids: (7..=10)
+                    .map(|index| text(row, index))
+                    .filter_map(Result::transpose)
+                    .collect::<Result<_>>()?,
+                cells_per_object: number::<i32>(row, 11)?,
+            });
+        }
         Ok(ddl::table_ddl(&out))
     }
 
@@ -708,6 +849,7 @@ impl Connection for MssqlConnection {
         rows.iter()
             .map(|row| {
                 Ok(ColumnInfo {
+                    generated: flag(row, 6)?,
                     ordinal: number::<i32>(row, 0)?.and_then(|n| u32::try_from(n).ok()).unwrap_or(0),
                     name: text(row, 1)?.unwrap_or_default(),
                     type_name: text(row, 2)?.unwrap_or_default(),
@@ -717,6 +859,36 @@ impl Connection for MssqlConnection {
                 })
             })
             .collect()
+    }
+
+    async fn list_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>> {
+        let qualified = ddl::qualified(table.schema.as_deref().unwrap_or("dbo"), &table.name);
+        let rows = self.catalog_rows(INDEXES, &[qualified.as_str()], &options).await?;
+        let mut indexes = Vec::new();
+        for (index_name, rows) in by_name(&rows)? {
+            let Some(first) = rows.first() else { continue };
+            let index_type = int(first, 5)?;
+            let mut index = IndexInfo {
+                name: index_name,
+                columns: Vec::new(),
+                included: Vec::new(),
+                unique: flag(first, 1)?,
+                primary: flag(first, 2)?,
+                method: name(first, 3)?,
+                filter: text(first, 4)?,
+            };
+            for row in rows {
+                let Some(column) = text(row, 6)? else { continue };
+                match index_column_place(index_type, int(row, 9)?, flag(row, 8)?) {
+                    Some(IndexColumnPlace::Key) if flag(row, 7)? => index.columns.push(format!("{column} DESC")),
+                    Some(IndexColumnPlace::Key) => index.columns.push(column),
+                    Some(IndexColumnPlace::Included) => index.included.push(column),
+                    None => {}
+                }
+            }
+            indexes.push(index);
+        }
+        Ok(indexes)
     }
 
     async fn object_ddl(&self, object: &ObjectInfo, options: CallOptions) -> Result<String> {

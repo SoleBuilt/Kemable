@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use paboable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
+use paboable_core::catalog::{
+    ColumnInfo, ColumnMeta, DatabaseInfo, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef,
+};
 use paboable_core::config::{ConnectionConfig, Target};
 use paboable_core::connection::Connection;
 use paboable_core::engine::EngineInfo;
@@ -355,7 +357,22 @@ select a.attnum::int4, a.attname::text, format_type(a.atttypid, a.atttypmod), no
        -- indkey is an int2vector, whose subscripts start at 0, so count with ordinality.
        (select k.position::int4
           from pg_index i, unnest(i.indkey::int2[]) with ordinality as k(attnum, position)
-         where i.indrelid = c.oid and i.indisprimary and k.attnum = a.attnum)
+         where i.indrelid = c.oid and i.indisprimary and k.attnum = a.attnum),
+       -- Filled by the server: identity, generated, or serial: a nextval() default
+       -- of a sequence this column owns.
+       coalesce(a.attidentity <> '' or a.attgenerated <> ''
+         or (pg_get_expr(d.adbin, d.adrelid) like 'nextval(%'
+             and exists (select 1
+                           from pg_depend owned
+                           join pg_class s on s.oid = owned.objid and s.relkind = 'S'
+                           join pg_depend uses on uses.classid = 'pg_attrdef'::regclass
+                                              and uses.objid = d.oid
+                                              and uses.refclassid = 'pg_class'::regclass
+                                              and uses.refobjid = s.oid
+                          where owned.classid = 'pg_class'::regclass
+                            and owned.refclassid = 'pg_class'::regclass
+                            and owned.refobjid = a.attrelid and owned.refobjsubid = a.attnum
+                            and owned.deptype = 'a')), false)
 from pg_attribute a
 join pg_class c on c.oid = a.attrelid
 join pg_namespace n on n.oid = c.relnamespace
@@ -363,6 +380,32 @@ left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
 where n.nspname = coalesce(nullif($1, ''), current_schema()) and c.relname = $2
   and a.attnum > 0 and not a.attisdropped
 order by a.attnum";
+
+/// A table's indexes, the primary key's first. `indkey` holds 0 where the
+/// key is an expression, and its subscripts start at 0, so positions come
+/// from `with ordinality`; past `indnkeyatts` are the `INCLUDE` columns.
+const INDEX_LIST: &str = "\
+select ic.relname::text,
+       array(select case when k.attnum = 0 then pg_get_indexdef(i.indexrelid, k.position::int4, true)
+                         else a.attname::text end
+               from unnest(i.indkey::int2[]) with ordinality as k(attnum, position)
+               left join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+              where k.position <= i.indnkeyatts
+              order by k.position),
+       array(select a.attname::text
+               from unnest(i.indkey::int2[]) with ordinality as k(attnum, position)
+               join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+              where k.position > i.indnkeyatts
+              order by k.position),
+       i.indisunique, i.indisprimary, am.amname::text,
+       pg_get_expr(i.indpred, i.indrelid)
+from pg_index i
+join pg_class ic on ic.oid = i.indexrelid
+join pg_am am on am.oid = ic.relam
+join pg_class c on c.oid = i.indrelid
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = coalesce(nullif($1, ''), current_schema()) and c.relname = $2
+order by i.indisprimary desc, ic.relname";
 
 fn read<'a, T: tokio_postgres::types::FromSql<'a>>(row: &'a Row, index: usize) -> Result<T> {
     row.try_get(index)
@@ -390,6 +433,32 @@ fn ddl_column(row: &Row) -> Result<ddl::Column> {
         fill: ddl::Fill::from_catalog(&identity, &generated, read(row, 3)?),
         not_null: read(row, 6)?,
         comment: read(row, 7)?,
+        inherited: if read(row, 8)? {
+            Some(ddl::Inherited {
+                default: read(row, 9)?,
+                not_null: read(row, 10)?,
+            })
+        } else {
+            None
+        },
+    })
+}
+
+fn owned_sequence(row: &Row) -> Result<ddl::OwnedSequence> {
+    Ok(ddl::OwnedSequence {
+        schema: read(row, 0)?,
+        name: read(row, 1)?,
+        unlogged: read::<String>(row, 2)? == "u",
+        column: read(row, 3)?,
+        sequence: ddl::Sequence {
+            type_name: read(row, 4)?,
+            increment: read(row, 5)?,
+            min: read(row, 6)?,
+            max: read(row, 7)?,
+            start: read(row, 8)?,
+            cache: read(row, 9)?,
+            cycle: read(row, 10)?,
+        },
     })
 }
 
@@ -443,6 +512,17 @@ impl PostgresConnection {
                 let bound: Option<String> = read(row, 9)?;
                 let server: Option<String> = read(row, 10)?;
                 let server_options: Option<Vec<String>> = read(row, 11)?;
+                let type_schema: Option<String> = read(row, 15)?;
+                let type_name: Option<String> = read(row, 16)?;
+                let oid = [oid.as_str()];
+                // One catalog session pipelines the reads.
+                let (columns, constraints, indexes, parents, sequences) = tokio::try_join!(
+                    self.catalog_rows(ddl::COLUMNS, &oid, options),
+                    self.catalog_rows(ddl::CONSTRAINTS, &oid, options),
+                    self.catalog_rows(ddl::INDEXES, &oid, options),
+                    self.catalog_rows(ddl::PARENTS, &oid, options),
+                    self.catalog_rows(ddl::OWNED_SEQUENCES, &oid, options),
+                )?;
                 let table = ddl::Table {
                     unlogged,
                     options: reloptions,
@@ -455,14 +535,13 @@ impl PostgresConnection {
                     comment,
                     schema,
                     name,
+                    inherits: parents
+                        .iter()
+                        .map(|row| Ok((read(row, 0)?, read(row, 1)?)))
+                        .collect::<Result<Vec<_>>>()?,
+                    of_type: type_schema.zip(type_name),
+                    sequences: sequences.iter().map(owned_sequence).collect::<Result<Vec<_>>>()?,
                 };
-                let oid = [oid.as_str()];
-                // One catalog session pipelines the three reads.
-                let (columns, constraints, indexes) = tokio::try_join!(
-                    self.catalog_rows(ddl::COLUMNS, &oid, options),
-                    self.catalog_rows(ddl::CONSTRAINTS, &oid, options),
-                    self.catalog_rows(ddl::INDEXES, &oid, options),
-                )?;
                 let columns = columns.iter().map(ddl_column).collect::<Result<Vec<_>>>()?;
                 let constraints = constraints
                     .iter()
@@ -551,12 +630,31 @@ impl Connection for PostgresConnection {
                 let ordinal: i32 = read(row, 0)?;
                 let primary_key: Option<i32> = read(row, 5)?;
                 Ok(ColumnInfo {
+                    generated: read(row, 6)?,
                     ordinal: u32::try_from(ordinal).unwrap_or(0),
                     name: read(row, 1)?,
                     type_name: read(row, 2)?,
                     nullable: read(row, 3)?,
                     default: read(row, 4)?,
                     primary_key: primary_key.and_then(|position| u32::try_from(position).ok()),
+                })
+            })
+            .collect()
+    }
+
+    async fn list_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>> {
+        let schema = table.schema.as_deref().unwrap_or("");
+        let rows = self.catalog_rows(INDEX_LIST, &[schema, &table.name], &options).await?;
+        rows.iter()
+            .map(|row| {
+                Ok(IndexInfo {
+                    name: read(row, 0)?,
+                    columns: read(row, 1)?,
+                    included: read(row, 2)?,
+                    unique: read(row, 3)?,
+                    primary: read(row, 4)?,
+                    method: read(row, 5)?,
+                    filter: read(row, 6)?,
                 })
             })
             .collect()

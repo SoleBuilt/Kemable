@@ -27,6 +27,8 @@
     onAddRow: () => void;
     onDeleteRows: () => void;
     onCopySql: () => void;
+    /** Export the table, or the rows its filter keeps. */
+    onExport: () => void;
     onDiscard: () => void;
     onPreview: () => void;
   }
@@ -45,6 +47,7 @@
     onAddRow,
     onDeleteRows,
     onCopySql,
+    onExport,
     onDiscard,
     onPreview,
   }: Props = $props();
@@ -62,6 +65,7 @@
     <Button variant="ghost" size="sm" icon="trash" disabled={!canEdit || !hasSelection} tip="Mark the selected rows for delete  Delete" onclick={onDeleteRows}>Delete rows</Button>
   {/if}
   <Separator />
+  <Button variant="ghost" size="sm" icon="arrow-up" disabled={running} tip="Export the table, or the rows its filter keeps" onclick={onExport}>Export</Button>
   <Button variant="ghost" size="sm" icon="copy" tip="Copy the SELECT this page ran, to edit and run it yourself" tipAt="end" onclick={onCopySql}>Copy SQL</Button>
 {:else}
   <Button

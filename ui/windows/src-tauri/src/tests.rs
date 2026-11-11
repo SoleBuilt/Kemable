@@ -876,3 +876,276 @@ async fn a_result_names_its_table_and_brings_its_where_as_filters() {
     assert!(crate::commands::source_of(&state, sets[1]).is_none());
     server.close().await;
 }
+
+/// A SQLite file in the temp folder, removed at the end, as one open server.
+async fn sqlite_server(state: &Arc<AppState>, name: &str) -> (Arc<OpenServer>, std::path::PathBuf) {
+    use paboable_core::config::{ConnectionConfig, Target};
+    let folder = std::env::temp_dir().join(format!("paboable-jobs-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    let driver = state.registry.get("sqlite").cloned().unwrap();
+    let config = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: folder.join("data.db"),
+            read_only: false,
+        },
+        options: Default::default(),
+    };
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    (Arc::new(OpenServer::new(driver, config, first, "test".into())), folder)
+}
+
+/// The events of a job, collected until it ends.
+fn job_channel() -> (Channel<crate::jobs::JobEvent>, Arc<Mutex<Vec<Json>>>) {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let collected = Arc::clone(&events);
+    let channel = Channel::new(move |body| {
+        if let InvokeResponseBody::Json(json) = body {
+            collected
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str::<Json>(&json).unwrap());
+        }
+        Ok(())
+    });
+    (channel, events)
+}
+
+/// The rows of a SQLite table numbered from 1 with no gaps: one past the last rowid, less one.
+async fn count(server: &Arc<OpenServer>, table: &str) -> i64 {
+    let session = server.session(None).await.unwrap();
+    let table = paboable_core::catalog::TableRef {
+        schema: None,
+        name: table.into(),
+    };
+    crate::jobs::key_start(&session, SqlGrammar::Sqlite, &table, "rowid")
+        .await
+        .unwrap()
+        - 1
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn import_generate_and_export_move_rows_and_a_cancel_leaves_nothing() {
+    use paboable_core::catalog::TableRef;
+    use paboable_core::export::{ExportFormat, ExportOptions};
+    use paboable_core::import::NewColumn;
+    use paboable_driver_sqlite::SqliteDriver;
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
+    let (server, folder) = sqlite_server(&state, "all").await;
+    run_script(
+        &state,
+        &server,
+        "create table khach (id integer primary key, ma text not null, ten text, so_du real)",
+        SqlGrammar::Sqlite,
+    )
+    .await;
+    let session = server.session(None).await.unwrap();
+    let khach = TableRef {
+        schema: None,
+        name: "khach".into(),
+    };
+
+    // Import into the table: fields by name, a field it lacks left out, codes keep their zeros.
+    let csv = "Ma;TEN;ghi_chu;so_du\r\n01121212;\"Nguyễn \"\"An\"\"\";x;12.5\r\n02;Bình;;\r\n";
+    let columns = session.fetch_columns(&khach, CallOptions::default()).await.unwrap();
+    let (channel, events) = job_channel();
+    let cancel = CancellationToken::new();
+    let id = state.add_run(cancel.clone());
+    crate::jobs::run_import(
+        Arc::clone(&state),
+        crate::jobs::ImportJob {
+            id,
+            session: Arc::clone(&session),
+            grammar: SqlGrammar::Sqlite,
+            transactional: true,
+            text: csv.into(),
+            options: crate::jobs::CsvOptions {
+                delimiter: ';',
+                header: true,
+                empty_is_null: true,
+            },
+            target: crate::jobs::ImportTarget::Existing { table: khach.clone() },
+            columns,
+            cancel,
+            channel,
+        },
+    )
+    .await;
+    let last = events.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(last["type"], "finished", "{last}");
+    assert_eq!(last["rows"], 2);
+    assert_eq!(count(&server, "khach").await, 2);
+
+    // Into a new table: it is made first, in the same transaction.
+    let (channel, events) = job_channel();
+    let cancel = CancellationToken::new();
+    let id = state.add_run(cancel.clone());
+    crate::jobs::run_import(
+        Arc::clone(&state),
+        crate::jobs::ImportJob {
+            id,
+            session: Arc::clone(&session),
+            grammar: SqlGrammar::Sqlite,
+            transactional: true,
+            text: "a,b\n1,x\n2,y\n3,z\n".into(),
+            options: crate::jobs::CsvOptions {
+                delimiter: ',',
+                header: true,
+                empty_is_null: true,
+            },
+            target: crate::jobs::ImportTarget::New {
+                table: TableRef {
+                    schema: None,
+                    name: "moi".into(),
+                },
+                columns: vec![
+                    NewColumn {
+                        name: "a".into(),
+                        type_name: "INTEGER".into(),
+                    },
+                    NewColumn {
+                        name: "b".into(),
+                        type_name: "TEXT".into(),
+                    },
+                ],
+            },
+            columns: Vec::new(),
+            cancel,
+            channel,
+        },
+    )
+    .await;
+    assert_eq!(events.lock().unwrap().last().unwrap()["rows"], 3);
+    assert_eq!(count(&server, "moi").await, 3);
+
+    // A cancelled import rolls back: the new table is not there.
+    let (channel, events) = job_channel();
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let id = state.add_run(cancel.clone());
+    crate::jobs::run_import(
+        Arc::clone(&state),
+        crate::jobs::ImportJob {
+            id,
+            session: Arc::clone(&session),
+            grammar: SqlGrammar::Sqlite,
+            transactional: true,
+            text: "a\n1\n".into(),
+            options: crate::jobs::CsvOptions {
+                delimiter: ',',
+                header: true,
+                empty_is_null: true,
+            },
+            target: crate::jobs::ImportTarget::New {
+                table: TableRef {
+                    schema: None,
+                    name: "bo_di".into(),
+                },
+                columns: vec![NewColumn {
+                    name: "a".into(),
+                    type_name: "INTEGER".into(),
+                }],
+            },
+            columns: Vec::new(),
+            cancel,
+            channel,
+        },
+    )
+    .await;
+    assert_eq!(events.lock().unwrap().last().unwrap()["type"], "cancelled");
+    let objects = session.list_objects(None, CallOptions::default()).await.unwrap();
+    assert!(!objects.iter().any(|object| object.name == "bo_di"));
+
+    // Generate Rows: 1,234 rows in batches, the key counted from the next free number.
+    let columns = session.fetch_columns(&khach, CallOptions::default()).await.unwrap();
+    let (channel, events) = job_channel();
+    let cancel = CancellationToken::new();
+    let id = state.add_run(cancel.clone());
+    crate::jobs::run_generate(
+        Arc::clone(&state),
+        crate::jobs::GenerateJob {
+            id,
+            session: Arc::clone(&session),
+            grammar: SqlGrammar::Sqlite,
+            transactional: true,
+            table: khach.clone(),
+            columns,
+            count: 1234,
+            seed: 42,
+            key_start: 3,
+            cancel,
+            channel,
+        },
+    )
+    .await;
+    assert_eq!(events.lock().unwrap().last().unwrap()["rows"], 1234);
+    assert_eq!(count(&server, "khach").await, 1236);
+
+    // Export every row to CSV; the file takes its name only when done.
+    let target = folder.join("khach.csv");
+    let (channel, events) = job_channel();
+    let cancel = CancellationToken::new();
+    let id = state.add_run(cancel.clone());
+    crate::export::run(
+        Arc::clone(&state),
+        crate::export::Export {
+            id,
+            session: Arc::clone(&session),
+            statement: "SELECT * FROM \"khach\" ORDER BY \"id\"".into(),
+            grammar: SqlGrammar::Sqlite,
+            table: khach.clone(),
+            options: ExportOptions {
+                format: ExportFormat::Csv,
+                delimiter: ',',
+                header: true,
+                bom: true,
+            },
+            path: target.clone(),
+            cancel,
+            channel,
+        },
+    )
+    .await;
+    assert_eq!(events.lock().unwrap().last().unwrap()["rows"], 1236);
+    let written = std::fs::read_to_string(&target).unwrap();
+    assert!(written.starts_with("\u{feff}id,ma,ten,so_du\r\n"), "{}", &written[..60]);
+    assert!(
+        written.contains("01121212,\"Nguyễn \"\"An\"\"\",12.5"),
+        "the import's row, quoted again"
+    );
+    assert_eq!(written.lines().count(), 1237);
+    assert!(!folder.join("khach.csv.part").exists());
+
+    // A cancelled export leaves no file at all.
+    let stopped = folder.join("stopped.json");
+    let (channel, events) = job_channel();
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let id = state.add_run(cancel.clone());
+    crate::export::run(
+        Arc::clone(&state),
+        crate::export::Export {
+            id,
+            session,
+            statement: "SELECT * FROM \"khach\"".into(),
+            grammar: SqlGrammar::Sqlite,
+            table: khach,
+            options: ExportOptions {
+                format: ExportFormat::Json,
+                delimiter: ',',
+                header: true,
+                bom: false,
+            },
+            path: stopped.clone(),
+            cancel,
+            channel,
+        },
+    )
+    .await;
+    assert_eq!(events.lock().unwrap().last().unwrap()["type"], "cancelled");
+    assert!(!stopped.exists() && !folder.join("stopped.json.part").exists());
+
+    server.close().await;
+    let _ = std::fs::remove_dir_all(&folder);
+}

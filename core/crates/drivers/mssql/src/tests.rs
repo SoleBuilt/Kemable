@@ -580,6 +580,212 @@ async fn object_ddl_scripts_what_the_server_holds_and_the_table_script_runs_agai
     .await;
 }
 
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+async fn columnstore_xml_and_spatial_indexes_are_listed_scripted_and_run_again() {
+    use paboable_core::catalog::{IndexInfo, ObjectInfo};
+    use paboable_core::sql::{SqlGrammar, split};
+
+    let conn = live_in("tempdb").await;
+    let schema = format!("paboable_ix_{}", std::process::id());
+    let copy = format!("paboable_ix_copy_{}", std::process::id());
+    let table = |name: &str| TableRef {
+        schema: Some(schema.clone()),
+        name: name.into(),
+    };
+    let object = |schema: &str, name: &str| ObjectInfo {
+        schema: Some(schema.into()),
+        name: name.into(),
+        kind: ObjectKind::Table,
+    };
+    let options = CallOptions::default;
+    run(&conn, &format!("create schema {schema}")).await;
+    run(&conn, &format!("create schema {copy}")).await;
+    run(
+        &conn,
+        &format!(
+            "create table {schema}.facts (
+                 id int not null, qty int not null, note nvarchar(50) null,
+                 constraint pk_facts primary key nonclustered (id)
+             );
+             create unique nonclustered index ix_facts_qty on {schema}.facts (qty desc) include (note);
+             create nonclustered columnstore index ncci_facts on {schema}.facts (qty, id) where qty > 0;
+             create table {schema}.events (id int not null, at datetime2(3) not null, kind tinyint not null);
+             create clustered columnstore index cci_events on {schema}.events;
+             create table {schema}.docs (
+                 id int not null constraint pk_docs primary key clustered,
+                 body xml null,
+                 shape geometry null
+             );
+             create primary xml index pxml_docs on {schema}.docs (body);
+             create xml index a_path on {schema}.docs (body) using xml index pxml_docs for path;
+             create xml index b_value on {schema}.docs (body) using xml index pxml_docs for value;
+             create spatial index sp_docs_shape on {schema}.docs (shape) using geometry_grid
+                 with (bounding_box = (0, 0, 100, 100),
+                       grids = (level_1 = low, level_2 = medium, level_3 = high, level_4 = medium),
+                       cells_per_object = 8);
+             create table {schema}.gen (
+                 id int identity(1, 1) not null, plain int null, twice as (plain * 2), rv rowversion
+             );"
+        ),
+    )
+    .await;
+
+    let index = |name: &str, method: &str, columns: &[&str]| IndexInfo {
+        name: name.into(),
+        columns: columns.iter().map(|&column| column.into()).collect(),
+        included: Vec::new(),
+        unique: false,
+        primary: false,
+        method: method.into(),
+        filter: None,
+    };
+    assert_eq!(
+        conn.list_indexes(&table("facts"), options()).await.unwrap(),
+        [
+            IndexInfo {
+                unique: true,
+                primary: true,
+                ..index("pk_facts", "NONCLUSTERED", &["id"])
+            },
+            IndexInfo {
+                unique: true,
+                included: vec!["note".into()],
+                ..index("ix_facts_qty", "NONCLUSTERED", &["qty DESC"])
+            },
+            IndexInfo {
+                filter: Some("([qty]>(0))".into()),
+                ..index("ncci_facts", "NONCLUSTERED COLUMNSTORE", &["qty", "id"])
+            },
+        ]
+    );
+    let events = conn.list_indexes(&table("events"), options()).await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .map(|index| (index.name.as_str(), index.method.as_str()))
+            .collect::<Vec<_>>(),
+        [("cci_events", "CLUSTERED COLUMNSTORE")]
+    );
+    assert_eq!(
+        conn.list_indexes(&table("docs"), options()).await.unwrap(),
+        [
+            IndexInfo {
+                unique: true,
+                primary: true,
+                ..index("pk_docs", "CLUSTERED", &["id"])
+            },
+            index("a_path", "XML", &["body"]),
+            index("b_value", "XML", &["body"]),
+            index("pxml_docs", "XML", &["body"]),
+            index("sp_docs_shape", "SPATIAL", &["shape"]),
+        ]
+    );
+    assert_eq!(conn.list_indexes(&table("gen"), options()).await.unwrap(), []);
+
+    let generated: Vec<(String, bool)> = conn
+        .fetch_columns(&table("gen"), options())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|column| (column.name, column.generated))
+        .collect();
+    assert_eq!(
+        generated,
+        [
+            ("id".into(), true),
+            ("plain".into(), false),
+            ("twice".into(), true),
+            ("rv".into(), true)
+        ]
+    );
+
+    let mut scripts = Vec::new();
+    for (name, pieces) in [
+        (
+            "facts",
+            vec![format!(
+                "CREATE NONCLUSTERED COLUMNSTORE INDEX [ncci_facts] ON [{schema}].[facts] ([qty], [id]) \
+                 WHERE ([qty]>(0));"
+            )],
+        ),
+        (
+            "events",
+            vec![format!(
+                "CREATE CLUSTERED COLUMNSTORE INDEX [cci_events] ON [{schema}].[events];"
+            )],
+        ),
+        (
+            "docs",
+            vec![
+                format!("CREATE PRIMARY XML INDEX [pxml_docs] ON [{schema}].[docs] ([body]);"),
+                format!(
+                    "CREATE XML INDEX [a_path] ON [{schema}].[docs] ([body]) USING XML INDEX [pxml_docs] FOR PATH;"
+                ),
+                format!(
+                    "CREATE XML INDEX [b_value] ON [{schema}].[docs] ([body]) USING XML INDEX [pxml_docs] FOR VALUE;"
+                ),
+                format!(
+                    "CREATE SPATIAL INDEX [sp_docs_shape] ON [{schema}].[docs] ([shape]) USING GEOMETRY_GRID \
+                     WITH (BOUNDING_BOX = (0, 0, 100, 100), \
+                     GRIDS = (LEVEL_1 = LOW, LEVEL_2 = MEDIUM, LEVEL_3 = HIGH, LEVEL_4 = MEDIUM), \
+                     CELLS_PER_OBJECT = 8);"
+                ),
+            ],
+        ),
+    ] {
+        let script = conn.object_ddl(&object(&schema, name), options()).await.unwrap();
+        for piece in &pieces {
+            assert!(script.contains(piece.as_str()), "{piece}\nnot in\n{script}");
+        }
+        scripts.push((name, script));
+    }
+    let docs = &scripts[2].1;
+    let primary_at = docs.find("CREATE PRIMARY XML INDEX").unwrap();
+    assert!(docs.find("CREATE XML INDEX").is_some_and(|at| at > primary_at));
+
+    // Each script made again in another schema scripts back the same.
+    for (name, script) in &scripts {
+        let copied = script.replace(&format!("[{schema}]."), &format!("[{copy}]."));
+        for span in split(&copied, SqlGrammar::SqlServer) {
+            run(&conn, span.text(&copied)).await;
+        }
+        let again = conn.object_ddl(&object(&copy, name), options()).await.unwrap();
+        assert_eq!(again, copied, "{name}");
+    }
+
+    run(
+        &conn,
+        &format!(
+            "drop table {copy}.facts; drop table {copy}.events; drop table {copy}.docs;
+             drop table {schema}.facts; drop table {schema}.events; drop table {schema}.docs; drop table {schema}.gen;
+             drop schema {copy}; drop schema {schema}"
+        ),
+    )
+    .await;
+}
+
+#[test]
+fn index_columns_fall_in_key_or_include_by_the_kind_of_index() {
+    use crate::connection::{IndexColumnPlace, index_column_place};
+    // Rowstore: clustered, nonclustered, hash.
+    for kind in [1, 2, 7] {
+        assert_eq!(index_column_place(kind, 1, false), Some(IndexColumnPlace::Key));
+        assert_eq!(index_column_place(kind, 0, true), Some(IndexColumnPlace::Included));
+        // A partitioning column the index did not name.
+        assert_eq!(index_column_place(kind, 0, false), None);
+    }
+    // Columnstore: every column it keeps is marked included.
+    for kind in [5, 6] {
+        assert_eq!(index_column_place(kind, 0, true), Some(IndexColumnPlace::Key));
+        assert_eq!(index_column_place(kind, 0, false), None);
+    }
+    // XML and spatial: one column, no key ordinal.
+    for kind in [3, 4] {
+        assert_eq!(index_column_place(kind, 0, false), Some(IndexColumnPlace::Key));
+    }
+}
+
 // --- object scripts, without a server -------------------------------------------
 
 mod ddl_text {
@@ -856,6 +1062,7 @@ mod ddl_text {
                 column: Some("tên".into()),
                 text: "Tên".into(),
             }],
+            ..Table::default()
         };
         let script = table_ddl(&table);
         assert_eq!(
@@ -873,6 +1080,183 @@ mod ddl_text {
              @level2type = N'COLUMN', @level2name = N'tên';"
         );
         assert_eq!(split(&script, SqlGrammar::SqlServer).len(), 4);
+    }
+
+    #[test]
+    fn a_columnstore_index_names_its_columns_only_when_nonclustered() {
+        let mut index = ColumnstoreIndex {
+            name: "cci".into(),
+            clustered: true,
+            ..ColumnstoreIndex::default()
+        };
+        assert_eq!(
+            columnstore_statement("[dbo].[events]", &index),
+            "CREATE CLUSTERED COLUMNSTORE INDEX [cci] ON [dbo].[events];"
+        );
+        index.order = vec!["at".into(), "Mã".into()];
+        assert_eq!(
+            columnstore_statement("[dbo].[events]", &index),
+            "CREATE CLUSTERED COLUMNSTORE INDEX [cci] ON [dbo].[events] ORDER ([at], [Mã]);"
+        );
+        let index = ColumnstoreIndex {
+            name: "ncci]".into(),
+            clustered: false,
+            columns: vec!["qty".into(), "id".into()],
+            order: Vec::new(),
+            filter: Some("([qty]>(0))".into()),
+        };
+        assert_eq!(
+            columnstore_statement("[dbo].[facts]", &index),
+            "CREATE NONCLUSTERED COLUMNSTORE INDEX [ncci]]] ON [dbo].[facts] ([qty], [id]) WHERE ([qty]>(0));"
+        );
+    }
+
+    #[test]
+    fn a_secondary_xml_index_names_its_primary_and_what_it_is_for() {
+        assert_eq!(XmlPurpose::from_code("V"), Some(XmlPurpose::Value));
+        assert_eq!(XmlPurpose::from_code("P"), Some(XmlPurpose::Path));
+        assert_eq!(XmlPurpose::from_code("R"), Some(XmlPurpose::Property));
+        assert_eq!(XmlPurpose::from_code("X"), None);
+        let primary = XmlIndex {
+            name: "pxml".into(),
+            column: "body".into(),
+            secondary: None,
+        };
+        assert_eq!(
+            xml_index_statement("[dbo].[docs]", &primary),
+            "CREATE PRIMARY XML INDEX [pxml] ON [dbo].[docs] ([body]);"
+        );
+        for (purpose, keyword) in [
+            (XmlPurpose::Value, "VALUE"),
+            (XmlPurpose::Path, "PATH"),
+            (XmlPurpose::Property, "PROPERTY"),
+        ] {
+            let secondary = XmlIndex {
+                name: "sxml".into(),
+                column: "body".into(),
+                secondary: Some(SecondaryXml {
+                    primary: "pxml".into(),
+                    purpose,
+                }),
+            };
+            assert_eq!(
+                xml_index_statement("[dbo].[docs]", &secondary),
+                format!("CREATE XML INDEX [sxml] ON [dbo].[docs] ([body]) USING XML INDEX [pxml] FOR {keyword};")
+            );
+        }
+    }
+
+    fn spatial(scheme: &str) -> SpatialIndex {
+        SpatialIndex {
+            name: "sp".into(),
+            column: "shape".into(),
+            scheme: scheme.into(),
+            bounding_box: Some([0.0, -10.5, 100.0, 1e6]),
+            grids: vec!["LOW".into(), "MEDIUM".into(), "HIGH".into(), "MEDIUM".into()],
+            cells_per_object: Some(8),
+        }
+    }
+
+    #[test]
+    fn a_spatial_index_writes_a_box_only_for_geometry_and_grids_only_when_not_auto() {
+        assert_eq!(
+            spatial_index_statement("[dbo].[docs]", &spatial("GEOMETRY_GRID")),
+            "CREATE SPATIAL INDEX [sp] ON [dbo].[docs] ([shape]) USING GEOMETRY_GRID WITH (\
+             BOUNDING_BOX = (0, -10.5, 100, 1000000), \
+             GRIDS = (LEVEL_1 = LOW, LEVEL_2 = MEDIUM, LEVEL_3 = HIGH, LEVEL_4 = MEDIUM), \
+             CELLS_PER_OBJECT = 8);"
+        );
+        assert_eq!(
+            spatial_index_statement("[dbo].[docs]", &spatial("GEOMETRY_AUTO_GRID")),
+            "CREATE SPATIAL INDEX [sp] ON [dbo].[docs] ([shape]) USING GEOMETRY_AUTO_GRID WITH (\
+             BOUNDING_BOX = (0, -10.5, 100, 1000000), CELLS_PER_OBJECT = 8);"
+        );
+        assert_eq!(
+            spatial_index_statement("[dbo].[docs]", &spatial("GEOGRAPHY_GRID")),
+            "CREATE SPATIAL INDEX [sp] ON [dbo].[docs] ([shape]) USING GEOGRAPHY_GRID WITH (\
+             GRIDS = (LEVEL_1 = LOW, LEVEL_2 = MEDIUM, LEVEL_3 = HIGH, LEVEL_4 = MEDIUM), CELLS_PER_OBJECT = 8);"
+        );
+        assert_eq!(
+            spatial_index_statement("[dbo].[docs]", &spatial("GEOGRAPHY_AUTO_GRID")),
+            "CREATE SPATIAL INDEX [sp] ON [dbo].[docs] ([shape]) USING GEOGRAPHY_AUTO_GRID WITH (\
+             CELLS_PER_OBJECT = 8);"
+        );
+        let bare = SpatialIndex {
+            bounding_box: None,
+            grids: Vec::new(),
+            cells_per_object: None,
+            ..spatial("GEOMETRY_GRID")
+        };
+        assert_eq!(
+            spatial_index_statement("[dbo].[docs]", &bare),
+            "CREATE SPATIAL INDEX [sp] ON [dbo].[docs] ([shape]) USING GEOMETRY_GRID;"
+        );
+    }
+
+    #[test]
+    fn other_index_kinds_follow_the_rowstore_ones_and_xml_primaries_come_before_secondaries() {
+        let secondary = |name: &str, purpose| XmlIndex {
+            name: name.into(),
+            column: "body".into(),
+            secondary: Some(SecondaryXml {
+                primary: "z_primary".into(),
+                purpose,
+            }),
+        };
+        let table = Table {
+            schema: "dbo".into(),
+            name: "docs".into(),
+            database_collation: COLLATION.into(),
+            columns: vec![column("id", system("int", 4, 10, 0), false)],
+            indexes: vec![Index {
+                name: "ix".into(),
+                columns: vec![key_column("id", false)],
+                ..Index::default()
+            }],
+            columnstores: vec![ColumnstoreIndex {
+                name: "ncci".into(),
+                columns: vec!["id".into()],
+                ..ColumnstoreIndex::default()
+            }],
+            xml_indexes: vec![
+                secondary("a_path", XmlPurpose::Path),
+                XmlIndex {
+                    name: "z_primary".into(),
+                    column: "body".into(),
+                    secondary: None,
+                },
+                secondary("b_value", XmlPurpose::Value),
+            ],
+            spatial_indexes: vec![spatial("GEOMETRY_AUTO_GRID")],
+            descriptions: vec![Description {
+                column: None,
+                text: "x".into(),
+            }],
+            ..Table::default()
+        };
+        let script = table_ddl(&table);
+        let statements: Vec<&str> = split(&script, SqlGrammar::SqlServer)
+            .into_iter()
+            .map(|span| span.text(&script).trim())
+            .collect();
+        let starts: Vec<&str> = statements
+            .iter()
+            .map(|statement| statement.split(" ON ").next().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            starts,
+            [
+                "CREATE TABLE [dbo].[docs] (\n    [id] int NOT NULL\n);",
+                "CREATE NONCLUSTERED INDEX [ix]",
+                "CREATE NONCLUSTERED COLUMNSTORE INDEX [ncci]",
+                "CREATE PRIMARY XML INDEX [z_primary]",
+                "CREATE XML INDEX [a_path]",
+                "CREATE XML INDEX [b_value]",
+                "CREATE SPATIAL INDEX [sp]",
+                "EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'x', \
+                 @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'docs';",
+            ]
+        );
     }
 
     #[test]

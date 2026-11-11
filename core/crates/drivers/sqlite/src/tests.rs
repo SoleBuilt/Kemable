@@ -310,3 +310,47 @@ async fn a_tables_ddl_is_its_create_statement_with_its_indexes_and_triggers() {
         paboable_core::ErrorCode::NotFound
     );
 }
+
+#[tokio::test]
+async fn indexes_list_the_key_first_with_their_columns_order_and_filter() {
+    use paboable_core::catalog::{ColumnInfo, TableRef};
+    let connection = memory().await;
+    for statement in [
+        "create table hàng (mã text primary key, tên text not null, giá real, ghi_chú text)",
+        "create unique index ux_ten on hàng (tên desc)",
+        "create index ix_gia on hàng (giá) where giá > 0",
+        "create index ix_expr on hàng (lower(ghi_chú))",
+    ] {
+        run(&connection, statement).await.1.unwrap();
+    }
+    let table = TableRef {
+        schema: None,
+        name: "hàng".into(),
+    };
+    let indexes = connection.list_indexes(&table, CallOptions::default()).await.unwrap();
+    let names: Vec<&str> = indexes.iter().map(|index| index.name.as_str()).collect();
+    assert_eq!(names, ["sqlite_autoindex_hàng_1", "ix_expr", "ix_gia", "ux_ten"]);
+    assert!(indexes[0].primary && indexes[0].unique);
+    assert_eq!(indexes[0].columns, ["mã"]);
+    assert_eq!(indexes[1].columns, ["(expression)"]);
+    assert_eq!(indexes[2].filter.as_deref(), Some("giá > 0"));
+    assert!(indexes[3].unique);
+    assert_eq!(indexes[3].columns, ["tên DESC"]);
+
+    // A lone INTEGER PRIMARY KEY is the rowid: SQLite numbers it.
+    run(&connection, "create table t (id integer primary key, n integer)")
+        .await
+        .1
+        .unwrap();
+    let columns: Vec<ColumnInfo> = connection
+        .fetch_columns(
+            &TableRef {
+                schema: None,
+                name: "t".into(),
+            },
+            CallOptions::default(),
+        )
+        .await
+        .unwrap();
+    assert!(columns[0].generated && !columns[1].generated);
+}

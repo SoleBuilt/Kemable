@@ -6,6 +6,14 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   CredentialProfile,
+  CsvOptions,
+  CsvPreview,
+  ExportOptions,
+  GeneratePlan,
+  ImportPlan,
+  ImportTarget,
+  IndexInfo,
+  JobEvent,
   Maintenance,
   ObjectAction,
   ResultSource,
@@ -65,6 +73,47 @@ export const ipc = {
     invoke<SavedConnection>("save_connection", { connection, password }),
 
   deleteSaved: (id: string) => invoke<void>("delete_saved", { id }),
+
+  /** A table's indexes, the primary key's first. */
+  listIndexes: (conn: number, database: string | null, table: TableRef) => invoke<IndexInfo[]>("list_indexes", { conn, database, table }),
+  /** An object's name as it is pasted into a statement, quoted only where it must be. */
+  qualifiedName: (conn: number, object: ObjectInfo) => invoke<string>("qualified_name", { conn, object }),
+
+  /** Writes a table's rows to `path`; resolves to an id `cancelRun` stops (docs/decisions/0018-export-import-generate.md). */
+  exportTable(conn: number, database: string | null, query: BrowseQuery, options: ExportOptions, path: string, onEvent: (event: JobEvent) => void) {
+    const channel = new Channel<JobEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("export_table", { conn, database, query, options, path, onEvent: channel });
+  },
+  /** A CSV file's separator, header, first rows and value shapes; `delimiter` null finds it. */
+  previewCsv: (conn: number, path: string, delimiter: string | null, header: boolean) =>
+    invoke<CsvPreview>("preview_csv", { conn, path, delimiter, header }),
+  /** What an import will do, before it runs. */
+  importPlan: (conn: number, database: string | null, path: string, options: CsvOptions, target: ImportTarget) =>
+    invoke<ImportPlan>("import_plan", { conn, database, path, options, target }),
+  /** Imports a CSV file in one transaction; resolves to an id `cancelRun` stops. */
+  importCsv(conn: number, database: string | null, path: string, options: CsvOptions, target: ImportTarget, onEvent: (event: JobEvent) => void) {
+    const channel = new Channel<JobEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("import_csv", { conn, database, path, options, target, onEvent: channel });
+  },
+  /** What Generate Rows will insert into `table`, with the first five rows. */
+  generatePlan: (conn: number, database: string | null, table: TableRef, seed: number) =>
+    invoke<GeneratePlan>("generate_plan", { conn, database, table, seed }),
+  /** Inserts `count` made-up rows in one transaction; resolves to an id `cancelRun` stops. */
+  generateRows(
+    conn: number,
+    database: string | null,
+    table: TableRef,
+    count: number,
+    seed: number,
+    keyStart: number,
+    onEvent: (event: JobEvent) => void,
+  ) {
+    const channel = new Channel<JobEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("generate_rows", { conn, database, table, count, seed, keyStart, onEvent: channel });
+  },
 
   /** The statement that makes `object` as the server holds it now (docs/decisions/0017-tree-actions.md). */
   objectDdl: (conn: number, database: string | null, object: ObjectInfo) => invoke<string>("object_ddl", { conn, database, object }),
