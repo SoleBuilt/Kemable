@@ -2234,13 +2234,14 @@
                     variant="ghost"
                     size="sm"
                     icon="table"
+                    class="is-shrink"
                     disabled={running}
                     tip={source.whereLeft
                       ? "Open the whole table: its WHERE is more than the filter row holds"
                       : source.filters.length > 0
                         ? "Open the table on its own page, filtered by the statement's WHERE"
                         : "Open the table on its own page, to edit its rows"}
-                    onclick={() => void openResultTable(source)}>Open {source.table.name} to edit</Button
+                    onclick={() => void openResultTable(source)}><span class="pb-btn-text">Open {source.table.name} to edit</span></Button
                   >
                 {/if}
                 {#if activeSet && !keyValue}
