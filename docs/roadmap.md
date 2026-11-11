@@ -36,7 +36,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 - [ ] **Ctrl+click picks rows one by one** in the grid (design system D21). Shift picks a range today; the core's copy takes one rectangle, so it needs a selection of several ranges.
 - [ ] **Open and save `.sql` files**, beside saved queries. Asked 2026-11-11, not decided.
 - [ ] **Pages across launches.** Query tabs and their text come back when the app opens again.
-- [ ] **An orange style.** A second accent style like ERP Tinh gọn's orange `primary`, picked in Settings beside the default black and white. Only the accent tokens change; shapes stay. Decided 2026-11-10 (backlog B2).
+- [x] **An orange style.** A second accent style like ERP Tinh gọn's orange `primary`, picked in Settings beside the default black and white. Only the accent tokens change; shapes stay. Decided 2026-11-10 (backlog B2). Built 2026-11-11: `data-style="orange"` on `<html>`, the tokens in `ui/windows/src/app.css`.
 
 ## Phase 2: daily use
 

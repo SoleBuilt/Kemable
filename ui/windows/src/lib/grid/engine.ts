@@ -158,7 +158,7 @@ export class GridEngine {
   private dragging: SelectionMode | null = null;
   private resizing: { column: number; startX: number; startWidth: number } | null = null;
   private readonly colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
-  // Settings picks a theme through data-theme on <html>, which no media query reports.
+  // Settings picks a theme and a style through data-theme and data-style on <html>, which no media query reports.
   private readonly themeAttribute = new MutationObserver(() => this.onThemeChange());
 
   constructor(
@@ -172,7 +172,7 @@ export class GridEngine {
     this.context = context;
     this.theme = readTheme();
     this.colorScheme.addEventListener("change", this.onThemeChange);
-    this.themeAttribute.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    this.themeAttribute.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-style"] });
     scroller.addEventListener("scroll", this.scheduleDraw, { passive: true });
   }
 

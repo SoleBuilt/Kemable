@@ -11,6 +11,7 @@ paths:
 - **Colours are tokens** on `:root` in `src/app.css`, redefined for dark under `prefers-color-scheme: dark` and `[data-theme="dark"]`. Components use the design system's `pb-*` classes in `src/components.css` (`docs/decisions/0012-design-system.md`), else `var(--token)` or the Tailwind names mapped to the tokens. No hex or rgb outside `app.css`.
 - **A screen uses the parts in `src/lib/ui/`**, never the `pb-*` markup they draw (`docs/decisions/0014-ui-components.md`). A new part goes in `lib/ui/`, with its class in `components.css` under the design system's name and no `<style>` block of its own.
 - **A new token** is added to both the light and the dark block, and to `@theme inline` when Tailwind needs it.
+- **The orange style** (`data-style="orange"`) redefines only the accent tokens, in its own light and dark blocks after the themes. A new accent token gets an orange value there too.
 - **The canvas grid and CodeMirror read the same tokens** (`readTheme()` in the grid, `var(--…)` in the editor theme), so a token change reaches them too.
 - **Density:** 13 px body text. Grid rows are 28 px, or 24 px with Compact rows. Buttons are 32 px, or 28 px for the small size. Bars are 40 px and the toolbar is 48 px. The fonts are Geist for text and Geist Mono for code, bundled from npm.
 - **Icons** are `lib/ui/Icon.svelte` (Lucide paths). A new icon adds its path there.

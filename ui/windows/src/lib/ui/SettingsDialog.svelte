@@ -1,9 +1,12 @@
 <script lang="ts" module>
   export type ThemeChoice = "system" | "light" | "dark";
+  /** The accent: black and white, or the orange of ERP Tinh gọn. Only the accent tokens differ. */
+  export type StyleChoice = "mono" | "orange";
 
   /** What Settings keeps, remembered in the WebView's storage across launches. */
   export interface Settings {
     theme: ThemeChoice;
+    style: StyleChoice;
     compactRows: boolean;
     /** The row cap a run stops at; null keeps every row. */
     rowCap: number | null;
@@ -15,13 +18,14 @@
   export const ROW_CAPS: (number | null)[] = [1_000, 10_000, 100_000, 500_000, 1_000_000, null];
 
   const KEY = "paboable.settings";
-  const DEFAULTS: Settings = { theme: "system", compactRows: false, rowCap: 1_000, followCreatedDatabase: true };
+  const DEFAULTS: Settings = { theme: "system", style: "mono", compactRows: false, rowCap: 1_000, followCreatedDatabase: true };
 
   export function readSettings(): Settings {
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Settings>;
       return {
         theme: saved.theme === "light" || saved.theme === "dark" ? saved.theme : "system",
+        style: saved.style === "orange" ? "orange" : "mono",
         compactRows: saved.compactRows === true,
         rowCap: saved.rowCap === null || ROW_CAPS.includes(saved.rowCap ?? -1) ? (saved.rowCap ?? null) : DEFAULTS.rowCap,
         followCreatedDatabase: saved.followCreatedDatabase !== false,
@@ -43,6 +47,12 @@
   export function applyTheme(theme: ThemeChoice): void {
     if (theme === "system") delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = theme;
+  }
+
+  /** Applies the style: data-style on <html>, or none for black and white. */
+  export function applyStyle(style: StyleChoice): void {
+    if (style === "mono") delete document.documentElement.dataset.style;
+    else document.documentElement.dataset.style = style;
   }
 </script>
 
@@ -68,11 +78,13 @@
   let draft: Settings = $state({ ...settings });
   const numberFormat = new Intl.NumberFormat();
 
-  // The theme shows at once, so the choice can be judged; Cancel puts the old one back.
+  // The theme and style show at once, so the choice can be judged; Cancel puts the old ones back.
   $effect(() => applyTheme(draft.theme));
+  $effect(() => applyStyle(draft.style));
 
   function cancel() {
     applyTheme(settings.theme);
+    applyStyle(settings.style);
     onClose();
   }
 
@@ -81,9 +93,9 @@
     { value: "light", label: "Light" },
     { value: "dark", label: "Dark" },
   ];
-  const STYLES = [
+  const STYLES: { value: StyleChoice; label: string }[] = [
     { value: "mono", label: "Black and white" },
-    { value: "orange", label: "Orange", disabled: true },
+    { value: "orange", label: "Orange" },
   ];
   const ROWS = [
     { value: false, label: "Default · 28 px" },
@@ -97,8 +109,8 @@
   <Setting title="Theme" hint="System follows Windows light or dark.">
     <Segmented label="Theme" options={THEMES} value={draft.theme} onChange={(theme) => (draft.theme = theme)} />
   </Setting>
-  <Setting title="Style" hint="The orange style of ERP Tinh gọn comes later.">
-    <Segmented label="Style" options={STYLES} value="mono" onChange={() => {}} />
+  <Setting title="Style" hint="The accent of buttons, tabs and the cell cursor.">
+    <Segmented label="Style" options={STYLES} value={draft.style} onChange={(style) => (draft.style = style)} />
   </Setting>
   <Setting title="Mica background" hint="The Windows 11 material behind the toolbar and sidebar.">
     <Badge>Later</Badge>
