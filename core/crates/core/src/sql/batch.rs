@@ -19,7 +19,7 @@
 use std::ops::Range;
 
 use super::SqlGrammar;
-use super::lex::{Kind, Token, lex_strict};
+use super::lex::{Kind, Token, lex, lex_strict};
 
 /// Words that begin a statement in T-SQL.
 const STARTERS: &[&str] = &[
@@ -129,6 +129,16 @@ pub fn batch_queries(batch: &str) -> Option<Vec<Range<usize>>> {
 pub fn batch_statement_count(batch: &str) -> Option<usize> {
     let tokens = lex_strict(batch, SqlGrammar::SqlServer)?;
     Some(parts(batch, &tokens).len())
+}
+
+/// Where each statement of a SQL Server batch starts, as byte offsets, for
+/// text still being written: a quote or parenthesis left open is read on.
+pub(super) fn statement_starts(batch: &str) -> Vec<usize> {
+    let tokens = lex(batch, SqlGrammar::SqlServer).tokens;
+    parts(batch, &tokens)
+        .iter()
+        .filter_map(|part| tokens.get(part.first).map(|token| token.start))
+        .collect()
 }
 
 /// Splits the batch's tokens into statements. A `;` at the top level ends one.

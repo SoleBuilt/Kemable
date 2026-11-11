@@ -12,7 +12,7 @@ The editor offered lang-sql's keywords and nothing from the database. Names (sch
 
 ### The core reads the context
 
-`paboable_core::sql::completion_context(text, cursor, grammar)` returns, for the statement (or SQL Server batch) under the cursor:
+`paboable_core::sql::completion_context(text, cursor, grammar)` returns, for the statement under the cursor (in SQL Server, the statement inside its batch, since T-SQL needs no `;` between statements: `paboable_core::sql::batch`, amended 2026-11-11, so the columns offered are those of the tables that statement names, not of every table in the batch):
 
 - **The word being typed** and where it starts, so an item replaces it. Inside an open quoted name (`"Ord`, `[Ord`) the word starts after the quote and the item closes it.
 - **The qualifier**: the names before the dots (`o.` → `o`, `sales.` → `sales`).
