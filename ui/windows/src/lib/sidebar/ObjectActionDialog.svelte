@@ -152,7 +152,7 @@
   }
 </script>
 
-<Dialog {title} width={620} maxHeight="80vh" {busy} {onClose} onsubmit={() => void run()}>
+<Dialog {title} width={620} {busy} {onClose} onsubmit={() => void run()}>
   {#if error}<InfoBar tone="danger" title={errorTitle(error)} message={error.message} />{/if}
   {#if refused}<InfoBar tone="warning" title={errorTitle(refused)} message={refused.message} />{/if}
 

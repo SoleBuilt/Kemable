@@ -105,6 +105,8 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** thêm `<tên>-copy` cùng user, chưa lưu ("not saved"); phải gõ mật khẩu rồi Save.
 - [ ] Kiểm tra cả hai hộp thoại ở theme sáng và tối.
   **Đúng:** chữ đọc rõ, danh sách bên trái có nền canvas, đường kẻ giữa hai cột.
+- [ ] Thu cửa sổ app thấp hơn connect form (kéo cạnh dưới lên), rồi mở connect form (New connection, chọn SQL Server).
+  **Đúng:** form cao tối đa 80% cửa sổ, tiêu đề và hàng nút luôn thấy; chỉ phần giữa form cuộn, cửa sổ phía sau không có thanh cuộn. Thanh cuộn mỏng, chỉ hiện khi rê chuột vào form; khi nó hiện, các ô nhập không hẹp lại hay xê dịch.
 
 ---
 
