@@ -10,7 +10,7 @@
   interface Props {
     title: string;
     width?: number;
-    /** The body scrolls inside the window when it is taller than this. */
+    /** The body scrolls inside the dialog when the dialog would be taller than this. */
     maxHeight?: string;
     /** While it works, Esc and the close button do nothing. */
     busy?: boolean;
@@ -24,7 +24,7 @@
     footer?: Snippet;
   }
 
-  let { title, width = 480, maxHeight, busy = false, onClose, onsubmit, bodyStyle, children, footer }: Props = $props();
+  let { title, width = 480, maxHeight = "80vh", busy = false, onClose, onsubmit, bodyStyle, children, footer }: Props = $props();
   const id = $props.id();
   const self = Symbol();
   open.push(self);
@@ -46,7 +46,7 @@
     <h2 class="pb-dialog-title" id="{id}-title">{title}</h2>
     <Button variant="ghost" size="sm" icon="x" label="Close" tip="Close  Esc" tipAt="end" disabled={busy} onclick={close} />
   </div>
-  <div class="pb-dialog-body" class:is-scroll={maxHeight !== undefined} style={bodyStyle}>
+  <div class="pb-dialog-body is-scroll" style={bodyStyle}>
     {@render children()}
   </div>
   {#if footer}

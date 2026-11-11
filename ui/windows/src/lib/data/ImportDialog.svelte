@@ -136,7 +136,7 @@
   }
 </script>
 
-<Dialog title={`Import into ${into === "existing" ? table.name : "a new table"}`} width={720} maxHeight="86vh" busy={job !== null} {onClose} onsubmit={() => void start()}>
+<Dialog title={`Import into ${into === "existing" ? table.name : "a new table"}`} width={720} busy={job !== null} {onClose} onsubmit={() => void start()}>
   {#if error}<InfoBar tone="danger" title={errorTitle(error)} message={error.message} />{/if}
 
   {#if job !== null}

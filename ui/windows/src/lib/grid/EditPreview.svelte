@@ -34,7 +34,7 @@
   }}
 />
 
-<Dialog title={saveLabel} width={760} maxHeight="80vh" {busy} {onClose}>
+<Dialog title={saveLabel} width={760} {busy} {onClose}>
   {#if error}<InfoBar tone="danger" title={errorTitle(error)} message={error.message} />{/if}
   <p class="pb-dialog-text">These statements run in one transaction. If one fails, or names a row that is gone, none of them are saved.</p>
   <pre class="pb-codebox">{statements.map((statement) => `${statement};`).join("\n")}</pre>

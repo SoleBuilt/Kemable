@@ -550,7 +550,22 @@ span.pb-cond-lead { display: inline-flex; color: var(--fg-muted); font-size: 12p
 
 /* Parts of the components in lib/ui */
 .pb-dialog-form { display: contents; }
-.pb-dialog-body.is-scroll { min-height: 0; overflow: auto; }
+/* A dialog stops at its max height (80% of the window unless it asks for more) and its body scrolls,
+   never the window behind it. The bar is 6px in a gutter kept even when there is nothing to scroll, so
+   the body's width never changes, and it shows only while the pointer is over the body. The right
+   padding gives the gutter back. Chromium honours ::-webkit-scrollbar only when scrollbar-width and
+   scrollbar-color are auto. */
+.pb-dialog-body.is-scroll { min-height: 0; overflow: auto; scrollbar-gutter: stable; padding-right: calc(var(--space-5) - 6px); scrollbar-width: auto; scrollbar-color: auto; }
+.pb-dialog-body.is-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.pb-dialog-body.is-scroll::-webkit-scrollbar-track, .pb-dialog-body.is-scroll::-webkit-scrollbar-corner { background: transparent; }
+.pb-dialog-body.is-scroll::-webkit-scrollbar-thumb { background: transparent; border: 0; border-radius: 9999px; }
+.pb-dialog-body.is-scroll:hover::-webkit-scrollbar-thumb { background: var(--scroll-thumb); }
+/* WebView2 repaints a custom scrollbar only when its element's own style changes, not on :hover
+   alone; this invisible outline is that change (measured in the check build, 2026-11-12). */
+.pb-dialog-body.is-scroll:hover { outline: 1px solid transparent; }
+.pb-dialog-body.is-scroll::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+.pb-dialog-body.is-scroll::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+@supports not selector(::-webkit-scrollbar) { .pb-dialog-body.is-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; } .pb-dialog-body.is-scroll:hover { scrollbar-color: var(--scroll-thumb) transparent; } }
 .pb-check.is-top { align-items: flex-start; }
 .pb-check.is-top input { margin-top: 2px; }
 .pb-check--indent { padding-left: 24px; }

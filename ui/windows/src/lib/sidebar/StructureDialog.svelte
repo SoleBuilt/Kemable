@@ -59,7 +59,7 @@
   const title = $derived(object.schema ? `${object.schema}.${object.name}` : object.name);
 </script>
 
-<Dialog title={`Structure of ${title}`} width={760} maxHeight="80vh" {onClose}>
+<Dialog title={`Structure of ${title}`} width={760} {onClose}>
   <Segmented label="Show" options={VIEWS} value={view} onChange={(next) => (view = next)} />
 
   {#if view === "columns"}
