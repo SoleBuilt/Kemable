@@ -279,6 +279,8 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** thấy rõ phần đang bôi đen ngay trong khung. (Các chỗ khác có cùng chữ cũng được tô nhạt, đó là đánh dấu chữ giống nhau, không phải chỗ đang chọn.)
 - [ ] SQL Server: hai câu `select` trên hai dòng, không có `GO` ở giữa, Run (Ctrl+Shift+Enter). Bấm qua lại Result 1 và Result 2.
   **Đúng:** mỗi Result có khung quanh đúng câu `select` của nó (cả batch vẫn gửi một lần như SSMS).
+- [ ] Ở script đó, xoá `*` của câu đầu, để con trỏ sau `select ` và nhấn **Ctrl+Space**.
+  **Đúng:** gợi ý chỉ có các cột của bảng ở câu đầu (bảng `$ext`), không lẫn cột của bảng ở câu dưới.
 - [ ] Ở script đó, mở Result 2, bấm header cột đầu để sort; rồi qua Result 1 sort cột đầu.
   **Đúng:** chỉ Result đang xem được sort, vẫn ở tab đó; status bar ghi "sorted in Paboable"; Result kia giữ nguyên, không có mũi tên sort.
 - [ ] SQL Server: `exec sp_who` rồi `select 1` (không `GO`), Run.

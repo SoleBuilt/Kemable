@@ -9,6 +9,7 @@
 
 use serde::Serialize;
 
+use super::batch::statement_starts;
 use super::lex::{Kind, Open, Token, lex};
 use super::{SqlGrammar, split};
 use crate::catalog::{ColumnInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
@@ -258,11 +259,29 @@ pub fn completion_context(text: &str, cursor: usize, grammar: SqlGrammar) -> Opt
     })
 }
 
-/// The statement, or SQL Server batch, the cursor is in; or the gap between two.
-/// The statement, or SQL Server batch, the cursor is in, and whether the
+/// The statement the cursor is in (in SQL Server, the statement inside the
+/// batch, `batch.rs`); or the gap between two. And whether the
 /// cursor starts a new one: past a statement's end with a `;` or a `GO`
 /// between, rather than only spaces and comments.
 fn region(text: &str, cursor: usize, grammar: SqlGrammar) -> (usize, usize, bool) {
+    let (start, end, fresh) = span_region(text, cursor, grammar);
+    if grammar != SqlGrammar::SqlServer || fresh {
+        return (start, end, fresh);
+    }
+    // A batch holds statements with no `;` between them: only the one under the cursor counts.
+    let starts = statement_starts(&text[start..end]);
+    match starts.iter().rposition(|&at| start + at <= cursor) {
+        Some(index) => (
+            start + starts[index],
+            starts.get(index + 1).map_or(end, |&next| start + next),
+            false,
+        ),
+        None => (start, end, false),
+    }
+}
+
+/// The statement, or SQL Server batch, `split` puts the cursor in.
+fn span_region(text: &str, cursor: usize, grammar: SqlGrammar) -> (usize, usize, bool) {
     let spans = split(text, grammar);
     let next = spans
         .iter()
@@ -824,6 +843,27 @@ mod tests {
         assert!(fresh.tables.is_empty());
         let same = at("select *\n  |", SqlGrammar::SqlServer).unwrap_or_else(|| panic!("a context"));
         assert_eq!(same.clause, Clause::Expression);
+    }
+
+    #[test]
+    fn a_sql_server_batch_offers_the_columns_of_the_statement_under_the_cursor_only() {
+        // Two SELECTs with no GO are one batch, but the select list is the first one's.
+        let text = "select |\nfrom dbo.[CRONUS International Ltd_$Customer$437dbf0e$ext]\n\nselect * from dbo.[CRONUS International Ltd_$Customer$437dbf0e]";
+        let context = at(text, SqlGrammar::SqlServer).unwrap_or_else(|| panic!("a context"));
+        assert_eq!(context.clause, Clause::Expression);
+        let tables: Vec<&TableRef> = context.tables.iter().map(|reference| &reference.table).collect();
+        assert_eq!(
+            tables,
+            [&table(Some("dbo"), "CRONUS International Ltd_$Customer$437dbf0e$ext")]
+        );
+
+        let second = at(
+            "select a from dbo.first_table\nselect b, | from dbo.second_table",
+            SqlGrammar::SqlServer,
+        )
+        .unwrap_or_else(|| panic!("a context"));
+        let tables: Vec<&TableRef> = second.tables.iter().map(|reference| &reference.table).collect();
+        assert_eq!(tables, [&table(Some("dbo"), "second_table")]);
     }
 
     fn schemas() -> Vec<SchemaInfo> {
