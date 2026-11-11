@@ -29,6 +29,7 @@ import type {
   SchemaInfo,
   SortOutcome,
   TableRef,
+  TestedConnection,
 } from "./types";
 
 export const ipc = {
@@ -38,6 +39,10 @@ export const ipc = {
   parseConnectionUrl: (url: string) => invoke<ConnectionConfig>("parse_connection_url", { url }),
 
   connect: (config: ConnectionConfig) => invoke<OpenedConnection>("connect", { config }),
+
+  /** Connects, reads the version and the databases, and closes. `savedId` lends a kept password to a blank field. */
+  testConnection: (config: ConnectionConfig, savedId: string | null) =>
+    invoke<TestedConnection>("test_connection", { config, savedId }),
 
   /** The saved connections, in the order they were added. */
   listSaved: () => invoke<SavedConnection[]>("list_saved"),

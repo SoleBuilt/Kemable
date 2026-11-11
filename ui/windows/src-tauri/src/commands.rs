@@ -13,6 +13,7 @@ use paboable_core::command::split_lines;
 use paboable_core::config::{ConnectionConfig, Secret, Target};
 use paboable_core::engine::{DataModel, EngineInfo};
 use paboable_core::keys::{KeyDetail, KeyPage, KeyScan};
+use paboable_core::registry::DriverRegistry;
 use paboable_core::sink::ResultSink;
 use paboable_core::sql::{
     BrowseQuery, Clause, CompletionItem, NewValue, ResultFilter, ResultWhere, RowEdit, SortColumn, SqlGrammar,
@@ -139,6 +140,80 @@ pub async fn connect_saved(
     // A failure to record the time is not worth failing the connection for.
     let _ = library.with(|library, _| library.touch(&id));
     Ok(opened)
+}
+
+/// What Test in the connect form learned: the server answered and the login worked.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestedConnection {
+    server_version: Option<String>,
+    /// How many databases this login may see, for an engine with databases.
+    databases: Option<usize>,
+}
+
+/// Connects as the connect form would, says what the server is, and closes
+/// again: nothing stays open. `saved_id` lends a saved connection's kept
+/// password or token when the form's field is blank, as Connect does.
+#[tauri::command]
+pub async fn test_connection(
+    state: State<'_, Arc<AppState>>,
+    library: State<'_, Library>,
+    mut config: ConnectionConfig,
+    saved_id: Option<String>,
+) -> CommandResult<TestedConnection> {
+    if let Some(id) = saved_id
+        && secret_is_blank(&config.target)
+    {
+        let (_, kept) = library.with(|library, vault| library.resolve(&id, vault))?;
+        lend_secret(&mut config.target, kept.target);
+    }
+    try_connection(&state.registry, &config).await
+}
+
+pub(crate) async fn try_connection(
+    registry: &DriverRegistry,
+    config: &ConnectionConfig,
+) -> CommandResult<TestedConnection> {
+    let driver = registry
+        .get(&config.engine)
+        .cloned()
+        .ok_or_else(|| DriverError::unsupported(format!("no driver for {}", config.engine)))?;
+    let connection = driver
+        .connect(config, CallOptions::default().with_timeout(CONNECT_TIMEOUT))
+        .await?;
+    // The count is a bonus: a login that may connect but not list still passes.
+    let databases = if connection.engine().has_databases {
+        connection
+            .list_databases(metadata_options())
+            .await
+            .ok()
+            .map(|list| list.len())
+    } else {
+        None
+    };
+    let tested = TestedConnection {
+        server_version: connection.server_version(),
+        databases,
+    };
+    // A close that fails leaves nothing the user can act on.
+    let _ = connection.close().await;
+    Ok(tested)
+}
+
+fn secret_is_blank(target: &Target) -> bool {
+    match target {
+        Target::Network { password, .. } => password.is_empty(),
+        Target::Http { token, .. } => token.is_empty(),
+        Target::File { .. } => false,
+    }
+}
+
+fn lend_secret(target: &mut Target, from: Target) {
+    match (target, from) {
+        (Target::Network { password, .. }, Target::Network { password: kept, .. }) => *password = kept,
+        (Target::Http { token, .. }, Target::Http { token: kept, .. }) => *token = kept,
+        _ => {}
+    }
 }
 
 fn title_of(target: &Target) -> String {

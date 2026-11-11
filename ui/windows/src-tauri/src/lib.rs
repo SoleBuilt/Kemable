@@ -56,6 +56,7 @@ pub fn run() {
             commands::delete_saved,
             commands::connect_saved,
             commands::connect,
+            commands::test_connection,
             commands::disconnect,
             commands::list_databases,
             commands::list_schemas,
