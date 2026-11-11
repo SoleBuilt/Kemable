@@ -313,6 +313,10 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** chỉ tab query trở lại, tab bảng thì không.
 
 ### 8.2b File `.sql`
+- [ ] Ở màn Welcome bấm **New query** (hoặc **Ctrl+T**), gõ một câu SQL, **Ctrl+T** mở thêm tab và gõ tiếp.
+  **Đúng:** có editor và thanh tab, không có sidebar. Ctrl+S trên tab đó hỏi chỗ lưu file. Chọn connection trong Ctrl+K: các tab có chữ đi theo, đánh số tiếp sau các tab của connection, chạy được.
+- [ ] Ngắt kết nối, **Ctrl+T**, rồi **Ctrl+W**.
+  **Đúng:** về lại màn Welcome. Gõ chữ ở tab không connection rồi đóng mở lại app: chữ vẫn còn.
 - [ ] Ở màn Welcome (chưa kết nối), nhấn **Ctrl+O**, chọn một file `.sql`.
   **Đúng:** mở thành tab mang tên file (rê chuột lên tab thấy đường dẫn), có editor, không có sidebar. Bấm **Run**: status bar nhắc mở connection và Ctrl+K mở ra.
 - [ ] Chọn một connection trong Ctrl+K.
