@@ -260,6 +260,29 @@ impl Connection for D1Connection {
             .collect())
     }
 
+    /// The CREATE statements D1 keeps, as SQLite does: the object's own, and
+    /// for a table its indexes and triggers after it.
+    async fn object_ddl(&self, object: &ObjectInfo, options: CallOptions) -> Result<String> {
+        let name = text_literal(&object.name);
+        let sql = format!(
+            "select sql from sqlite_schema where sql is not null              and (name = {name} or (tbl_name = {name} and type in ('index', 'trigger') and name <> {name}))              order by name <> {name}, type, name"
+        );
+        let rows = self.rows(&sql, &options).await?;
+        let parts: Vec<String> = rows
+            .iter()
+            .filter_map(|row| row.first().map(text))
+            .map(|create| format!("{};", create.trim_end().trim_end_matches(';')))
+            .collect();
+        if parts.is_empty() {
+            return Err(DriverError::not_found(object.name.clone()));
+        }
+        Ok(parts.join(
+            "
+
+",
+        ))
+    }
+
     async fn execute(&self, statement: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome> {
         let results = self.query(statement, &options).await?;
         let mut outcome = ExecOutcome::default();
@@ -340,4 +363,10 @@ impl Connection for D1Connection {
     async fn close(&self) -> Result<()> {
         Ok(())
     }
+}
+
+/// Text as a SQLite string literal: in single quotes, its quotes doubled.
+/// D1's query endpoint here takes no parameters, so a name goes in this way.
+fn text_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }

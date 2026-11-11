@@ -205,6 +205,33 @@ impl Connection for SqliteConnection {
         .await
     }
 
+    async fn object_ddl(&self, object: &ObjectInfo, options: CallOptions) -> Result<String> {
+        let schema = object.schema.clone().unwrap_or_else(|| "main".into());
+        let name = object.name.clone();
+        self.blocking(&options, move |conn| {
+            // SQLite keeps each object's CREATE statement as it was written; a
+            // table's indexes and triggers follow it, since they go with it.
+            let sql = format!(
+                "select sql from {}.sqlite_schema                  where sql is not null and (name = ?1 or (tbl_name = ?1 and type in ('index', 'trigger') and name <> ?1))                  order by name <> ?1, type, name",
+                quote_ident(&schema)
+            );
+            let mut statement = conn.prepare(&sql).map_err(map_error)?;
+            let rows = statement
+                .query_map([&name], |row| row.get::<_, String>(0))
+                .map_err(map_error)?;
+            let parts = rows
+                .map(|row| row.map(|text| format!("{};", text.trim_end().trim_end_matches(';'))).map_err(map_error))
+                .collect::<Result<Vec<_>>>()?;
+            if parts.is_empty() {
+                return Err(DriverError::not_found(format!("{name} in {schema}")));
+            }
+            Ok(parts.join("
+
+"))
+        })
+        .await
+    }
+
     async fn execute(&self, statement: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome> {
         let sql = statement.to_owned();
         self.blocking(&options, move |conn| run_statement(conn, &sql, sink.as_ref()))

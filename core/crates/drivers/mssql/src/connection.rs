@@ -14,6 +14,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
+use crate::ddl;
 use crate::decode;
 use crate::errors::{self, Phase};
 
@@ -140,6 +141,13 @@ impl MssqlConnection {
     }
 
     async fn catalog_rows(&self, sql: &str, params: &[&str], options: &CallOptions) -> Result<Vec<Row>> {
+        let sets = self.catalog_sets(sql, params, options).await?;
+        Ok(sets.into_iter().next().unwrap_or_default())
+    }
+
+    /// Every result set of one catalog batch, in order; a set with no rows is
+    /// an empty `Vec`, so a set's place in the batch is its index.
+    async fn catalog_sets(&self, sql: &str, params: &[&str], options: &CallOptions) -> Result<Vec<Vec<Row>>> {
         options
             .run(async {
                 let mut guard = self.catalog.lock().await;
@@ -150,7 +158,7 @@ impl MssqlConnection {
                     return Err(DriverError::new(ErrorCode::Lost, "the catalog session is closed"));
                 };
                 let params: Vec<&dyn ToSql> = params.iter().map(|param| param as &dyn ToSql).collect();
-                let result = async { client.query(sql, &params).await?.into_first_result().await }.await;
+                let result = async { client.query(sql, &params).await?.into_results().await }.await;
                 result.map_err(|error| {
                     let error = errors::map(error, Some(sql), Phase::Run);
                     if error.code == ErrorCode::Lost {
@@ -363,6 +371,280 @@ left join sys.index_columns ic on ic.object_id = i.object_id and ic.index_id = i
 where c.object_id = object_id(quotename(@P1) + '.' + quotename(@P2))
 order by c.column_id";
 
+/// Whether the object exists, its text, and whether that text is encrypted.
+/// `@P1` is `[schema].[name]`.
+const DEFINITION: &str = "\
+select cast(case when object_id(@P1) is null then 0 else 1 end as bit),
+       object_definition(object_id(@P1)),
+       cast(isnull(objectproperty(object_id(@P1), 'IsEncrypted'), 0) as bit)";
+
+/// Everything a table's script needs, in one round trip. The result sets, in
+/// order: the database's collation, columns, primary and unique keys, checks,
+/// foreign keys, other indexes, descriptions. `@P1` is `[schema].[name]`.
+const TABLE: &str = "\
+declare @id int = object_id(@P1);
+select cast(databasepropertyex(db_name(), 'Collation') as nvarchar(128));
+select c.name, t.name, case when t.is_user_defined = 1 then schema_name(t.schema_id) end,
+       cast(c.max_length as int), cast(c.precision as int), cast(c.scale as int), c.is_nullable, c.collation_name,
+       cast(ic.seed_value as nvarchar(64)), cast(ic.increment_value as nvarchar(64)),
+       cc.definition, cc.is_persisted, dc.name, dc.definition
+from sys.columns c
+join sys.types t on t.user_type_id = c.user_type_id
+left join sys.identity_columns ic on ic.object_id = c.object_id and ic.column_id = c.column_id
+left join sys.computed_columns cc on cc.object_id = c.object_id and cc.column_id = c.column_id
+left join sys.default_constraints dc on dc.object_id = c.default_object_id
+where c.object_id = @id
+order by c.column_id;
+select kc.name, cast(case when kc.type = 'PK' then 1 else 0 end as bit),
+       cast(case when i.type = 1 then 1 else 0 end as bit), c.name, ic.is_descending_key
+from sys.key_constraints kc
+join sys.indexes i on i.object_id = kc.parent_object_id and i.index_id = kc.unique_index_id
+join sys.index_columns ic on ic.object_id = i.object_id and ic.index_id = i.index_id and ic.key_ordinal > 0
+join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id
+where kc.parent_object_id = @id
+order by case when kc.type = 'PK' then 0 else 1 end, kc.name, ic.key_ordinal;
+select name, definition
+from sys.check_constraints
+where parent_object_id = @id
+order by name;
+select fk.name, schema_name(rt.schema_id), rt.name, pc.name, rc.name,
+       fk.delete_referential_action_desc, fk.update_referential_action_desc
+from sys.foreign_keys fk
+join sys.foreign_key_columns fkc on fkc.constraint_object_id = fk.object_id
+join sys.columns pc on pc.object_id = fkc.parent_object_id and pc.column_id = fkc.parent_column_id
+join sys.columns rc on rc.object_id = fkc.referenced_object_id and rc.column_id = fkc.referenced_column_id
+join sys.objects rt on rt.object_id = fk.referenced_object_id
+where fk.parent_object_id = @id
+order by fk.name, fkc.constraint_column_id;
+select i.name, i.is_unique, cast(case when i.type = 1 then 1 else 0 end as bit), i.filter_definition,
+       c.name, ic.is_descending_key, ic.is_included_column
+from sys.indexes i
+join sys.index_columns ic on ic.object_id = i.object_id and ic.index_id = i.index_id
+join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id
+where i.object_id = @id and i.is_primary_key = 0 and i.is_unique_constraint = 0
+  and i.type in (1, 2) and i.is_hypothetical = 0
+  and (ic.key_ordinal > 0 or ic.is_included_column = 1)
+order by i.name, ic.is_included_column, ic.key_ordinal, ic.index_column_id;
+select c.name, cast(ep.value as nvarchar(max))
+from sys.extended_properties ep
+left join sys.columns c on c.object_id = ep.major_id and c.column_id = ep.minor_id
+where ep.class = 1 and ep.major_id = @id and ep.name = N'MS_Description'
+  and (ep.minor_id = 0 or c.column_id is not null)
+order by ep.minor_id;";
+
+/// `@P1` is `[schema].[name]`.
+const SEQUENCE: &str = "\
+select t.name, case when t.is_user_defined = 1 then schema_name(t.schema_id) end,
+       cast(s.precision as int), cast(s.scale as int),
+       cast(s.start_value as nvarchar(64)), cast(s.increment as nvarchar(64)),
+       cast(s.minimum_value as nvarchar(64)), cast(s.maximum_value as nvarchar(64)),
+       s.is_cycling, s.is_cached, s.cache_size
+from sys.sequences s
+join sys.types t on t.user_type_id = s.user_type_id
+where s.object_id = object_id(@P1)";
+
+/// `@P1` is `[schema].[name]`.
+const COMMENT: &str = "\
+select cast(value as nvarchar(max))
+from sys.extended_properties
+where class = 1 and major_id = object_id(@P1) and minor_id = 0 and name = N'MS_Description'";
+
+fn flag(row: &Row, index: usize) -> Result<bool> {
+    Ok(number::<bool>(row, index)?.unwrap_or(false))
+}
+
+fn int(row: &Row, index: usize) -> Result<i32> {
+    Ok(number::<i32>(row, index)?.unwrap_or(0))
+}
+
+fn name(row: &Row, index: usize) -> Result<String> {
+    Ok(text(row, index)?.unwrap_or_default())
+}
+
+/// The rows of one result set of a batch; a set the batch did not return reads as empty.
+fn set(sets: &[Vec<Row>], index: usize) -> &[Row] {
+    sets.get(index).map_or(&[], Vec::as_slice)
+}
+
+/// Rows grouped by their first column, which holds a constraint's or an
+/// index's name; the queries sort by it, so a group's rows are together.
+fn by_name(rows: &[Row]) -> Result<Vec<(String, Vec<&Row>)>> {
+    let mut groups: Vec<(String, Vec<&Row>)> = Vec::new();
+    for row in rows {
+        let key = name(row, 0)?;
+        match groups.last_mut() {
+            Some((last, members)) if *last == key => members.push(row),
+            _ => groups.push((key, vec![row])),
+        }
+    }
+    Ok(groups)
+}
+
+impl MssqlConnection {
+    /// A view's, a function's, a procedure's or a trigger's text, as it was written.
+    async fn module_ddl(&self, qualified: &str, options: &CallOptions) -> Result<String> {
+        let rows = self.catalog_rows(DEFINITION, &[qualified], options).await?;
+        let Some(row) = rows.first() else {
+            return Err(DriverError::not_found(format!("no object {qualified}")));
+        };
+        if !flag(row, 0)? {
+            return Err(DriverError::not_found(format!("no object {qualified}")));
+        }
+        match text(row, 1)? {
+            Some(definition) => Ok(definition),
+            None if flag(row, 2)? => Err(DriverError::unsupported(format!("{qualified} is encrypted"))),
+            // A CLR module, or one this login may not see the text of.
+            None => Err(DriverError::unsupported(format!(
+                "the server shows no text for {qualified}"
+            ))),
+        }
+    }
+
+    async fn table_ddl(&self, schema: &str, table: &str, options: &CallOptions) -> Result<String> {
+        let qualified = ddl::qualified(schema, table);
+        let sets = self.catalog_sets(TABLE, &[qualified.as_str()], options).await?;
+        let columns = set(&sets, 1);
+        if columns.is_empty() {
+            return Err(DriverError::not_found(format!("no table {qualified}")));
+        }
+        let mut out = ddl::Table {
+            schema: schema.to_owned(),
+            name: table.to_owned(),
+            database_collation: set(&sets, 0)
+                .first()
+                .map(|row| name(row, 0))
+                .transpose()?
+                .unwrap_or_default(),
+            ..ddl::Table::default()
+        };
+        for row in columns {
+            let identity = match (text(row, 8)?, text(row, 9)?) {
+                (Some(seed), Some(increment)) => Some(ddl::Identity { seed, increment }),
+                _ => None,
+            };
+            let computed = match text(row, 10)? {
+                Some(definition) => Some(ddl::Computed {
+                    definition,
+                    persisted: flag(row, 11)?,
+                }),
+                None => None,
+            };
+            let default = match (text(row, 12)?, text(row, 13)?) {
+                (Some(name), Some(definition)) => Some(ddl::DefaultConstraint { name, definition }),
+                _ => None,
+            };
+            out.columns.push(ddl::TableColumn {
+                name: name(row, 0)?,
+                ty: ddl::SqlType {
+                    name: name(row, 1)?,
+                    user_schema: text(row, 2)?,
+                    max_length: int(row, 3)?,
+                    precision: int(row, 4)?,
+                    scale: int(row, 5)?,
+                },
+                nullable: number::<bool>(row, 6)?.unwrap_or(true),
+                collation: text(row, 7)?,
+                identity,
+                computed,
+                default,
+            });
+        }
+        for (key_name, rows) in by_name(set(&sets, 2))? {
+            let Some(first) = rows.first() else { continue };
+            out.keys.push(ddl::KeyConstraint {
+                name: key_name,
+                primary: flag(first, 1)?,
+                clustered: flag(first, 2)?,
+                columns: rows
+                    .iter()
+                    .map(|row| {
+                        Ok(ddl::IndexColumn {
+                            name: name(row, 3)?,
+                            descending: flag(row, 4)?,
+                        })
+                    })
+                    .collect::<Result<_>>()?,
+            });
+        }
+        for row in set(&sets, 3) {
+            out.checks.push(ddl::CheckConstraint {
+                name: name(row, 0)?,
+                definition: name(row, 1)?,
+            });
+        }
+        for (key_name, rows) in by_name(set(&sets, 4))? {
+            let Some(first) = rows.first() else { continue };
+            let mut key = ddl::ForeignKey {
+                name: key_name,
+                referenced_schema: name(first, 1)?,
+                referenced_table: name(first, 2)?,
+                on_delete: name(first, 5)?,
+                on_update: name(first, 6)?,
+                ..ddl::ForeignKey::default()
+            };
+            for row in rows {
+                key.columns.push(name(row, 3)?);
+                key.referenced_columns.push(name(row, 4)?);
+            }
+            out.foreign_keys.push(key);
+        }
+        for (index_name, rows) in by_name(set(&sets, 5))? {
+            let Some(first) = rows.first() else { continue };
+            let mut index = ddl::Index {
+                name: index_name,
+                unique: flag(first, 1)?,
+                clustered: flag(first, 2)?,
+                filter: text(first, 3)?,
+                ..ddl::Index::default()
+            };
+            for row in rows {
+                if flag(row, 6)? {
+                    index.included.push(name(row, 4)?);
+                } else {
+                    index.columns.push(ddl::IndexColumn {
+                        name: name(row, 4)?,
+                        descending: flag(row, 5)?,
+                    });
+                }
+            }
+            out.indexes.push(index);
+        }
+        for row in set(&sets, 6) {
+            out.descriptions.push(ddl::Description {
+                column: text(row, 0)?,
+                text: name(row, 1)?,
+            });
+        }
+        Ok(ddl::table_ddl(&out))
+    }
+
+    async fn sequence_ddl(&self, schema: &str, sequence: &str, options: &CallOptions) -> Result<String> {
+        let qualified = ddl::qualified(schema, sequence);
+        let rows = self.catalog_rows(SEQUENCE, &[qualified.as_str()], options).await?;
+        let Some(row) = rows.first() else {
+            return Err(DriverError::not_found(format!("no sequence {qualified}")));
+        };
+        Ok(ddl::sequence_ddl(&ddl::Sequence {
+            schema: schema.to_owned(),
+            name: sequence.to_owned(),
+            ty: ddl::SqlType {
+                name: name(row, 0)?,
+                user_schema: text(row, 1)?,
+                max_length: 0,
+                precision: int(row, 2)?,
+                scale: int(row, 3)?,
+            },
+            start: name(row, 4)?,
+            increment: name(row, 5)?,
+            minimum: name(row, 6)?,
+            maximum: name(row, 7)?,
+            cycling: flag(row, 8)?,
+            cached: flag(row, 9)?,
+            cache_size: number::<i32>(row, 10)?,
+        }))
+    }
+}
+
 #[async_trait]
 impl Connection for MssqlConnection {
     fn engine(&self) -> &'static EngineInfo {
@@ -435,6 +717,27 @@ impl Connection for MssqlConnection {
                 })
             })
             .collect()
+    }
+
+    async fn object_ddl(&self, object: &ObjectInfo, options: CallOptions) -> Result<String> {
+        let schema = object.schema.as_deref().unwrap_or("dbo");
+        match object.kind {
+            ObjectKind::Table => self.table_ddl(schema, &object.name, &options).await,
+            ObjectKind::Sequence => self.sequence_ddl(schema, &object.name, &options).await,
+            ObjectKind::View
+            | ObjectKind::Function
+            | ObjectKind::TableFunction
+            | ObjectKind::Procedure
+            | ObjectKind::Trigger
+            | ObjectKind::Other => self.module_ddl(&ddl::qualified(schema, &object.name), &options).await,
+            _ => Err(DriverError::unsupported("SQL Server scripts no object of this kind")),
+        }
+    }
+
+    async fn object_comment(&self, object: &ObjectInfo, options: CallOptions) -> Result<Option<String>> {
+        let qualified = ddl::qualified(object.schema.as_deref().unwrap_or("dbo"), &object.name);
+        let rows = self.catalog_rows(COMMENT, &[qualified.as_str()], &options).await?;
+        rows.first().map_or(Ok(None), |row| text(row, 0))
     }
 
     async fn execute(&self, batch: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome> {

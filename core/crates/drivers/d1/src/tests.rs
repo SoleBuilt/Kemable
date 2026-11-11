@@ -592,3 +592,8 @@ async fn edits_go_as_one_batch_with_a_guard_after_each_statement() {
         .map(|error| error.code);
     assert_eq!(code, Some(ErrorCode::RowGone));
 }
+
+#[test]
+fn a_name_in_a_catalog_query_is_a_literal_with_its_quotes_doubled() {
+    assert_eq!(crate::text_literal("khách's"), "'khách''s'");
+}

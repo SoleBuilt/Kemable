@@ -7,6 +7,7 @@
 //! PostgreSQL's cancel request, so the statement ends on the server.
 
 mod connection;
+mod ddl;
 mod decode;
 mod errors;
 mod tls;

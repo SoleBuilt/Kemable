@@ -174,6 +174,27 @@ export interface SavedConnection {
   color: string | null;
 }
 
+/** A maintenance task on a table, as its engine names it (docs/decisions/0017-tree-actions.md). */
+export type Maintenance =
+  | "vacuum"
+  | "vacuumFull"
+  | "analyze"
+  | "vacuumAnalyze"
+  | "reindex"
+  | "vacuumDatabase"
+  | "updateStatistics"
+  | "rebuild"
+  | "reorganize"
+  | "checkTable";
+
+/** What the tree's menu asks to do with one object; the core writes its statements. */
+export type ObjectAction =
+  | { kind: "rename"; name: string }
+  | { kind: "truncate" }
+  | { kind: "drop"; cascade: boolean }
+  | { kind: "maintain"; task: Maintenance }
+  | { kind: "comment"; text: string };
+
 /** The one table a query result comes from (docs/decisions/0011-filtering-a-result.md). */
 export interface ResultSource {
   /** The database it is in: the run's, or a SQL Server three-part name's. */
