@@ -36,6 +36,7 @@
   import Input from "../ui/Input.svelte";
   import Segmented from "../ui/Segmented.svelte";
   import Spacer from "../ui/Spacer.svelte";
+  import Swatches from "../ui/Swatches.svelte";
 
   interface Props {
     engine: NetworkEngine;
@@ -113,6 +114,8 @@
   /** D1: the Cloudflare account the databases belong to. */
   let account = $state("");
   let name = $state("");
+  /** The colour of its dot in Ctrl+K and the saved list (design system D8). */
+  let color = $state("gray");
   let save = $state(true);
   let savePassword = $state(true);
   /** The id once saved (or the one being edited), so a second save updates it. */
@@ -134,6 +137,7 @@
     madeProfile = null;
     useProfile = from?.profileId != null;
     profileId = from?.profileId ?? null;
+    color = from?.color ?? "gray";
     if (!from) {
       savedId = null;
       name = "";
@@ -180,6 +184,7 @@
     fillFields(initialSaved);
     useProfile = initialSaved.profileId != null;
     profileId = initialSaved.profileId;
+    color = initialSaved.color ?? "gray";
   }
 
   /** A name for a connection the user did not name. */
@@ -305,6 +310,7 @@
       value: entry.id,
       label: entry.name,
       meta: where(entry),
+      dot: entry.color ?? "gray",
       action: { icon: "plug" as const, label: `Connect to ${entry.name} now`, run: () => onOpenSaved(entry) },
     })),
   ]);
@@ -384,6 +390,7 @@
           savePassword: usesLogin && savePassword && !withProfile,
           lastUsed: saved?.lastUsed ?? null,
           profileId: withProfile ? profileId : null,
+          color,
         },
         usesLogin && !withProfile && password !== "" ? password : null,
       );
@@ -451,6 +458,9 @@
     busy = false;
   }
 
+  /** The `--conn-*` tokens, grey (no colour) first. */
+  const COLORS = ["gray", "red", "orange", "green", "teal", "blue", "purple"] as const;
+
   const LOGINS = [
     { value: false, label: "SQL Server login" },
     { value: true, label: "Windows account" },
@@ -502,7 +512,12 @@
     </Field>
   {/if}
 
-  <Field label="Name"><Input bind:value={name} placeholder={defaultName() || "My database"} /></Field>
+  <div class="pb-form-grid pb-form-grid--auto">
+    <Field label="Name"><Input bind:value={name} placeholder={defaultName() || "My database"} /></Field>
+    <Field label="Colour" as="group">
+      <Swatches label="Connection colour" colors={COLORS} value={color} onChange={(next) => (color = next)} />
+    </Field>
+  </div>
 
   {#if !http}
     <div class="pb-form-grid">

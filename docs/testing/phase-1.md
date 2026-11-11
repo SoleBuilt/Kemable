@@ -57,6 +57,8 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** mục trong Credential Manager biến mất; mở connection đó từ Ctrl+K thì app hỏi mật khẩu.
 - [ ] Trong **New connection…**, combobox **Saved connection** chọn một connection, bấm **Delete…**, rồi xác nhận.
   **Đúng:** connection biến mất khỏi danh sách và khỏi Ctrl+K.
+- [ ] Mở một connection đã lưu để sửa, ở **Colour** chọn màu đỏ (bấm chấm màu, hoặc Tab tới rồi dùng ← →), bấm **Save**. Nhấn **Ctrl+K**.
+  **Đúng:** connection đó có chấm đỏ trước tên; connection chưa chọn màu có chấm xám. Ô **Saved connection** trong form cũng hiện chấm cùng màu. Kiểm tra cả theme sáng và tối.
 
 ### 1.5 Test connection
 - [ ] **New connection…**, PostgreSQL, điền host, user, mật khẩu đúng, bấm **Test**.

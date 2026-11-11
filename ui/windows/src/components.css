@@ -94,6 +94,9 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-swatches { display: flex; gap: var(--space-2); }
 .pb-swatch { width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--radius-full); background: var(--sw); box-shadow: 0 0 0 2px var(--canvas), 0 0 0 3px transparent; transition: box-shadow .12s var(--ease); }
 .pb-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--fg); }
+/* Swatches in a form row: as tall as a text box, the dots small enough to sit beside the Name. */
+.pb-swatches--field { height: 32px; align-items: center; }
+.pb-swatches--field .pb-swatch { width: 16px; height: 16px; }
 
 /* Tabs */
 .pb-tabs { display: flex; align-items: stretch; gap: var(--space-1); height: var(--size-bar); padding: 0 var(--space-2); }
@@ -244,6 +247,7 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-dialog-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-5); border-top: 1px solid var(--line); }
 .pb-section-title { margin: var(--space-2) 0 0; font-size: 11px; line-height: 16px; font-weight: 550; letter-spacing: .05em; text-transform: uppercase; color: var(--fg-muted); }
 .pb-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) 112px; gap: var(--space-3); }
+.pb-form-grid--auto { grid-template-columns: minmax(0, 1fr) auto; }
 .pb-form-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
 .pb-codebox { margin: 0; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--canvas); font-family: var(--font-mono); font-size: 13px; line-height: 20px; white-space: pre; overflow: auto; }
 .pb-codebox .k { color: var(--syntax-keyword); } .pb-codebox .s { color: var(--syntax-string); } .pb-codebox .n { color: var(--syntax-number); }

@@ -53,7 +53,14 @@ pub struct SavedConnection {
     /// config for display; its password is the profile's, never the connection's.
     #[serde(default)]
     pub profile_id: Option<String>,
+    /// Its colour, one of [`CONNECTION_COLORS`], shown as a dot beside its
+    /// name (design system D8). `None` is the plain grey.
+    #[serde(default)]
+    pub color: Option<String>,
 }
+
+/// The colours a connection can take: the names of the UI's `--conn-*` tokens.
+pub const CONNECTION_COLORS: &[&str] = &["red", "orange", "green", "teal", "blue", "purple", "gray"];
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct LibraryFile {
@@ -168,6 +175,11 @@ impl ConnectionLibrary {
         if connection.id.is_empty() {
             connection.id = uuid::Uuid::new_v4().to_string();
         }
+        // A colour the UI has no token for would draw nothing: it is dropped.
+        connection.color = connection
+            .color
+            .take()
+            .filter(|color| CONNECTION_COLORS.contains(&color.as_str()));
         if let Some(profile_id) = &connection.profile_id {
             // The profile holds the login: the connection keeps no secret of its own.
             let profile = self.profiles.get(profile_id)?;

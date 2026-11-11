@@ -1486,7 +1486,7 @@
       group: "Saved connections",
       label: entry.name,
       meta: savedWhere(entry),
-      icon: "database" as const,
+      dot: entry.color ?? "gray",
       run: () => void openSaved(entry),
     })),
     { id: "settings", group: "Settings", label: "Settings…", icon: "settings", keys: ["Ctrl", ","], run: () => (settingsOpen = true) },

@@ -66,6 +66,7 @@ fn postgres(password: &str) -> SavedConnection {
         save_password: true,
         last_used: None,
         profile_id: None,
+        color: None,
     }
 }
 
@@ -174,6 +175,44 @@ fn a_missing_file_is_an_empty_library_and_names_are_required() {
         library.save(unnamed, None, &MemoryVault::default()).unwrap_err().code,
         ErrorCode::ConfigInvalid
     );
+}
+
+#[test]
+fn a_connection_keeps_its_colour_and_drops_one_the_ui_cannot_draw() {
+    let folder = Folder::new("colour");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let vault = MemoryVault::default();
+    let red = library
+        .save(
+            SavedConnection {
+                color: Some("red".into()),
+                ..postgres("pw")
+            },
+            None,
+            &vault,
+        )
+        .unwrap();
+    assert_eq!(library.list().unwrap()[0].color.as_deref(), Some("red"));
+
+    library
+        .save(
+            SavedConnection {
+                color: Some("#ff0000".into()),
+                ..red
+            },
+            None,
+            &vault,
+        )
+        .unwrap();
+    assert_eq!(library.list().unwrap()[0].color, None);
+
+    // A library written before colours existed reads as grey.
+    std::fs::write(
+        library.path(),
+        r#"{"version":1,"connections":[{"id":"a","name":"old","config":{"engine":"sqlite","target":{"kind":"file","path":"x.db"}}}]}"#,
+    )
+    .unwrap();
+    assert_eq!(library.list().unwrap()[0].color, None);
 }
 
 #[test]
