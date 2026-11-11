@@ -27,6 +27,7 @@ pub static INFO: EngineInfo = EngineInfo {
     sql_grammar: Some(SqlGrammar::Sqlite),
     live: false,
     has_databases: false,
+    tree_folders: paboable_core::engine::SQL_TREE_FOLDERS,
 };
 
 /// How long a statement waits on another process's lock before it fails.

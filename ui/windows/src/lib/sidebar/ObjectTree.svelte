@@ -13,7 +13,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { asCoreError, ipc } from "../ipc";
-  import type { CoreError, ObjectKind, OpenedConnection, SchemaInfo } from "../types";
+  import type { CoreError, ObjectKind, OpenedConnection, SchemaInfo, TreeFolder } from "../types";
   import ErrorNote from "../ui/ErrorNote.svelte";
   import type { IconName } from "../ui/Icon.svelte";
   import SearchField from "../ui/SearchField.svelte";
@@ -41,31 +41,28 @@
 
   let { connection, database, refreshKey, scope = "all", onOpen, onUseDatabase, onContext, onCopy, onAction }: Props = $props();
 
-  interface Folder {
-    kinds: ObjectKind[];
-    label: string;
+  /** A folder of the tree, as the engine names it (EngineInfo::tree_folders), with the icon its rows take. */
+  interface Folder extends TreeFolder {
     icon: IconName;
   }
 
-  /** The kinds of a schema, in the order the tree lists them, each a folder. */
-  const KINDS: Folder[] = [
-    { kinds: ["table"], label: "Tables", icon: "table" },
-    { kinds: ["view", "materializedView"], label: "Views", icon: "view" },
-    { kinds: ["function", "tableFunction", "procedure"], label: "Functions", icon: "fn" },
-    { kinds: ["sequence"], label: "Sequences", icon: "fn" },
-    { kinds: ["trigger"], label: "Triggers", icon: "fn" },
-    { kinds: ["index"], label: "Indexes", icon: "key" },
-  ];
-  /** SQL Server's folders are SSMS's. */
-  const SQL_SERVER_KINDS: Folder[] = [
-    { kinds: ["table"], label: "Tables", icon: "table" },
-    { kinds: ["view"], label: "Views", icon: "view" },
-    { kinds: ["procedure"], label: "Stored Procedures", icon: "fn" },
-    { kinds: ["tableFunction"], label: "Table-valued Functions", icon: "fn" },
-    { kinds: ["function"], label: "Scalar-valued Functions", icon: "fn" },
-    { kinds: ["sequence"], label: "Sequences", icon: "fn" },
-  ];
-  const kinds = $derived(connection.engine.id === "mssql" ? SQL_SERVER_KINDS : KINDS);
+  /** The icon of a folder's rows, from the first kind it holds. */
+  function iconOf(kind: ObjectKind | undefined): IconName {
+    switch (kind) {
+      case "table":
+        return "table";
+      case "view":
+      case "materializedView":
+        return "view";
+      case "index":
+        return "key";
+      default:
+        return "fn";
+    }
+  }
+
+  // The driver says which folders its engine shows (SSMS's for SQL Server); the tree only draws them.
+  const kinds: Folder[] = $derived(connection.engine.treeFolders.map((folder) => ({ ...folder, icon: iconOf(folder.kinds[0]) })));
 
   interface Group {
     schema: SchemaInfo;

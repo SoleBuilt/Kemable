@@ -34,7 +34,7 @@ Planned crates, in the order `docs/roadmap.md` gives: `drivers/rabbitmq`, `drive
 
 ## The driver contract
 
-`paboable_core::driver::Driver` describes an engine before any connection exists (`EngineInfo`: id, data model, how it is reached, its SQL grammar, whether it has live changes) and opens a `Connection`.
+`paboable_core::driver::Driver` describes an engine before any connection exists (`EngineInfo`: id, data model, how it is reached, its SQL grammar, whether it has live changes, and the object tree's folders under a schema, `tree_folders`) and opens a `Connection`.
 
 `paboable_core::connection::Connection` is one live link. Every method takes `CallOptions`:
 

@@ -916,3 +916,21 @@ mod ddl_text {
         assert!(text.ends_with(" NO CYCLE NO CACHE;"));
     }
 }
+
+#[test]
+fn every_kind_the_catalog_lists_has_a_folder_in_the_tree() {
+    use crate::connection::object_kind;
+    use paboable_core::catalog::ObjectKind;
+    // The types list_objects reads (its OBJECTS query).
+    for code in ["U", "V", "SO", "P", "PC", "FN", "FS", "IF", "TF", "FT"] {
+        let kind = object_kind(code);
+        assert_ne!(kind, ObjectKind::Other, "{code}");
+        assert!(
+            crate::INFO
+                .tree_folders
+                .iter()
+                .any(|folder| folder.kinds.contains(&kind)),
+            "{code} ({kind:?}) would show in no folder"
+        );
+    }
+}
