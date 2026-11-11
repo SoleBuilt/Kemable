@@ -1626,7 +1626,6 @@
             bind:this={editor}
             {grammar}
             plain={keyValue}
-            initial={"select 1 as one, 'hello' as greeting;\n"}
             onRun={(request) => void startRun(request)}
             complete={completeAt}
           />
