@@ -40,6 +40,7 @@ pub static INFO: EngineInfo = EngineInfo {
     sql_grammar: None,
     live: true,
     has_databases: true,
+    tree_folders: &[],
 };
 
 /// How many elements one step of reading a key asks for.

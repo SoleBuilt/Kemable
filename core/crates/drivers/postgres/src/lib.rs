@@ -33,6 +33,7 @@ pub static INFO: EngineInfo = EngineInfo {
     sql_grammar: Some(SqlGrammar::Postgres),
     live: true,
     has_databases: true,
+    tree_folders: paboable_core::engine::SQL_TREE_FOLDERS,
 };
 
 pub struct PostgresDriver;

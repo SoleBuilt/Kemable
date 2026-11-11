@@ -23,7 +23,7 @@ Read `docs/decisions/0004-engines.md`. It names the crate and the limits for eac
 
 `core/crates/drivers/<engine>/`, named `paboable-driver-<engine>`, added to the root `Cargo.toml` members and `[workspace.dependencies]`. `.claude/rules/drivers.md` holds the rules; in short:
 
-- `pub static INFO: EngineInfo` with the id saved in connection files, the data model, the targets, the default port, the SQL grammar and `live`.
+- `pub static INFO: EngineInfo` with the id saved in connection files, the data model, the targets, the default port, the SQL grammar, `live`, `has_databases`, and `tree_folders`: the folders a schema's objects fall in, named as the engine's own tool names them (`paboable_core::engine::SQL_TREE_FOLDERS` when they are the usual ones, SQL Server's SSMS folders as an example of its own). Add a test that every `ObjectKind` the driver's `list_objects` gives sits in one of its folders, as `paboable-driver-mssql` and `paboable-driver-postgres` do; an object in no folder never shows in the tree.
 - A unit struct implementing `Driver`; a connection struct implementing `Connection`.
 - `connect` honours `CallOptions` between stages and validates the `Target` kind first (`DriverError::config`).
 - `execute` streams through the sink in `PUSH_BATCH_ROWS` batches, stops when `push_rows` returns `false`, and cancels on the server.

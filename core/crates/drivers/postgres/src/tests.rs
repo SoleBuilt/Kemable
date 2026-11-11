@@ -1060,3 +1060,25 @@ async fn object_ddl_scripts_what_the_server_holds_and_the_script_runs_again() {
         run(&conn, &format!("drop schema {name} cascade")).await;
     }
 }
+
+#[test]
+fn every_kind_the_catalog_lists_has_a_folder_in_the_tree() {
+    use paboable_core::catalog::ObjectKind;
+    // The kinds list_objects gives a relation or a routine.
+    for kind in [
+        ObjectKind::Table,
+        ObjectKind::View,
+        ObjectKind::MaterializedView,
+        ObjectKind::Sequence,
+        ObjectKind::Function,
+        ObjectKind::Procedure,
+    ] {
+        assert!(
+            crate::INFO
+                .tree_folders
+                .iter()
+                .any(|folder| folder.kinds.contains(&kind)),
+            "{kind:?} would show in no folder"
+        );
+    }
+}

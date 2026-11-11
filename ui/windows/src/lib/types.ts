@@ -34,6 +34,14 @@ export interface EngineInfo {
   live: boolean;
   /** The server holds databases the tree lists and a run picks between. */
   hasDatabases: boolean;
+  /** The folders a schema's objects fall in, as the engine's own tools show them; the driver decides. */
+  treeFolders: TreeFolder[];
+}
+
+/** One folder of the object tree: its words and the kinds of object it holds. */
+export interface TreeFolder {
+  label: string;
+  kinds: ObjectKind[];
 }
 
 export type Target =

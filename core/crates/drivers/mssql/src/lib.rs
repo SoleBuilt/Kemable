@@ -18,14 +18,43 @@ mod errors;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use paboable_core::catalog::ObjectKind;
 use paboable_core::config::ConnectionConfig;
 use paboable_core::connection::Connection;
 use paboable_core::driver::Driver;
-use paboable_core::engine::{DataModel, EngineInfo, TargetKind};
+use paboable_core::engine::{DataModel, EngineInfo, TargetKind, TreeFolder};
 use paboable_core::sql::SqlGrammar;
 use paboable_core::{CallOptions, Result};
 
 pub use connection::MssqlConnection;
+
+/// SSMS's folders under a schema.
+const TREE_FOLDERS: &[TreeFolder] = &[
+    TreeFolder {
+        label: "Tables",
+        kinds: &[ObjectKind::Table],
+    },
+    TreeFolder {
+        label: "Views",
+        kinds: &[ObjectKind::View],
+    },
+    TreeFolder {
+        label: "Stored Procedures",
+        kinds: &[ObjectKind::Procedure],
+    },
+    TreeFolder {
+        label: "Table-valued Functions",
+        kinds: &[ObjectKind::TableFunction],
+    },
+    TreeFolder {
+        label: "Scalar-valued Functions",
+        kinds: &[ObjectKind::Function],
+    },
+    TreeFolder {
+        label: "Sequences",
+        kinds: &[ObjectKind::Sequence],
+    },
+];
 
 pub static INFO: EngineInfo = EngineInfo {
     id: "mssql",
@@ -36,6 +65,7 @@ pub static INFO: EngineInfo = EngineInfo {
     sql_grammar: Some(SqlGrammar::SqlServer),
     live: false,
     has_databases: true,
+    tree_folders: TREE_FOLDERS,
 };
 
 pub struct MssqlDriver;

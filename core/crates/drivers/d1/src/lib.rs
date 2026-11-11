@@ -38,6 +38,7 @@ pub static INFO: EngineInfo = EngineInfo {
     sql_grammar: Some(SqlGrammar::Sqlite),
     live: false,
     has_databases: true,
+    tree_folders: paboable_core::engine::SQL_TREE_FOLDERS,
 };
 
 /// Fails, and with it the batch, unless the statement before it changed one row:
