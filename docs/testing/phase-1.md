@@ -248,7 +248,23 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Ctrl+A, Ctrl+C rồi dán ra Excel.
   **Đúng:** chỉ có các dòng đang hiện.
 
-### 8.5 Settings
+### 8.5 Thanh tiêu đề
+- [ ] Mở app.
+  **Đúng:** không còn thanh tiêu đề của Windows; thanh trên cùng có logo bên trái, ô Search ở giữa, ba nút thu nhỏ, phóng to, đóng bên phải.
+- [ ] Kéo vùng trống của thanh trên cùng; double-click vào đó.
+  **Đúng:** kéo được cửa sổ; double-click phóng to rồi trả lại; nút giữa đổi giữa phóng to và khôi phục.
+- [ ] Rê chuột lên nút đóng.
+  **Đúng:** nền đỏ như Windows 11; bấm thì app đóng.
+- [ ] Kéo cạnh và góc cửa sổ.
+  **Đúng:** đổi được kích thước.
+
+### 8.6 Ô nhập
+- [ ] Bấm vào ô Filter objects, ô Value của filter, ô tìm trong Ctrl+K.
+  **Đúng:** chỉ có con trỏ nhấp nháy, không có viền hay vòng sáng quanh ô.
+- [ ] Ô Filter objects trên sidebar.
+  **Đúng:** cao bằng các ô khác, cây đối tượng nằm ngay dưới, không có khoảng trống lớn.
+
+### 8.7 Settings
 - [ ] Nhấn **Ctrl+,**, đổi Theme Light / Dark / System.
   **Đúng:** đổi ngay cả grid và editor; **Cancel** trả lại theme cũ.
 - [ ] Chọn **Compact · 24 px**, Save.

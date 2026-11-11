@@ -25,7 +25,7 @@ The first window had one editor and one row of result tabs. A table opened from 
 
 ### The tools of the page shown sit on the right of the same bar
 
-- **A query page:** Run ▾ (Run statement, Run all), which turns into Stop while it runs. Then the row limit, as a combobox, and Save query. "Run without limit" is gone, since the limit offers No limit; Ctrl+Alt+Enter still runs without a limit.
+- **A query page:** Run ▾ (Run statement, Run all) and Stop, side by side. Run is disabled while a run goes and Stop while none does, so nothing on the bar moves when a quick run starts and ends (amended 2026-11-11; Stop first replaced Run, which made the bar jump). Then the row limit, as a combobox, and Save query. "Run without limit" is gone, since the limit offers No limit; Ctrl+Alt+Enter still runs without a limit.
 - **A table page:** Filter, Row, Delete rows and Copy SQL, and Read-only when the table has no key. While edits are pending: their summary, Discard, and Preview & save.
 
 ### A query page shows results only after a run

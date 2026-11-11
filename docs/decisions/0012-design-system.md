@@ -41,7 +41,7 @@ The first screens used Segoe UI, Tailwind classes written in each component and 
 ## Consequences
 
 - The Mica theme (D10, backlog B1) and an orange accent style (B2) are planned in `docs/roadmap.md`. The orange style only swaps the accent tokens.
-- Connection colours (D8) have their tokens (`conn-*`), but a saved connection does not store a colour yet. Until it does, the toolbar stripe stays grey.
+- Connection colours (D8) have their tokens (`conn-*`), but a saved connection does not store a colour yet. Until it does, the toolbar shows no stripe: a grey one for every connection told the user nothing.
 - The canvas grid and CodeMirror read the same tokens: `readTheme()` in `engine.ts`, and `var(--…)` in the editor's theme.
 
 ## Alternatives considered

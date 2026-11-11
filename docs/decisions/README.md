@@ -41,3 +41,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0011 | [A query result is filtered on the rows it holds; its WHERE is shown to copy](0011-filtering-a-result.md) |
 | 0012 | [One design system: black and white, Geist, Lucide, tokens and pb-* classes](0012-design-system.md) |
 | 0013 | [The work area holds pages: query tabs and table tabs, each with its tools on one bar](0013-pages-and-tabs.md) |
+| 0014 | [Small components in lib/ui; pages only put them together; the window draws its own title bar](0014-ui-components.md) |
