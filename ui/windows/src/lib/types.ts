@@ -158,6 +158,16 @@ export interface SavedConnection {
   savePassword: boolean;
   /** Milliseconds since the Unix epoch. */
   lastUsed: number | null;
+  /** The credential profile it signs in with; its user is copied into the config. */
+  profileId: string | null;
+}
+
+/** A user and a password kept under a name, for many connections to sign in with. */
+export interface CredentialProfile {
+  /** Empty for one not saved yet. */
+  id: string;
+  name: string;
+  user: string;
 }
 
 /** How `sort_result` sorted (docs/decisions/0005-sorting-a-result.md). */

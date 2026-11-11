@@ -24,6 +24,7 @@ use paboable_core::value::Value;
 use paboable_core::{CallOptions, DriverError};
 use paboable_storage::SavedConnection;
 use paboable_storage::history::{HistoryEntry, HistoryQuery};
+use paboable_storage::profiles::CredentialProfile;
 use paboable_storage::queries::SavedQuery;
 use paboable_store::{MAX_COPY_CELLS, ResultStore, RowSpan, SortKey, WindowRequest};
 use serde::{Deserialize, Serialize};
@@ -63,10 +64,25 @@ pub async fn parse_connection_url(url: String) -> CommandResult<ConnectionConfig
     paboable_core::connection_url::parse(&url)
 }
 
+/// Opens a connection as typed. `profile_id` signs it in with a credential
+/// profile's user and password instead of the ones in `config`.
 #[tauri::command]
-pub async fn connect(state: State<'_, Arc<AppState>>, config: ConnectionConfig) -> CommandResult<OpenedConnection> {
+pub async fn connect(
+    state: State<'_, Arc<AppState>>,
+    library: State<'_, Library>,
+    mut config: ConnectionConfig,
+    profile_id: Option<String>,
+) -> CommandResult<OpenedConnection> {
+    sign_in_with(&library, &mut config, profile_id.as_deref())?;
     let title = title_of(&config.target);
     open_server(&state, config, title, None).await
+}
+
+fn sign_in_with(library: &Library, config: &mut ConnectionConfig, profile_id: Option<&str>) -> CommandResult<()> {
+    match profile_id {
+        Some(id) => library.with(|library, vault| library.profiles().apply(id, vault, config)),
+        None => Ok(()),
+    }
 }
 
 async fn open_server(
@@ -119,6 +135,29 @@ pub async fn delete_saved(library: State<'_, Library>, id: String) -> CommandRes
     library.with(|library, vault| library.delete(&id, vault))
 }
 
+/// The credential profiles, by name. Their passwords stay in the vault.
+#[tauri::command]
+pub async fn list_profiles(library: State<'_, Library>) -> CommandResult<Vec<CredentialProfile>> {
+    library.with(|library, _| library.profiles().list())
+}
+
+/// Saves a credential profile (a new one when its id is empty). `password`,
+/// when given, replaces the kept one.
+#[tauri::command]
+pub async fn save_profile(
+    library: State<'_, Library>,
+    profile: CredentialProfile,
+    password: Option<String>,
+) -> CommandResult<CredentialProfile> {
+    library.with(|library, vault| library.profiles().save(profile, password.map(Secret::new), vault))
+}
+
+/// Deletes a credential profile; resolves to how many saved connections used it.
+#[tauri::command]
+pub async fn delete_profile(library: State<'_, Library>, id: String) -> CommandResult<usize> {
+    library.with(|library, vault| library.delete_profile(&id, vault))
+}
+
 /// Opens a saved connection. `password` is for one saved without its
 /// password, asked for at connect time and not kept.
 #[tauri::command]
@@ -153,15 +192,19 @@ pub struct TestedConnection {
 
 /// Connects as the connect form would, says what the server is, and closes
 /// again: nothing stays open. `saved_id` lends a saved connection's kept
-/// password or token when the form's field is blank, as Connect does.
+/// password or token when the form's field is blank, as Connect does;
+/// `profile_id` signs in with a credential profile instead.
 #[tauri::command]
 pub async fn test_connection(
     state: State<'_, Arc<AppState>>,
     library: State<'_, Library>,
     mut config: ConnectionConfig,
     saved_id: Option<String>,
+    profile_id: Option<String>,
 ) -> CommandResult<TestedConnection> {
-    if let Some(id) = saved_id
+    if profile_id.is_some() {
+        sign_in_with(&library, &mut config, profile_id.as_deref())?;
+    } else if let Some(id) = saved_id
         && secret_is_blank(&config.target)
     {
         let (_, kept) = library.with(|library, vault| library.resolve(&id, vault))?;

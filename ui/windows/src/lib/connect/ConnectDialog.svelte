@@ -15,6 +15,8 @@
     savedId: string | null;
     /** A password typed now and not kept, for a saved connection without one. */
     password: string | null;
+    /** The credential profile it signs in with, for a connection not saved. */
+    profileId: string | null;
     title: string;
   }
 </script>
@@ -23,7 +25,7 @@
   import { onMount } from "svelte";
   import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
-  import type { CoreError, SavedConnection, TlsMode } from "../types";
+  import type { CoreError, CredentialProfile, SavedConnection, TlsMode } from "../types";
   import Combobox from "../ui/Combobox.svelte";
   import Button from "../ui/Button.svelte";
   import Checkbox from "../ui/Checkbox.svelte";
@@ -46,9 +48,22 @@
     onClose: () => void;
     /** A saved connection's Connect now button, in the Saved connection list. */
     onOpenSaved: (saved: SavedConnection) => void;
+    /** Opens Credential profiles over this dialog, showing `profileId` first. */
+    onManageProfiles: (profileId: string | null) => void;
+    /** Goes up when the profiles change, to read them again. */
+    profilesKey: number;
   }
 
-  let { engine: initialEngine, saved: initialSaved, onConnect, onSaved, onClose, onOpenSaved }: Props = $props();
+  let {
+    engine: initialEngine,
+    saved: initialSaved,
+    onConnect,
+    onSaved,
+    onClose,
+    onOpenSaved,
+    onManageProfiles,
+    profilesKey,
+  }: Props = $props();
 
   // svelte-ignore state_referenced_locally
   let saved: SavedConnection | null = $state(initialSaved);
@@ -102,6 +117,12 @@
   let savePassword = $state(true);
   /** The id once saved (or the one being edited), so a second save updates it. */
   let savedId: string | null = $state(null);
+  /** Sign in with a credential profile instead of a user and password typed here. */
+  let useProfile = $state(false);
+  let profileId: string | null = $state(null);
+  let profiles: CredentialProfile[] = $state.raw([]);
+  /** The profile "Save these as a profile" just made, to say so. */
+  let madeProfile: string | null = $state(null);
 
   /** Fills the form from a saved connection, or empties it for a new one; a kept password stays kept. */
   function fill(from: SavedConnection | null) {
@@ -110,6 +131,9 @@
     error = null;
     password = "";
     url = "";
+    madeProfile = null;
+    useProfile = from?.profileId != null;
+    profileId = from?.profileId ?? null;
     if (!from) {
       savedId = null;
       name = "";
@@ -152,12 +176,17 @@
   }
   }
   // svelte-ignore state_referenced_locally
-  if (initialSaved) fillFields(initialSaved);
+  if (initialSaved) {
+    fillFields(initialSaved);
+    useProfile = initialSaved.profileId != null;
+    profileId = initialSaved.profileId;
+  }
 
   /** A name for a connection the user did not name. */
   function defaultName(): string {
     if (engine === "d1") return `D1 ${database.trim() || account.trim().slice(0, 8)}`;
-    const who = usesLogin && user.trim() ? `${user.trim()}@` : "";
+    const login = withProfile ? (profile?.user ?? "") : user.trim();
+    const who = usesLogin && login ? `${login}@` : "";
     return `${who}${host.trim()}${database.trim() ? `/${database.trim()}` : ""}`;
   }
 
@@ -170,7 +199,11 @@
   const usesLogin = $derived(engine !== "mssql" || !windowsLogin);
   /** D1 is reached through Cloudflare's API: an account and a token, no host. */
   const http = $derived(engine === "d1");
-  const ready = $derived(http ? account.trim() !== "" : host.trim() !== "");
+  /** Credential profiles hold SQL logins: PostgreSQL, and SQL Server signing in with a login. */
+  const profileEngine = $derived((engine === "postgres" || engine === "mssql") && usesLogin);
+  const withProfile = $derived(profileEngine && useProfile);
+  const profile = $derived(profiles.find((entry) => entry.id === profileId) ?? null);
+  const ready = $derived((http ? account.trim() !== "" : host.trim() !== "") && (!withProfile || profile !== null));
 
   const TLS_MODES: { value: TlsMode; label: string }[] = [
     { value: "disable", label: "Disable" },
@@ -191,6 +224,63 @@
     engine = next;
     if (next === "redis" && tls !== "verifyFull") tls = "disable";
   }
+
+  async function loadProfiles() {
+    try {
+      profiles = await ipc.listProfiles();
+    } catch {
+      profiles = [];
+    }
+    // A profile deleted in Credential profiles is no longer picked.
+    if (profileId && !profiles.some((entry) => entry.id === profileId)) profileId = null;
+  }
+
+  $effect(() => {
+    void profilesKey;
+    void loadProfiles();
+  });
+
+  /** The last option of the profile picker, which opens Credential profiles instead of picking. */
+  const MANAGE = "manage:";
+  const profileOptions = $derived([
+    ...profiles.map((entry) => ({ value: entry.id, label: entry.name, meta: `Signs in as ${entry.user}`, icon: "key" as const })),
+    { value: MANAGE, label: "Manage profiles…", icon: "settings" as const },
+  ]);
+
+  function pickProfile(id: string) {
+    if (id === MANAGE) {
+      onManageProfiles(profileId);
+      return;
+    }
+    profileId = id;
+    madeProfile = null;
+  }
+
+  /** Keeps the user and password typed here as a new profile named after the user, and signs in with it. */
+  async function saveAsProfile() {
+    const login = user.trim();
+    if (!login || busy) return;
+    const taken = (name: string) => profiles.some((entry) => entry.name.toLowerCase() === name.toLowerCase());
+    let name = login;
+    for (let n = 2; taken(name); n += 1) name = `${login}-${n}`;
+    busy = true;
+    try {
+      const stored = await ipc.saveProfile({ id: "", name, user: login }, password !== "" ? password : null);
+      await loadProfiles();
+      profileId = stored.id;
+      useProfile = true;
+      madeProfile = stored.name;
+      error = null;
+    } catch (caught) {
+      error = asCoreError(caught);
+    }
+    busy = false;
+  }
+
+  const CREDENTIALS = [
+    { value: false, label: "Type them here" },
+    { value: true, label: "From a profile" },
+  ];
 
   onMount(() => {
     (http ? accountInput : urlInput)?.focus();
@@ -274,8 +364,8 @@
         kind: "network",
         host: host.trim(),
         port: portNumber,
-        user: usesLogin ? user.trim() || null : null,
-        password: usesLogin ? password : "",
+        user: withProfile ? (profile?.user ?? null) : usesLogin ? user.trim() || null : null,
+        password: usesLogin && !withProfile ? password : "",
         database: database.trim() || null,
         tls,
       },
@@ -291,10 +381,11 @@
           id: savedId ?? "",
           name: name.trim() || defaultName(),
           config,
-          savePassword: usesLogin && savePassword,
+          savePassword: usesLogin && savePassword && !withProfile,
           lastUsed: saved?.lastUsed ?? null,
+          profileId: withProfile ? profileId : null,
         },
-        usesLogin && password !== "" ? password : null,
+        usesLogin && !withProfile && password !== "" ? password : null,
       );
       savedId = stored.id;
       name = stored.name;
@@ -320,14 +411,15 @@
     error = await onConnect({
       config,
       savedId: save ? savedId : null,
-      password: usesLogin && password !== "" ? password : null,
+      password: usesLogin && !withProfile && password !== "" ? password : null,
+      profileId: withProfile ? profileId : null,
       title: name.trim() || defaultName(),
     });
     busy = false;
   }
 
   /** The fields a test depends on: a result shows only while they are as tested. */
-  const testedFields = $derived(JSON.stringify([engine, host, port, database, user, password, windowsLogin, tls, account, options]));
+  const testedFields = $derived(JSON.stringify([engine, host, port, database, user, password, windowsLogin, tls, account, options, withProfile, profileId]));
   let testing = $state(false);
   let tested: { fields: string; title: string; message: string } | null = $state(null);
 
@@ -341,7 +433,7 @@
     error = null;
     tested = null;
     try {
-      const reply = await ipc.testConnection(config, savedId);
+      const reply = await ipc.testConnection(config, savedId, withProfile ? profileId : null);
       const version = `${info.title} ${reply.serverVersion ?? ""}`.trim();
       const count = reply.databases === null ? "" : ` · this login sees ${reply.databases} ${reply.databases === 1 ? "database" : "databases"}`;
       tested = { fields, title: "Connected", message: version + count };
@@ -429,7 +521,34 @@
         <Segmented label="Sign in with" fill options={LOGINS} value={windowsLogin} onChange={(windows) => (windowsLogin = windows)} />
       </Field>
     {/if}
-    {#if usesLogin}
+    {#if profileEngine}
+      <Field label="Credentials" as="group">
+        <Segmented label="Credentials" fill options={CREDENTIALS} value={useProfile} onChange={(next) => (useProfile = next)} />
+      </Field>
+    {/if}
+    {#if withProfile}
+      {#if madeProfile && profile?.name === madeProfile}
+        <InfoBar tone="success" title={`Saved as the profile ${madeProfile}`} message="Its password is kept in Windows Credential Manager. Any connection can use it." />
+      {/if}
+      <Field
+        label="Profile"
+        as="group"
+        hint={profile
+          ? `Signs in as ${profile.user}. The password is the profile's, kept in Windows Credential Manager.`
+          : "A profile keeps a user and a password under a name, for any connection to use."}
+      >
+        <Combobox
+          label="Profile"
+          width={552}
+          searchable={profiles.length > 6}
+          searchPlaceholder="Find a profile"
+          options={profileOptions}
+          value={profileId ?? ""}
+          placeholder="Pick a profile"
+          onPick={pickProfile}
+        />
+      </Field>
+    {:else if usesLogin}
       <div class="pb-form-2">
         <Field label="User">
           <Input bind:value={user} placeholder={engine === "postgres" ? "postgres" : engine === "redis" ? "Optional (ACL user)" : "sa"} />
@@ -438,6 +557,19 @@
           <Input type="password" bind:value={password} placeholder={savedId && saved?.savePassword ? "Kept in Windows Credential Manager" : ""} />
         </Field>
       </div>
+      {#if profileEngine}
+        <div class="pb-row pb-row--start">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="key"
+            disabled={busy || user.trim() === ""}
+            tip="Keep this user and password under a name, to use them in other connections"
+            tipAt="start"
+            onclick={() => void saveAsProfile()}>Save these as a profile…</Button
+          >
+        </div>
+      {/if}
     {/if}
     <Field label="Encryption" as="group">
       <Combobox label="Encryption" width={552} options={tlsModes} value={tls} onPick={(mode) => (tls = mode)} />
@@ -446,7 +578,7 @@
 
   <div class="pb-checks">
     <Checkbox bind:checked={save}>Save this connection</Checkbox>
-    {#if save && usesLogin}
+    {#if save && usesLogin && !withProfile}
       <Checkbox class="pb-check--indent" bind:checked={savePassword}>Keep the {http ? "token" : "password"} in Windows Credential Manager</Checkbox>
     {/if}
   </div>

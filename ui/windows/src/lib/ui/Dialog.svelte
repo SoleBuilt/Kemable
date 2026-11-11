@@ -1,5 +1,10 @@
+<script lang="ts" module>
+  /** The dialogs open now, the newest last: only the top one answers Esc. */
+  const open: symbol[] = [];
+</script>
+
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { onDestroy, type Snippet } from "svelte";
   import Button from "./Button.svelte";
 
   interface Props {
@@ -21,6 +26,9 @@
 
   let { title, width = 480, maxHeight, busy = false, onClose, onsubmit, bodyStyle, children, footer }: Props = $props();
   const id = $props.id();
+  const self = Symbol();
+  open.push(self);
+  onDestroy(() => open.splice(open.indexOf(self), 1));
 
   function close() {
     if (!busy) onClose();
@@ -29,7 +37,7 @@
 
 <svelte:window
   onkeydown={(event) => {
-    if (event.key === "Escape" && !event.defaultPrevented) close();
+    if (event.key === "Escape" && !event.defaultPrevented && open.at(-1) === self) close();
   }}
 />
 

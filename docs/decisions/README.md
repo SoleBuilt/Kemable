@@ -42,3 +42,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0012 | [One design system: black and white, Geist, Lucide, tokens and pb-* classes](0012-design-system.md) |
 | 0013 | [The work area holds pages: query tabs and table tabs, each with its tools on one bar](0013-pages-and-tabs.md) |
 | 0014 | [Small components in lib/ui; pages only put them together; the window draws its own title bar](0014-ui-components.md) |
+| 0015 | [Credential profiles: a user and a password under a name, shared by saved connections](0015-credential-profiles.md) |
