@@ -130,6 +130,22 @@ pub fn page_statement(grammar: SqlGrammar, query: &BrowseQuery) -> Result<String
     Ok(sql)
 }
 
+/// Every row `query`'s filters match, in key order, with no page: what
+/// Export reads (`docs/decisions/0018-export-import-generate.md`).
+pub fn export_statement(grammar: SqlGrammar, query: &BrowseQuery) -> Result<String, DriverError> {
+    let mut sql = format!("SELECT * FROM {}", table_name(grammar, &query.table));
+    push_where(&mut sql, grammar, query)?;
+    if !query.key.is_empty() {
+        let key: Vec<String> = query.key.iter().map(|column| ident(grammar, column)).collect();
+        sql.push_str(
+            "
+ORDER BY ",
+        );
+        sql.push_str(&key.join(", "));
+    }
+    Ok(sql)
+}
+
 /// How many rows `query`'s filters match, as one row of one column.
 pub fn count_statement(grammar: SqlGrammar, query: &BrowseQuery) -> Result<String, DriverError> {
     let mut sql = format!("SELECT COUNT(*) FROM {}", table_name(grammar, &query.table));

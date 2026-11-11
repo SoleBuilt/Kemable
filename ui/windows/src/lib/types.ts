@@ -182,6 +182,80 @@ export interface SavedConnection {
   color: string | null;
 }
 
+/** One index of a table, for Show Structure's Indexes tab. */
+export interface IndexInfo {
+  name: string;
+  /** Key columns in order; " DESC" after a descending one; an expression's text. */
+  columns: string[];
+  included: string[];
+  unique: boolean;
+  primary: boolean;
+  /** The engine's name for its kind: btree, CLUSTERED, NONCLUSTERED COLUMNSTORE, gin. */
+  method: string;
+  filter: string | null;
+}
+
+// --- Export, Import, Generate Rows (docs/decisions/0018-export-import-generate.md) ---
+
+/** What a job (export, import, generate) reports. */
+export type JobEvent =
+  | { type: "progress"; rows: number }
+  | { type: "finished"; rows: number; path: string | null }
+  | { type: "cancelled" }
+  | { type: "failed"; error: CoreError };
+
+export type ExportFormat = "csv" | "json" | "insert";
+
+export interface ExportOptions {
+  format: ExportFormat;
+  /** CSV's separator: ",", ";" or a tab. */
+  delimiter: string;
+  header: boolean;
+  /** A UTF-8 byte order mark first, for Excel. */
+  bom: boolean;
+}
+
+export type ValueShape = "integer" | "decimal" | "boolean" | "date" | "timestamp" | "text";
+
+export interface CsvPreview {
+  delimiter: string;
+  header: string[];
+  rows: string[][];
+  shapes: ValueShape[];
+  /** The type a new table's column takes for each field, in the connection's engine. */
+  types: string[];
+  /** Records after the header. */
+  records: number;
+}
+
+export interface CsvOptions {
+  delimiter: string;
+  header: boolean;
+  emptyIsNull: boolean;
+}
+
+export interface NewColumn {
+  name: string;
+  typeName: string;
+}
+
+export type ImportTarget = { kind: "existing"; table: TableRef } | { kind: "new"; table: TableRef; columns: NewColumn[] };
+
+export interface ImportPlan {
+  /** For each field, the column it goes to; null for a field left out. */
+  mapping: (string | null)[];
+  create: string | null;
+  firstInsert: string | null;
+  records: number;
+}
+
+export interface GeneratePlan {
+  columns: string[];
+  key: string | null;
+  keyStart: number;
+  preview: string;
+}
+
 /** A maintenance task on a table, as its engine names it (docs/decisions/0017-tree-actions.md). */
 export type Maintenance =
   | "vacuum"

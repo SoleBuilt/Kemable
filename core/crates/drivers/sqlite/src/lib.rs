@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use paboable_core::catalog::{ColumnInfo, ColumnMeta, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
+use paboable_core::catalog::{ColumnInfo, ColumnMeta, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
 use paboable_core::config::{ConnectionConfig, Target};
 use paboable_core::connection::Connection;
 use paboable_core::driver::Driver;
@@ -191,6 +191,8 @@ impl Connection for SqliteConnection {
             let rows = statement
                 .query_map([], |row| {
                     let primary_key: i64 = row.get(5)?;
+                    // table_xinfo's `hidden`: 2 and 3 are generated columns.
+                    let hidden: i64 = row.get(6)?;
                     Ok(ColumnInfo {
                         ordinal: u32::try_from(row.get::<_, i64>(0)?).unwrap_or(0),
                         name: row.get(1)?,
@@ -198,10 +200,98 @@ impl Connection for SqliteConnection {
                         nullable: row.get::<_, i64>(3)? == 0,
                         default: row.get(4)?,
                         primary_key: u32::try_from(primary_key).ok().filter(|&p| p > 0),
+                        generated: hidden >= 2,
                     })
                 })
                 .map_err(map_error)?;
-            rows.map(|row| row.map_err(map_error)).collect()
+            let mut columns = rows.map(|row| row.map_err(map_error)).collect::<Result<Vec<_>>>()?;
+            mark_rowid_alias(&mut columns);
+            Ok(columns)
+        })
+        .await
+    }
+
+    async fn list_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>> {
+        let schema = table.schema.clone().unwrap_or_else(|| "main".into());
+        let name = table.name.clone();
+        self.blocking(&options, move |conn| {
+            let list = format!("pragma {}.index_list({})", quote_ident(&schema), quote_ident(&name));
+            let mut statement = conn.prepare(&list).map_err(map_error)?;
+            // name, unique, origin (c: CREATE INDEX, u: UNIQUE, pk: PRIMARY KEY), partial
+            let found = statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)?,
+                    ))
+                })
+                .map_err(map_error)?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(map_error)?;
+            let mut indexes = Vec::with_capacity(found.len());
+            for (index, unique, origin, partial) in found {
+                let info = format!("pragma {}.index_xinfo({})", quote_ident(&schema), quote_ident(&index));
+                let mut statement = conn.prepare(&info).map_err(map_error)?;
+                // cid -2 is an expression; key 0 is the rowid the index carries, not a key.
+                let parts = statement
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, Option<String>>(2)?,
+                            row.get::<_, i64>(3)?,
+                            row.get::<_, i64>(5)?,
+                        ))
+                    })
+                    .map_err(map_error)?
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(map_error)?;
+                let columns = parts
+                    .into_iter()
+                    .filter(|(_, _, _, key)| *key == 1)
+                    .map(|(cid, column, descending, _)| {
+                        let column = column.unwrap_or_else(|| {
+                            if cid == -2 {
+                                "(expression)".into()
+                            } else {
+                                "rowid".into()
+                            }
+                        });
+                        if descending == 1 {
+                            format!("{column} DESC")
+                        } else {
+                            column
+                        }
+                    })
+                    .collect();
+                let filter = if partial == 1 {
+                    let sql: Option<String> = conn
+                        .query_row(
+                            &format!(
+                                "select sql from {}.sqlite_schema where type = 'index' and name = ?1",
+                                quote_ident(&schema)
+                            ),
+                            [&index],
+                            |row| row.get(0),
+                        )
+                        .map_err(map_error)?;
+                    sql.and_then(|sql| partial_filter(&sql))
+                } else {
+                    None
+                };
+                indexes.push(IndexInfo {
+                    name: index,
+                    columns,
+                    included: Vec::new(),
+                    unique: unique == 1,
+                    primary: origin == "pk",
+                    method: "btree".into(),
+                    filter,
+                });
+            }
+            indexes.sort_by_key(|index| (!index.primary, index.name.to_lowercase()));
+            Ok(indexes)
         })
         .await
     }
@@ -387,3 +477,21 @@ fn join_error(error: tokio::task::JoinError) -> DriverError {
 
 #[cfg(test)]
 mod tests;
+
+/// A table's one `INTEGER PRIMARY KEY` column is its rowid: SQLite numbers
+/// new rows itself, so the column counts as generated (D1 reads the same).
+pub fn mark_rowid_alias(columns: &mut [ColumnInfo]) {
+    let mut keys = columns.iter_mut().filter(|column| column.primary_key.is_some());
+    if let (Some(only), None) = (keys.next(), keys.next())
+        && only.type_name.eq_ignore_ascii_case("INTEGER")
+    {
+        only.generated = true;
+    }
+}
+
+/// A partial index's condition: what follows the last WHERE of its CREATE INDEX.
+pub fn partial_filter(sql: &str) -> Option<String> {
+    let upper = sql.to_ascii_uppercase();
+    let at = upper.rfind(" WHERE ")?;
+    Some(sql[at + 7..].trim().trim_end_matches(';').trim().to_owned())
+}

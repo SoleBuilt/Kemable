@@ -4,6 +4,8 @@
 
 mod catalog;
 mod commands;
+mod export;
+mod jobs;
 mod library;
 mod run;
 mod state;
@@ -56,6 +58,14 @@ pub fn run() {
             commands::delete_saved,
             commands::result_source,
             commands::object_ddl,
+            commands::list_indexes,
+            commands::qualified_name,
+            commands::export_table,
+            commands::preview_csv,
+            commands::import_plan,
+            commands::import_csv,
+            commands::generate_plan,
+            commands::generate_rows,
             commands::object_comment,
             commands::view_definition_of,
             commands::maintenance_tasks_of,

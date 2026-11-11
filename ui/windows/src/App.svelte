@@ -29,6 +29,9 @@
   import SaveQueryDialog from "./lib/sidebar/SaveQueryDialog.svelte";
   import ObjectActionDialog, { type ActionKind } from "./lib/sidebar/ObjectActionDialog.svelte";
   import StructureDialog from "./lib/sidebar/StructureDialog.svelte";
+  import ExportDialog from "./lib/data/ExportDialog.svelte";
+  import GenerateRowsDialog from "./lib/data/GenerateRowsDialog.svelte";
+  import ImportDialog from "./lib/data/ImportDialog.svelte";
   import UnsavedDialog from "./lib/editor/UnsavedDialog.svelte";
   import TreeMenu from "./lib/sidebar/TreeMenu.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
@@ -1804,6 +1807,45 @@
     }
   }
 
+  /** Export, Import or Generate Rows on one table (docs/decisions/0018-export-import-generate.md). */
+  let dataDialog: {
+    kind: "export" | "import" | "generate";
+    database: string | null;
+    table: TableRef;
+    keyColumns: string[];
+    filtered: { filters: Filter[]; matchAny: boolean } | null;
+  } | null = $state(null);
+
+  /** Opens a data dialog for `table`; an open page of it lends its key and its filter. */
+  function openData(kind: "export" | "import" | "generate", table: TableRef, inDatabase: string | null) {
+    const tab = (page: Page) => (page.id === activePage ? tableTab : page.state.tableTab);
+    const shown = pages.map(tab).find((open) => open && open.table.name === table.name && open.table.schema === table.schema && open.database === inDatabase);
+    dataDialog = {
+      kind,
+      database: inDatabase,
+      table,
+      keyColumns: shown?.key ?? [],
+      filtered: shown && shown.filters.length > 0 ? { filters: shown.filters, matchAny: shown.matchAny } : null,
+    };
+  }
+
+  function dataDone(message: string) {
+    dataDialog = null;
+    note(message);
+    void refreshObjects();
+    // A page of the table shows its new rows.
+    if (tableTab) void loadPage(tableTab, true);
+  }
+
+  async function copyQualified(target: ObjectTarget) {
+    if (!connection) return;
+    try {
+      copyText(await ipc.qualifiedName(connection.id, target.object), "the qualified name");
+    } catch (caught) {
+      note(`Not copied: ${asCoreError(caught).message}`);
+    }
+  }
+
   function actionDone(message: string) {
     objectAction = null;
     note(message);
@@ -2127,6 +2169,7 @@
                 onAddRow={() => void addRow()}
                 onDeleteRows={() => selected && markDeleted(selected.rows)}
                 onCopySql={copyPageSql}
+                onExport={() => tableTab && openData("export", tableTab.table, tableTab.database)}
                 onDiscard={discardEdits}
                 onPreview={() => void openPreview()}
               />
@@ -2384,7 +2427,28 @@
     onCopyDdl={(target) => void copyDdl(target)}
     onEditView={(target) => void editView(target)}
     onAction={(target, kind) => (objectAction = { target, kind })}
+    onCopyQualified={(target) => void copyQualified(target)}
+    onData={(target, kind) => openData(kind, { schema: target.object.schema, name: target.object.name }, target.database)}
   />
+{/if}
+
+{#if dataDialog && connection}
+  {@const data = dataDialog}
+  {#if data.kind === "export"}
+    <ExportDialog
+      conn={connection.id}
+      database={data.database}
+      table={data.table}
+      keyColumns={data.keyColumns}
+      filtered={data.filtered}
+      onDone={dataDone}
+      onClose={() => (dataDialog = null)}
+    />
+  {:else if data.kind === "import"}
+    <ImportDialog conn={connection.id} database={data.database} table={data.table} onDone={dataDone} onClose={() => (dataDialog = null)} />
+  {:else}
+    <GenerateRowsDialog conn={connection.id} database={data.database} table={data.table} onDone={dataDone} onClose={() => (dataDialog = null)} />
+  {/if}
 {/if}
 
 {#if objectAction && connection}

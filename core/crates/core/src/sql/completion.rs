@@ -881,6 +881,7 @@ mod tests {
 
     fn column(name: &str, type_name: &str) -> ColumnInfo {
         ColumnInfo {
+            generated: false,
             ordinal: 0,
             name: name.into(),
             type_name: type_name.into(),

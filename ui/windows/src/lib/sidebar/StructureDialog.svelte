@@ -4,7 +4,7 @@
   import { onMount } from "svelte";
   import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
-  import type { ColumnInfo, CoreError, ObjectInfo } from "../types";
+  import type { ColumnInfo, CoreError, IndexInfo, ObjectInfo } from "../types";
   import Button from "../ui/Button.svelte";
   import Dialog from "../ui/Dialog.svelte";
   import InfoBar from "../ui/InfoBar.svelte";
@@ -24,8 +24,10 @@
   let { conn, database, object, onEdit, onCopy, onClose }: Props = $props();
 
   // svelte-ignore state_referenced_locally
-  let view: "columns" | "ddl" = $state(object.kind === "table" || object.kind === "view" ? "columns" : "ddl");
+  let view: "columns" | "indexes" | "ddl" = $state(object.kind === "table" || object.kind === "view" ? "columns" : "ddl");
   let columns: ColumnInfo[] = $state.raw([]);
+  let indexes = $state.raw<IndexInfo[] | null>(null);
+  let indexesError: CoreError | null = $state(null);
   let ddl: string | null = $state(null);
   let columnsError: CoreError | null = $state(null);
   let ddlError: CoreError | null = $state(null);
@@ -37,16 +39,23 @@
         (caught: unknown) => (columnsError = asCoreError(caught)),
       );
     }
+    if (object.kind === "table" || object.kind === "materializedView") {
+      ipc.listIndexes(conn, database, { schema: object.schema, name: object.name }).then(
+        (read) => (indexes = read),
+        (caught: unknown) => (indexesError = asCoreError(caught)),
+      );
+    }
     ipc.objectDdl(conn, database, object).then(
       (read) => (ddl = read),
       (caught: unknown) => (ddlError = asCoreError(caught)),
     );
   });
 
-  const VIEWS = [
+  const VIEWS = $derived([
     { value: "columns" as const, label: "Columns" },
+    { value: "indexes" as const, label: "Indexes", disabled: object.kind !== "table" && object.kind !== "materializedView" },
     { value: "ddl" as const, label: "DDL" },
-  ];
+  ]);
   const title = $derived(object.schema ? `${object.schema}.${object.name}` : object.name);
 </script>
 
@@ -71,6 +80,28 @@
             <span role="cell">{column.nullable ? "yes" : "no"}</span>
             <span role="cell" class="pb-mono">{column.default ?? ""}</span>
             <span role="cell">{column.primaryKey !== null ? `PK ${column.primaryKey}` : ""}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {:else if view === "indexes"}
+    {#if indexesError}
+      <InfoBar tone="danger" title={errorTitle(indexesError)} message={indexesError.message} />
+    {:else if indexes && indexes.length === 0}
+      <p class="pb-hint">This table has no index.</p>
+    {:else}
+      <div class="pb-columns" role="table" aria-label="Indexes">
+        <div class="pb-columns-row pb-columns-row--index is-head" role="row">
+          <span role="columnheader">Name</span><span role="columnheader">Columns</span><span role="columnheader">Kind</span><span role="columnheader"
+            >Filter</span
+          >
+        </div>
+        {#each indexes ?? [] as index (index.name)}
+          <div class="pb-columns-row pb-columns-row--index" role="row">
+            <span role="cell" class="pb-columns-name">{index.name}</span>
+            <span role="cell" class="pb-mono">{index.columns.join(", ")}{index.included.length > 0 ? ` INCLUDE (${index.included.join(", ")})` : ""}</span>
+            <span role="cell">{[index.primary ? "primary key" : index.unique ? "unique" : "", index.method].filter(Boolean).join(" · ")}</span>
+            <span role="cell" class="pb-mono">{index.filter ?? ""}</span>
           </div>
         {/each}
       </div>

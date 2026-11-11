@@ -16,7 +16,9 @@ mod tests;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use paboable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
+use paboable_core::catalog::{
+    ColumnInfo, ColumnMeta, DatabaseInfo, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef,
+};
 use paboable_core::config::{ConnectionConfig, Target};
 use paboable_core::connection::Connection;
 use paboable_core::driver::Driver;
@@ -245,11 +247,12 @@ impl Connection for D1Connection {
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>> {
         let sql = format!("PRAGMA table_info({})", quote_ident(&table.name));
         let rows = self.rows(&sql, &options).await?;
-        Ok(rows
+        let mut columns: Vec<ColumnInfo> = rows
             .iter()
             .map(|row| {
                 let number = |index: usize| row.get(index).and_then(Json::as_i64).unwrap_or(0);
                 ColumnInfo {
+                    generated: false,
                     ordinal: u32::try_from(number(0) + 1).unwrap_or(0),
                     name: row.get(1).map(text).unwrap_or_default(),
                     type_name: row.get(2).map(text).unwrap_or_default(),
@@ -258,7 +261,76 @@ impl Connection for D1Connection {
                     primary_key: u32::try_from(number(5)).ok().filter(|position| *position > 0),
                 }
             })
-            .collect())
+            .collect();
+        // D1 is SQLite: a lone INTEGER PRIMARY KEY is the rowid, numbered by the server.
+        let mut keys = columns.iter_mut().filter(|column| column.primary_key.is_some());
+        if let (Some(only), None) = (keys.next(), keys.next())
+            && only.type_name.eq_ignore_ascii_case("INTEGER")
+        {
+            only.generated = true;
+        }
+        Ok(columns)
+    }
+
+    /// The indexes SQLite's pragmas list, the primary key's first.
+    async fn list_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>> {
+        let list = self
+            .rows(&format!("PRAGMA index_list({})", quote_ident(&table.name)), &options)
+            .await?;
+        let mut indexes = Vec::with_capacity(list.len());
+        for row in &list {
+            let name = row.get(1).map(text).unwrap_or_default();
+            let flag = |index: usize| row.get(index).and_then(Json::as_i64).unwrap_or(0) == 1;
+            let origin = row.get(3).map(text).unwrap_or_default();
+            let parts = self
+                .rows(&format!("PRAGMA index_xinfo({})", quote_ident(&name)), &options)
+                .await?;
+            // key 0 is the rowid an index carries; cid -2 is an expression.
+            let columns = parts
+                .iter()
+                .filter(|part| part.get(5).and_then(Json::as_i64) == Some(1))
+                .map(|part| {
+                    let column = part
+                        .get(2)
+                        .filter(|value| !value.is_null())
+                        .map(text)
+                        .unwrap_or_else(|| "(expression)".into());
+                    if part.get(3).and_then(Json::as_i64) == Some(1) {
+                        format!("{column} DESC")
+                    } else {
+                        column
+                    }
+                })
+                .collect();
+            let filter = if flag(4) {
+                let sql = self
+                    .rows(
+                        &format!(
+                            "select sql from sqlite_schema where type = 'index' and name = {}",
+                            text_literal(&name)
+                        ),
+                        &options,
+                    )
+                    .await?;
+                sql.first().and_then(|row| row.first()).map(text).and_then(|create| {
+                    let at = create.to_ascii_uppercase().rfind(" WHERE ")?;
+                    Some(create[at + 7..].trim().trim_end_matches(';').trim().to_owned())
+                })
+            } else {
+                None
+            };
+            indexes.push(IndexInfo {
+                name,
+                columns,
+                included: Vec::new(),
+                unique: flag(2),
+                primary: origin == "pk",
+                method: "btree".into(),
+                filter,
+            });
+        }
+        indexes.sort_by_key(|index| (!index.primary, index.name.to_lowercase()));
+        Ok(indexes)
     }
 
     /// The CREATE statements D1 keeps, as SQLite does: the object's own, and

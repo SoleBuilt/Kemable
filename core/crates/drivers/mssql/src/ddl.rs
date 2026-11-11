@@ -266,6 +266,142 @@ pub(crate) fn index_statement(table: &str, index: &Index) -> String {
     statement
 }
 
+/// A columnstore index. A clustered one stores the whole table, so it names no columns.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ColumnstoreIndex {
+    pub name: String,
+    pub clustered: bool,
+    pub columns: Vec<String>,
+    /// `ORDER`'s columns (SQL Server 2022 and later); empty when it has none.
+    pub order: Vec<String>,
+    pub filter: Option<String>,
+}
+
+pub(crate) fn columnstore_statement(table: &str, index: &ColumnstoreIndex) -> String {
+    let mut statement = format!(
+        "CREATE {} COLUMNSTORE INDEX {} ON {table}",
+        if index.clustered { "CLUSTERED" } else { "NONCLUSTERED" },
+        bracket(&index.name)
+    );
+    if !index.clustered {
+        let _ = write!(statement, " ({})", name_list(&index.columns));
+    }
+    if !index.order.is_empty() {
+        let _ = write!(statement, " ORDER ({})", name_list(&index.order));
+    }
+    if let Some(filter) = &index.filter {
+        let _ = write!(statement, " WHERE {filter}");
+    }
+    statement.push(';');
+    statement
+}
+
+/// What a secondary XML index is for, from `sys.xml_indexes.secondary_type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum XmlPurpose {
+    Value,
+    Path,
+    Property,
+}
+
+impl XmlPurpose {
+    pub(crate) fn from_code(code: &str) -> Option<Self> {
+        match code.trim() {
+            "V" => Some(Self::Value),
+            "P" => Some(Self::Path),
+            "R" => Some(Self::Property),
+            _ => None,
+        }
+    }
+
+    fn keyword(self) -> &'static str {
+        match self {
+            Self::Value => "VALUE",
+            Self::Path => "PATH",
+            Self::Property => "PROPERTY",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SecondaryXml {
+    /// The primary XML index it is built on.
+    pub primary: String,
+    pub purpose: XmlPurpose,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct XmlIndex {
+    pub name: String,
+    pub column: String,
+    /// `None` for a primary XML index.
+    pub secondary: Option<SecondaryXml>,
+}
+
+pub(crate) fn xml_index_statement(table: &str, index: &XmlIndex) -> String {
+    match &index.secondary {
+        None => format!(
+            "CREATE PRIMARY XML INDEX {} ON {table} ({});",
+            bracket(&index.name),
+            bracket(&index.column)
+        ),
+        Some(secondary) => format!(
+            "CREATE XML INDEX {} ON {table} ({}) USING XML INDEX {} FOR {};",
+            bracket(&index.name),
+            bracket(&index.column),
+            bracket(&secondary.primary),
+            secondary.purpose.keyword()
+        ),
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SpatialIndex {
+    pub name: String,
+    pub column: String,
+    /// `sys.spatial_index_tessellations.tessellation_scheme`: `GEOMETRY_GRID`,
+    /// `GEOMETRY_AUTO_GRID`, `GEOGRAPHY_GRID` or `GEOGRAPHY_AUTO_GRID`.
+    pub scheme: String,
+    /// `xmin, ymin, xmax, ymax`; a geography index has none.
+    pub bounding_box: Option<[f64; 4]>,
+    /// The density of each level from the first: `LOW`, `MEDIUM` or `HIGH`.
+    pub grids: Vec<String>,
+    pub cells_per_object: Option<i32>,
+}
+
+pub(crate) fn spatial_index_statement(table: &str, index: &SpatialIndex) -> String {
+    let mut options = Vec::new();
+    // The server takes a bounding box only for geometry, and refuses GRIDS with an auto grid.
+    if index.scheme.starts_with("GEOMETRY")
+        && let Some([xmin, ymin, xmax, ymax]) = index.bounding_box
+    {
+        options.push(format!("BOUNDING_BOX = ({xmin}, {ymin}, {xmax}, {ymax})"));
+    }
+    if !index.scheme.ends_with("AUTO_GRID") && !index.grids.is_empty() {
+        let levels: Vec<String> = index
+            .grids
+            .iter()
+            .enumerate()
+            .map(|(level, density)| format!("LEVEL_{} = {density}", level + 1))
+            .collect();
+        options.push(format!("GRIDS = ({})", levels.join(", ")));
+    }
+    if let Some(cells) = index.cells_per_object {
+        options.push(format!("CELLS_PER_OBJECT = {cells}"));
+    }
+    let mut statement = format!(
+        "CREATE SPATIAL INDEX {} ON {table} ({}) USING {}",
+        bracket(&index.name),
+        bracket(&index.column),
+        index.scheme
+    );
+    if !options.is_empty() {
+        let _ = write!(statement, " WITH ({})", options.join(", "));
+    }
+    statement.push(';');
+    statement
+}
+
 /// An `MS_Description` on a table, or on one of its columns.
 #[derive(Debug, Clone)]
 pub(crate) struct Description {
@@ -302,6 +438,9 @@ pub(crate) struct Table {
     pub checks: Vec<CheckConstraint>,
     pub foreign_keys: Vec<ForeignKey>,
     pub indexes: Vec<Index>,
+    pub columnstores: Vec<ColumnstoreIndex>,
+    pub xml_indexes: Vec<XmlIndex>,
+    pub spatial_indexes: Vec<SpatialIndex>,
     pub descriptions: Vec<Description>,
 }
 
@@ -328,6 +467,27 @@ pub(crate) fn table_ddl(table: &Table) -> String {
     let statements: Vec<String> = std::iter::once(create)
         .chain(table.foreign_keys.iter().map(|key| foreign_key_statement(&name, key)))
         .chain(table.indexes.iter().map(|index| index_statement(&name, index)))
+        .chain(
+            table
+                .columnstores
+                .iter()
+                .map(|index| columnstore_statement(&name, index)),
+        )
+        // A secondary XML index is built on its primary, so every primary comes first.
+        .chain(
+            table
+                .xml_indexes
+                .iter()
+                .filter(|index| index.secondary.is_none())
+                .chain(table.xml_indexes.iter().filter(|index| index.secondary.is_some()))
+                .map(|index| xml_index_statement(&name, index)),
+        )
+        .chain(
+            table
+                .spatial_indexes
+                .iter()
+                .map(|index| spatial_index_statement(&name, index)),
+        )
         .chain(
             table
                 .descriptions

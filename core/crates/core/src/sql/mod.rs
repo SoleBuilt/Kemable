@@ -14,7 +14,7 @@ mod sorted;
 mod split;
 
 pub use batch::{batch_queries, batch_statement_count};
-pub use browse::{BrowseQuery, BrowseSort, Filter, FilterOp, count_statement, page_statement};
+pub use browse::{BrowseQuery, BrowseSort, Filter, FilterOp, count_statement, export_statement, page_statement};
 pub use completion::{
     CatalogView, Clause, CompletionContext, CompletionItem, ItemKind, Lookups, TableReference, completion_context,
     completions,
@@ -48,6 +48,125 @@ pub fn quote_name(grammar: SqlGrammar, name: &str) -> String {
         SqlGrammar::Postgres | SqlGrammar::Sqlite => quote_ident(name),
     }
 }
+
+/// A name as a person would paste it into a statement: quoted only when it
+/// must be, for Copy Qualified Name (`dbo.[CRONUS International Ltd_$Customer]`,
+/// `public."Orders"`). A part needs quotes when it is not a plain identifier
+/// of the grammar, or is a keyword; PostgreSQL folds unquoted names to lower
+/// case, so a capital letter needs them there.
+pub fn readable_name(grammar: SqlGrammar, schema: Option<&str>, name: &str) -> String {
+    let part = |part: &str| {
+        if is_plain_identifier(grammar, part) {
+            part.to_owned()
+        } else {
+            quote_name(grammar, part)
+        }
+    };
+    match schema {
+        Some(schema) => format!("{}.{}", part(schema), part(name)),
+        None => part(name),
+    }
+}
+
+fn is_plain_identifier(grammar: SqlGrammar, part: &str) -> bool {
+    let mut chars = part.chars();
+    let Some(first) = chars.next() else { return false };
+    let lower_only = grammar == SqlGrammar::Postgres;
+    let starts = first == '_'
+        || if lower_only {
+            first.is_ascii_lowercase()
+        } else {
+            first.is_ascii_alphabetic()
+        };
+    let rest = chars.all(|ch| {
+        ch == '_'
+            || ch == '$'
+            || ch.is_ascii_digit()
+            || if lower_only {
+                ch.is_ascii_lowercase()
+            } else {
+                ch.is_ascii_alphabetic()
+            }
+    });
+    starts && rest && !KEYWORDS.iter().any(|word| word.eq_ignore_ascii_case(part))
+}
+
+/// Words that mean something in a statement of every grammar: a name spelled
+/// like one is quoted, so `order` and `user` can be pasted as names.
+const KEYWORDS: &[&str] = &[
+    "ADD",
+    "ALL",
+    "ALTER",
+    "AND",
+    "ANY",
+    "AS",
+    "ASC",
+    "BETWEEN",
+    "BY",
+    "CASE",
+    "CHECK",
+    "COLUMN",
+    "CONSTRAINT",
+    "CREATE",
+    "CROSS",
+    "CURRENT",
+    "DATABASE",
+    "DEFAULT",
+    "DELETE",
+    "DESC",
+    "DISTINCT",
+    "DROP",
+    "ELSE",
+    "END",
+    "EXCEPT",
+    "EXISTS",
+    "FOREIGN",
+    "FROM",
+    "FULL",
+    "GRANT",
+    "GROUP",
+    "HAVING",
+    "IN",
+    "INDEX",
+    "INNER",
+    "INSERT",
+    "INTERSECT",
+    "INTO",
+    "IS",
+    "JOIN",
+    "KEY",
+    "LEFT",
+    "LIKE",
+    "LIMIT",
+    "NOT",
+    "NULL",
+    "OFFSET",
+    "ON",
+    "OR",
+    "ORDER",
+    "OUTER",
+    "PRIMARY",
+    "REFERENCES",
+    "RIGHT",
+    "SELECT",
+    "SET",
+    "TABLE",
+    "THEN",
+    "TO",
+    "TOP",
+    "TRANSACTION",
+    "TRIGGER",
+    "UNION",
+    "UNIQUE",
+    "UPDATE",
+    "USER",
+    "USING",
+    "VALUES",
+    "VIEW",
+    "WHEN",
+    "WHERE",
+    "WITH",
+];
 
 /// A table's name, with its schema when it has one, quoted for `grammar`.
 pub fn table_name(grammar: SqlGrammar, table: &crate::catalog::TableRef) -> String {
@@ -87,6 +206,39 @@ pub fn quote_ident_bracket(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_readable_name_quotes_only_the_parts_that_need_it() {
+        let customer = "CRONUS International Ltd_$Customer$437dbf0e";
+        assert_eq!(
+            readable_name(SqlGrammar::SqlServer, Some("dbo"), customer),
+            "dbo.[CRONUS International Ltd_$Customer$437dbf0e]"
+        );
+        assert_eq!(
+            readable_name(SqlGrammar::SqlServer, Some("dbo"), "Customer"),
+            "dbo.Customer"
+        );
+        assert_eq!(readable_name(SqlGrammar::SqlServer, Some("dbo"), "a]b"), "dbo.[a]]b]");
+        assert_eq!(
+            readable_name(SqlGrammar::Postgres, Some("public"), "orders"),
+            "public.orders"
+        );
+        // PostgreSQL folds unquoted names to lower case: Orders needs its quotes.
+        assert_eq!(
+            readable_name(SqlGrammar::Postgres, Some("public"), "Orders"),
+            r#"public."Orders""#
+        );
+        assert_eq!(
+            readable_name(SqlGrammar::Postgres, Some("bán hàng"), "order"),
+            r#""bán hàng"."order""#
+        );
+        assert_eq!(
+            readable_name(SqlGrammar::Sqlite, Some("main"), "Khách hàng"),
+            r#"main."Khách hàng""#
+        );
+        assert_eq!(readable_name(SqlGrammar::Sqlite, None, "user"), r#""user""#);
+        assert_eq!(readable_name(SqlGrammar::Sqlite, None, "2024_sales"), r#""2024_sales""#);
+    }
     use super::*;
 
     #[test]

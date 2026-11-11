@@ -64,6 +64,27 @@ pub struct ColumnInfo {
     pub default: Option<String>,
     /// Position in the primary key, from 1, when the column is part of it.
     pub primary_key: Option<u32>,
+    /// The server fills it: an identity, an autoincrement or serial column,
+    /// or a computed one. Generate Rows and Import leave it out.
+    pub generated: bool,
+}
+
+/// One index of a table, for Show Structure's Indexes tab.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexInfo {
+    pub name: String,
+    /// Its key columns in order; an expression's text where a column would be.
+    pub columns: Vec<String>,
+    /// Columns carried along but not in the key (SQL Server's INCLUDE, PostgreSQL's INCLUDE).
+    pub included: Vec<String>,
+    pub unique: bool,
+    /// It holds the primary key.
+    pub primary: bool,
+    /// How the engine names its kind: `btree`, `CLUSTERED`, `NONCLUSTERED COLUMNSTORE`, `gin`.
+    pub method: String,
+    /// A partial or filtered index's condition.
+    pub filter: Option<String>,
 }
 
 /// A result column as a statement returned it.

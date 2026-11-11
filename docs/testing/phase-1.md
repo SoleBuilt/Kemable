@@ -176,6 +176,28 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Bảng thử: **Alt+Del** (Truncate), rồi **Del** (Drop).
   **Đúng:** cả hai hỏi bằng hộp thoại có câu lệnh và nút đỏ; Cancel không làm gì. PostgreSQL có ô CASCADE. SQLite Truncate là `DELETE FROM`.
 
+### 3.0c Export, Import, Generate Rows (ADR 0018)
+- [ ] Chuột phải bảng › **Copy Qualified Name** trên SQL Server với bảng có khoảng trắng; trên PostgreSQL với bảng có chữ hoa; một bảng tên `order`.
+  **Đúng:** `dbo.[CRONUS International …]`, `public."Orders"`, `"order"`; tên thường thì không có ngoặc. Dán vào editor chạy được.
+- [ ] **Show Structure** › tab **Indexes**.
+  **Đúng:** khoá chính đứng đầu, rồi các index theo tên; có cột, INCLUDE, unique, loại (CLUSTERED, btree…), điều kiện lọc.
+- [ ] Chuột phải bảng › **Export…**, CSV, giữ BOM, Export, chọn chỗ lưu. Mở bằng Excel.
+  **Đúng:** status bar báo số dòng; Excel hiện đúng tiếng Việt; NULL là ô trống; ô có dấu phẩy, ngoặc kép, xuống dòng vẫn đúng.
+- [ ] Mở tab bảng, đặt filter, bấm **Export** trên thanh công cụ.
+  **Đúng:** ô **Rows** chọn sẵn "Rows the filter keeps"; file chỉ có các dòng đó.
+- [ ] Export một bảng lớn rồi bấm **Stop** giữa chừng.
+  **Đúng:** hộp thoại đóng; không có file đích, không còn file `.part` trong thư mục.
+- [ ] Export JSON và SQL INSERT.
+  **Đúng:** JSON là mảng object, số là số; INSERT chạy lại được trên cùng engine.
+- [ ] Chuột phải bảng › **Import…**, chọn file CSV (thử cả file `;` và file có BOM).
+  **Đúng:** dấu phân cách đoán đúng; bảng "Field in the file → Column" khớp theo tên (không phân biệt hoa thường), field không có cột ghi "left out"; khung SQL hiện câu INSERT đầu; Import xong tab bảng hiện dòng mới, mã có số 0 đầu vẫn giữ.
+- [ ] Import với **Into a new table**, đổi tên bảng và kiểu một cột.
+  **Đúng:** khung SQL có CREATE TABLE với kiểu đã đổi; xong cây có bảng mới.
+- [ ] Import file lớn rồi **Stop** giữa chừng.
+  **Đúng:** không dòng nào được thêm (rollback); bảng mới (nếu chọn) cũng không còn.
+- [ ] Chuột phải bảng › **Generate Rows…**, 1000 dòng, bấm **New sample** vài lần, rồi Generate.
+  **Đúng:** 5 dòng xem trước hợp kiểu cột (email ở cột email, ngày ở cột ngày, chuỗi không dài quá cột); cột identity/tính toán không có trong câu INSERT; khoá số nguyên đếm tiếp từ giá trị lớn nhất; xong có thêm đúng 1000 dòng.
+
 ### 3.1 Script tạo database
 - [ ] Postgres, Run all:
   ```sql

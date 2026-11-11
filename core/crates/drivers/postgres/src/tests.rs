@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::BytesMut;
-use paboable_core::catalog::{ColumnMeta, ObjectInfo, ObjectKind, TableRef};
+use paboable_core::catalog::{ColumnMeta, IndexInfo, ObjectInfo, ObjectKind, TableRef};
 use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
 use paboable_core::connection::Connection;
 use paboable_core::driver::Driver;
@@ -16,7 +16,7 @@ use postgres_protocol::IsNull;
 use postgres_protocol::types as wire;
 use tokio_postgres::types::Type;
 
-use crate::ddl::{self, Column, Fill, Sequence, Table};
+use crate::ddl::{self, Column, Fill, Inherited, OwnedSequence, Sequence, Table};
 use crate::decode::{self, array_text, interval_text, numeric_text, range_text};
 use crate::errors::byte_offset;
 use crate::{PostgresDriver, StatementMode};
@@ -253,6 +253,7 @@ fn column(name: &str, type_name: &str) -> Column {
         fill: Fill::Nothing,
         not_null: false,
         comment: None,
+        inherited: None,
     }
 }
 
@@ -490,6 +491,159 @@ fn a_sequence_script_names_every_setting() {
     let script = ddl::sequence_ddl("public", "down", true, &cycling);
     assert!(script.starts_with("CREATE UNLOGGED SEQUENCE \"public\".\"down\"\n"));
     assert!(script.ends_with("\n    CYCLE;"));
+}
+
+fn serial_sequence(name: &str, column: &str) -> OwnedSequence {
+    OwnedSequence {
+        schema: "kho".into(),
+        name: name.into(),
+        unlogged: false,
+        column: column.into(),
+        sequence: Sequence {
+            type_name: "integer".into(),
+            increment: "1".into(),
+            min: "1".into(),
+            max: "2147483647".into(),
+            start: "1".into(),
+            cache: "1".into(),
+            cycle: false,
+        },
+    }
+}
+
+#[test]
+fn a_serial_table_makes_its_sequences_first_and_gives_them_to_their_columns_after() {
+    let table = Table {
+        schema: "kho".into(),
+        name: "hàng".into(),
+        sequences: vec![
+            serial_sequence("hàng_id_seq", "id"),
+            serial_sequence("hàng_số_seq", "số"),
+        ],
+        ..Table::default()
+    };
+    let mut id = column("id", "integer");
+    id.fill = Fill::Default("nextval('kho.\"hàng_id_seq\"'::regclass)".into());
+    id.not_null = true;
+    let mut number = column("số", "integer");
+    number.fill = Fill::Default("nextval('kho.\"hàng_số_seq\"'::regclass)".into());
+    let indexes = [r#"CREATE INDEX "hàng_số_idx" ON kho."hàng" USING btree ("số")"#.to_owned()];
+    assert_eq!(
+        ddl::table_ddl(&table, &[id, number], &[], &indexes),
+        concat!(
+            "CREATE SEQUENCE \"kho\".\"hàng_id_seq\"\n",
+            "    AS integer\n    INCREMENT BY 1\n    MINVALUE 1\n    MAXVALUE 2147483647\n",
+            "    START WITH 1\n    CACHE 1\n    NO CYCLE;\n\n",
+            "CREATE SEQUENCE \"kho\".\"hàng_số_seq\"\n",
+            "    AS integer\n    INCREMENT BY 1\n    MINVALUE 1\n    MAXVALUE 2147483647\n",
+            "    START WITH 1\n    CACHE 1\n    NO CYCLE;\n\n",
+            "CREATE TABLE \"kho\".\"hàng\" (\n",
+            "    \"id\" integer DEFAULT nextval('kho.\"hàng_id_seq\"'::regclass) NOT NULL,\n",
+            "    \"số\" integer DEFAULT nextval('kho.\"hàng_số_seq\"'::regclass)\n",
+            ");\n\n",
+            "ALTER SEQUENCE \"kho\".\"hàng_id_seq\" OWNED BY \"kho\".\"hàng\".\"id\";\n\n",
+            "ALTER SEQUENCE \"kho\".\"hàng_số_seq\" OWNED BY \"kho\".\"hàng\".\"số\";\n\n",
+            "CREATE INDEX \"hàng_số_idx\" ON kho.\"hàng\" USING btree (\"số\");",
+        )
+    );
+}
+
+#[test]
+fn an_inheriting_table_names_its_parents_and_leaves_out_what_it_only_inherits() {
+    let table = Table {
+        schema: "public".into(),
+        name: "cars".into(),
+        inherits: vec![("public".into(), "vehicles".into()), ("other".into(), "tracked".into())],
+        ..Table::default()
+    };
+    // Only inherited, as the parent gives it: nothing to say.
+    let mut id = column("id", "integer");
+    id.fill = Fill::Default("nextval('vehicles_id_seq'::regclass)".into());
+    id.not_null = true;
+    id.inherited = Some(Inherited {
+        default: Some("nextval('vehicles_id_seq'::regclass)".into()),
+        not_null: true,
+    });
+    // Only inherited, with a default and a not-null of its own.
+    let mut kind = column("kind", "text");
+    kind.fill = Fill::Default("'car'::text".into());
+    kind.not_null = true;
+    kind.inherited = Some(Inherited {
+        default: Some("'vehicle'::text".into()),
+        not_null: false,
+    });
+    // Only inherited, with the parent's default dropped.
+    let mut seen = column("seen", "date");
+    seen.inherited = Some(Inherited {
+        default: Some("CURRENT_DATE".into()),
+        not_null: false,
+    });
+    // Declared by the child too: written.
+    let mut doors = column("doors", "integer");
+    doors.fill = Fill::Default("4".into());
+    let constraints = [("cars_doors_check".to_owned(), "CHECK (doors > 0)".to_owned())];
+    assert_eq!(
+        ddl::table_ddl(&table, &[id, kind, seen, doors], &constraints, &[]),
+        concat!(
+            "CREATE TABLE \"public\".\"cars\" (\n",
+            "    \"doors\" integer DEFAULT 4,\n",
+            "    CONSTRAINT \"cars_doors_check\" CHECK (doors > 0)\n",
+            ") INHERITS (\"public\".\"vehicles\", \"other\".\"tracked\");\n\n",
+            "ALTER TABLE ONLY \"public\".\"cars\" ALTER COLUMN \"kind\" SET DEFAULT 'car'::text;\n\n",
+            "ALTER TABLE ONLY \"public\".\"cars\" ALTER COLUMN \"kind\" SET NOT NULL;\n\n",
+            "ALTER TABLE ONLY \"public\".\"cars\" ALTER COLUMN \"seen\" DROP DEFAULT;",
+        )
+    );
+
+    // A child with no column of its own still has its empty list.
+    let mut only = column("id", "integer");
+    only.inherited = Some(Inherited::default());
+    assert_eq!(
+        ddl::table_ddl(&table, &[only], &[], &[]),
+        "CREATE TABLE \"public\".\"cars\" () INHERITS (\"public\".\"vehicles\", \"other\".\"tracked\");"
+    );
+
+    // A partition's columns are inherited too, but it has no INHERITS: all are written.
+    let partition = Table {
+        schema: "public".into(),
+        name: "events_2024".into(),
+        partition_of: Some(("public".into(), "events".into(), "DEFAULT".into())),
+        ..Table::default()
+    };
+    let mut at = column("at", "date");
+    at.inherited = Some(Inherited::default());
+    assert!(ddl::table_ddl(&partition, &[at], &[], &[]).contains("\n    \"at\" date\n)"));
+}
+
+#[test]
+fn a_typed_table_names_its_type_and_only_the_options_it_adds() {
+    let table = Table {
+        schema: "public".into(),
+        name: "people".into(),
+        of_type: Some(("kiểu".into(), "person".into())),
+        ..Table::default()
+    };
+    let mut name = column("name", "text");
+    name.not_null = true;
+    name.collation = Some(r#""C""#.into());
+    let mut age = column("age", "integer");
+    age.fill = Fill::Default("0".into());
+    let constraints = [("people_pkey".to_owned(), "PRIMARY KEY (name)".to_owned())];
+    assert_eq!(
+        ddl::table_ddl(&table, &[name, age, column("note", "text")], &constraints, &[]),
+        concat!(
+            "CREATE TABLE \"public\".\"people\" OF \"kiểu\".\"person\" (\n",
+            "    \"name\" WITH OPTIONS NOT NULL,\n",
+            "    \"age\" WITH OPTIONS DEFAULT 0,\n",
+            "    CONSTRAINT \"people_pkey\" PRIMARY KEY (name)\n",
+            ");",
+        )
+    );
+    // Nothing to add: no list at all, which is the only form the grammar takes.
+    assert_eq!(
+        ddl::table_ddl(&table, &[column("note", "text")], &[], &[]),
+        "CREATE TABLE \"public\".\"people\" OF \"kiểu\".\"person\";"
+    );
 }
 
 #[test]
@@ -959,6 +1113,8 @@ async fn object_ddl_scripts_what_the_server_holds_and_the_script_runs_again() {
     )));
     // The key's own index comes with its constraint, not as an index.
     assert!(!customers.contains("CREATE UNIQUE INDEX"), "{customers}");
+    // An identity column's sequence is internal and comes with the column.
+    assert!(!customers.contains("SEQUENCE"), "{customers}");
 
     let orders = ddl_of(object(&schema, "orders", ObjectKind::Table)).await;
     assert!(orders.contains("\"id\" bigint GENERATED BY DEFAULT AS IDENTITY NOT NULL"));
@@ -1059,6 +1215,240 @@ async fn object_ddl_scripts_what_the_server_holds_and_the_script_runs_again() {
     for name in [&schema, &copy] {
         run(&conn, &format!("drop schema {name} cascade")).await;
     }
+}
+
+/// Runs `body` with a scratch schema `<prefix>_<pid>` and drops it and its
+/// `_copy` afterwards, also when the body panics.
+async fn in_scratch_schema<F, Fut>(prefix: &str, body: F)
+where
+    F: FnOnce(Arc<dyn Connection>, String) -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    let conn = live().await;
+    let schema = format!("{prefix}_{}", std::process::id());
+    let copy = format!("{schema}_copy");
+    for name in [&schema, &copy] {
+        run(&conn, &format!("drop schema if exists {name} cascade")).await;
+    }
+    run(&conn, &format!("create schema {schema}")).await;
+    let outcome = tokio::spawn(body(conn.clone(), schema.clone())).await;
+    for name in [&schema, &copy] {
+        run(&conn, &format!("drop schema if exists {name} cascade")).await;
+    }
+    if let Err(error) = outcome {
+        std::panic::resume_unwind(error.into_panic());
+    }
+}
+
+async fn ddl_of(conn: &Arc<dyn Connection>, schema: &str, name: &str) -> String {
+    let object = ObjectInfo {
+        schema: Some(schema.to_owned()),
+        name: name.to_owned(),
+        kind: ObjectKind::Table,
+    };
+    conn.object_ddl(&object, CallOptions::default())
+        .await
+        .unwrap_or_else(|error| panic!("{object:?}: {error}"))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+async fn object_ddl_scripts_serial_inherited_and_typed_tables_that_run_again() {
+    in_scratch_schema("paboable_ddl_more", |conn, schema| async move {
+        let copy = format!("{schema}_copy");
+        for statement in [
+            format!("create table {schema}.items (id serial primary key, code bigserial, name text)"),
+            format!(
+                "create table {schema}.vehicles (\
+                   id serial primary key, name text not null, \
+                   kind text default 'vehicle', check (name <> ''))"
+            ),
+            format!(
+                "create table {schema}.cars (doors int not null default 4 check (doors > 0), name text) \
+                 inherits ({schema}.vehicles)"
+            ),
+            format!("alter table only {schema}.cars alter column kind set default 'car'"),
+            format!("create type {schema}.person as (name text, age int)"),
+            format!(
+                "create table {schema}.people of {schema}.person \
+                 (primary key (name), age with options default 0)"
+            ),
+        ] {
+            run(&conn, &statement).await;
+        }
+
+        let items = ddl_of(&conn, &schema, "items").await;
+        let id_sequence = items.find(&format!(
+            "CREATE SEQUENCE \"{schema}\".\"items_id_seq\"\n    AS integer\n"
+        ));
+        let code_sequence = items.find(&format!(
+            "CREATE SEQUENCE \"{schema}\".\"items_code_seq\"\n    AS bigint\n"
+        ));
+        let create = items.find(&format!("CREATE TABLE \"{schema}\".\"items\" ("));
+        let owned = items.find(&format!(
+            "ALTER SEQUENCE \"{schema}\".\"items_id_seq\" OWNED BY \"{schema}\".\"items\".\"id\";"
+        ));
+        assert!(
+            id_sequence.is_some() && code_sequence.is_some() && create.is_some() && owned.is_some(),
+            "{items}"
+        );
+        assert!(
+            id_sequence < create && code_sequence < create && create < owned,
+            "{items}"
+        );
+        assert!(items.contains(&format!(
+            "\"id\" integer DEFAULT nextval('{schema}.items_id_seq'::regclass) NOT NULL"
+        )));
+        assert!(items.contains(&format!(
+            "ALTER SEQUENCE \"{schema}\".\"items_code_seq\" OWNED BY \"{schema}\".\"items\".\"code\";"
+        )));
+
+        let vehicles = ddl_of(&conn, &schema, "vehicles").await;
+        let cars = ddl_of(&conn, &schema, "cars").await;
+        assert!(
+            cars.contains(&format!(") INHERITS (\"{schema}\".\"vehicles\");")),
+            "{cars}"
+        );
+        // Declared by the child, so written; only inherited, so left out.
+        assert!(cars.contains("\"doors\" integer DEFAULT 4 NOT NULL"), "{cars}");
+        assert!(cars.contains("\"name\" text NOT NULL"), "{cars}");
+        assert!(!cars.contains("\"id\" integer"), "{cars}");
+        assert!(!cars.contains("vehicles_name_check"), "{cars}");
+        assert!(!cars.contains("SEQUENCE"), "{cars}");
+        assert!(cars.contains(&format!(
+            "ALTER TABLE ONLY \"{schema}\".\"cars\" ALTER COLUMN \"kind\" SET DEFAULT 'car'::text;"
+        )));
+
+        let people = ddl_of(&conn, &schema, "people").await;
+        assert_eq!(
+            people,
+            format!(
+                "CREATE TABLE \"{schema}\".\"people\" OF \"{schema}\".\"person\" (\n    \
+                 \"name\" WITH OPTIONS NOT NULL,\n    \
+                 \"age\" WITH OPTIONS DEFAULT 0,\n    \
+                 CONSTRAINT \"people_pkey\" PRIMARY KEY (name)\n);"
+            )
+        );
+
+        // The scripts run again in a second schema, and read back the same there.
+        run(&conn, &format!("create schema {copy}")).await;
+        run(&conn, &format!("create type {copy}.person as (name text, age int)")).await;
+        for script in [&items, &vehicles, &cars, &people] {
+            let script = script.replace(&schema, &copy);
+            for span in sql::split(&script, SqlGrammar::Postgres) {
+                run(&conn, span.text(&script)).await;
+            }
+        }
+        for (name, original) in [
+            ("items", &items),
+            ("vehicles", &vehicles),
+            ("cars", &cars),
+            ("people", &people),
+        ] {
+            assert_eq!(
+                ddl_of(&conn, &copy, name).await,
+                original.replace(&schema, &copy),
+                "{name} reads back as it was written"
+            );
+        }
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+async fn indexes_list_the_primary_key_first_and_columns_say_what_the_server_fills() {
+    in_scratch_schema("paboable_indexes", |conn, schema| async move {
+        for statement in [
+            format!(
+                "create table {schema}.accounts (\
+                   id int primary key, email text, name text, deleted_at timestamptz, tags text[])"
+            ),
+            format!("create unique index accounts_email_key on {schema}.accounts (email)"),
+            format!("create index accounts_lower_name_idx on {schema}.accounts (id, lower(name))"),
+            format!("create index accounts_live_idx on {schema}.accounts (name) where deleted_at is null"),
+            format!("create index accounts_name_inc_idx on {schema}.accounts (name) include (email, deleted_at)"),
+            format!("create index accounts_tags_idx on {schema}.accounts using gin (tags)"),
+            format!(
+                "create table {schema}.filled (\
+                   s serial, i int generated always as identity, \
+                   g int generated always as (p * 2) stored, p int default 5, n int, \
+                   x int default nextval('{schema}.filled_s_seq'))"
+            ),
+        ] {
+            run(&conn, &statement).await;
+        }
+        let table = |name: &str| TableRef {
+            schema: Some(schema.clone()),
+            name: name.to_owned(),
+        };
+        let index = |name: &str, columns: &[&str], method: &str| IndexInfo {
+            name: name.to_owned(),
+            columns: columns.iter().map(|&column| column.to_owned()).collect(),
+            included: Vec::new(),
+            unique: false,
+            primary: false,
+            method: method.to_owned(),
+            filter: None,
+        };
+
+        let indexes = conn
+            .list_indexes(&table("accounts"), CallOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(
+            indexes,
+            [
+                IndexInfo {
+                    unique: true,
+                    primary: true,
+                    ..index("accounts_pkey", &["id"], "btree")
+                },
+                IndexInfo {
+                    unique: true,
+                    ..index("accounts_email_key", &["email"], "btree")
+                },
+                IndexInfo {
+                    filter: Some("(deleted_at IS NULL)".into()),
+                    ..index("accounts_live_idx", &["name"], "btree")
+                },
+                index("accounts_lower_name_idx", &["id", "lower(name)"], "btree"),
+                IndexInfo {
+                    included: vec!["email".into(), "deleted_at".into()],
+                    ..index("accounts_name_inc_idx", &["name"], "btree")
+                },
+                index("accounts_tags_idx", &["tags"], "gin"),
+            ]
+        );
+        assert!(
+            conn.list_indexes(&table("filled"), CallOptions::default())
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        let columns = conn
+            .fetch_columns(&table("filled"), CallOptions::default())
+            .await
+            .unwrap();
+        let generated: Vec<_> = columns
+            .iter()
+            .map(|column| (column.name.as_str(), column.generated))
+            .collect();
+        // `x` draws from a sequence it does not own: the server does not fill it.
+        assert_eq!(
+            generated,
+            [
+                ("s", true),
+                ("i", true),
+                ("g", true),
+                ("p", false),
+                ("n", false),
+                ("x", false),
+            ]
+        );
+    })
+    .await;
 }
 
 #[test]
