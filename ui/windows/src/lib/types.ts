@@ -169,6 +169,8 @@ export interface SavedConnection {
   lastUsed: number | null;
   /** The credential profile it signs in with; its user is copied into the config. */
   profileId: string | null;
+  /** A `--conn-*` token's name ("red", "teal"), drawn as a dot beside its name; null is grey. */
+  color: string | null;
 }
 
 /** A user and a password kept under a name, for many connections to sign in with. */
