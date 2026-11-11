@@ -16,13 +16,43 @@
     rowCap: number | null;
     /** After CREATE DATABASE succeeds, the rest of the script runs in it. */
     followCreatedDatabase: boolean;
+    /** VS Code's zoom level: 0 is 100 %, each step 20 % more or less (Ctrl+=, Ctrl+-, Ctrl+0). */
+    zoomLevel: number;
+  }
+
+  /** The zoom levels on offer: 58 % to 249 %. */
+  export const ZOOM_MIN = -3;
+  export const ZOOM_MAX = 5;
+
+  /** A zoom level's factor, as VS Code reckons it: 1.2 to the level. */
+  export function zoomFactor(level: number): number {
+    return 1.2 ** level;
+  }
+
+  export function zoomPercent(level: number): number {
+    return Math.round(zoomFactor(level) * 100);
+  }
+
+  /** Zooms the window's content to `level`; a level out of range is brought in. */
+  export function applyZoom(level: number): number {
+    const kept = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(level)));
+    void appWindow.setZoom(zoomFactor(kept)).catch(() => {});
+    return kept;
   }
 
   /** The row caps on offer; null keeps every row. */
   export const ROW_CAPS: (number | null)[] = [1_000, 10_000, 100_000, 500_000, 1_000_000, null];
 
   const KEY = "paboable.settings";
-  const DEFAULTS: Settings = { theme: "system", style: "mono", mica: false, compactRows: false, rowCap: 1_000, followCreatedDatabase: true };
+  const DEFAULTS: Settings = {
+    theme: "system",
+    style: "mono",
+    mica: false,
+    compactRows: false,
+    rowCap: 1_000,
+    followCreatedDatabase: true,
+    zoomLevel: 0,
+  };
 
   export function readSettings(): Settings {
     try {
@@ -34,6 +64,10 @@
         compactRows: saved.compactRows === true,
         rowCap: saved.rowCap === null || ROW_CAPS.includes(saved.rowCap ?? -1) ? (saved.rowCap ?? null) : DEFAULTS.rowCap,
         followCreatedDatabase: saved.followCreatedDatabase !== false,
+        zoomLevel:
+          typeof saved.zoomLevel === "number" && Number.isInteger(saved.zoomLevel)
+            ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, saved.zoomLevel))
+            : 0,
       };
     } catch {
       return { ...DEFAULTS };
@@ -119,6 +153,7 @@
   // The theme, style and Mica show at once, so the choice can be judged; Cancel puts the old ones back.
   $effect(() => applyTheme(draft.theme));
   $effect(() => applyStyle(draft.style));
+  $effect(() => void applyZoom(draft.zoomLevel));
   /** False once Windows has refused Mica: Windows 10 has none. */
   let micaWorks = $state(true);
   $effect(() => {
@@ -132,6 +167,7 @@
     applyTheme(settings.theme);
     applyStyle(settings.style);
     void applyMica(settings.mica, settings.theme);
+    applyZoom(settings.zoomLevel);
     onClose();
   }
 
@@ -152,6 +188,10 @@
     { value: false, label: "Default · 28 px" },
     { value: true, label: "Compact · 24 px" },
   ];
+  const ZOOMS = Array.from({ length: ZOOM_MAX - ZOOM_MIN + 1 }, (_, index) => ZOOM_MIN + index).map((level) => ({
+    value: level,
+    label: level === 0 ? "100 % (default)" : `${zoomPercent(level)} %`,
+  }));
   const CAPS = ROW_CAPS.map((cap) => ({ value: cap, label: cap === null ? "No limit" : `${numberFormat.format(cap)} rows` }));
 </script>
 
@@ -168,6 +208,9 @@
     hint={micaWorks ? "The Windows 11 material behind the toolbar and sidebar." : "This Windows cannot show Mica. It needs Windows 11."}
   >
     <Segmented label="Mica background" options={MICA} value={draft.mica} onChange={(mica) => (draft.mica = mica)} />
+  </Setting>
+  <Setting title="Zoom" hint="Ctrl+= and Ctrl+- anywhere, Ctrl+0 back to 100 %.">
+    <Combobox label="Zoom" width={168} options={ZOOMS} value={draft.zoomLevel} onPick={(level) => (draft.zoomLevel = level)} />
   </Setting>
 
   <h3 class="pb-section-title">Grid</h3>

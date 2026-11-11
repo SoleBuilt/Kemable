@@ -51,7 +51,16 @@
   import CommandPalette, { type Command } from "./lib/ui/CommandPalette.svelte";
   import Icon from "./lib/ui/Icon.svelte";
   import InfoBar from "./lib/ui/InfoBar.svelte";
-  import SettingsDialog, { applyMica, applyStyle, applyTheme, readSettings, writeSettings, type Settings } from "./lib/ui/SettingsDialog.svelte";
+  import SettingsDialog, {
+    applyMica,
+    applyStyle,
+    applyTheme,
+    applyZoom,
+    readSettings,
+    writeSettings,
+    zoomPercent,
+    type Settings,
+  } from "./lib/ui/SettingsDialog.svelte";
   import Splitter from "./lib/ui/Splitter.svelte";
   import type {
     ByteRange,
@@ -238,6 +247,7 @@
   applyTheme(startSettings.theme);
   applyStyle(startSettings.style);
   if (startSettings.mica) void applyMica(true, startSettings.theme);
+  if (startSettings.zoomLevel !== 0) applyZoom(startSettings.zoomLevel);
   setCompactRows(startSettings.compactRows);
 
   let connection = $state.raw<OpenedConnection | null>(null);
@@ -849,6 +859,16 @@
     elapsedMs = null;
   }
 
+  /** Ctrl+=, Ctrl+- and Ctrl+0, as in VS Code: the whole window, kept across launches. */
+  function zoomBy(step: -1 | 0 | 1) {
+    const level = applyZoom(step === 0 ? 0 : settings.zoomLevel + step);
+    if (level !== settings.zoomLevel) {
+      settings = { ...settings, zoomLevel: level };
+      writeSettings(settings);
+    }
+    note(`Zoom ${zoomPercent(level)} %`);
+  }
+
   function setRowCap(cap: number | null) {
     settings = { ...settings, rowCap: cap };
     writeSettings(settings);
@@ -861,6 +881,7 @@
     applyTheme(next.theme);
     applyStyle(next.style);
     void applyMica(next.mica, next.theme);
+    applyZoom(next.zoomLevel);
     setCompactRows(next.compactRows);
     settingsOpen = false;
     if (density) grid?.reload();
@@ -1789,6 +1810,16 @@
       event.preventDefault();
       if (paletteOpen) paletteOpen = false;
       else openPalette();
+    } else if (ctrl && !event.altKey && (key === "=" || key === "+" || event.code === "NumpadAdd")) {
+      // Ctrl+= is Ctrl++ without Shift, on every keyboard layout VS Code knows.
+      event.preventDefault();
+      zoomBy(1);
+    } else if (ctrl && !event.altKey && (key === "-" || event.code === "NumpadSubtract")) {
+      event.preventDefault();
+      zoomBy(-1);
+    } else if (ctrl && !event.altKey && (key === "0" || event.code === "Numpad0")) {
+      event.preventDefault();
+      zoomBy(0);
     } else if (ctrl && key === "r") {
       event.preventDefault();
       void refreshObjects();

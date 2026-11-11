@@ -389,6 +389,8 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** cao bằng các ô khác, cây đối tượng nằm ngay dưới, không có khoảng trống lớn.
 
 ### 8.7 Settings
+- [ ] Nhấn **Ctrl+=** hai lần (hoặc Ctrl và phím + trên bàn số), rồi **Ctrl+-**, rồi **Ctrl+0**.
+  **Đúng:** cả cửa sổ to lên 120 %, 144 %, nhỏ lại 120 %, rồi về 100 %; status bar báo "Zoom 144 %"… Chữ trong grid vẫn nét ở mọi mức. Đóng mở lại app: giữ mức zoom. Settings › **Zoom** đổi được và xem ngay; Cancel trả về mức cũ.
 - [ ] Nhấn **Ctrl+,**, đổi Theme Light / Dark / System.
   **Đúng:** đổi ngay cả grid và editor; **Cancel** trả lại theme cũ.
 - [ ] Chọn **Compact · 24 px**, Save.
