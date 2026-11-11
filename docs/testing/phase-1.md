@@ -39,6 +39,8 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** dòng "Reading the databases…" rồi hiện **Default** và các database login được thấy. Chọn một cái: ô hiện tên đó. Mở lại ô mà không đổi gì: không đọc lại.
 - [ ] Trong ô tìm của **Database**, gõ một tên không có trong danh sách, Enter.
   **Đúng:** dòng đầu là `Use "<tên>"`; chọn xong ô hiện tên đó. Đổi Password sai rồi mở lại ô: hiện dòng lỗi đăng nhập, vẫn gõ tên được.
+- [ ] Mở một bảng hơn 100 cột, bấm **Filter**, mở ô chọn cột.
+  **Đúng:** danh sách cao tối đa khoảng 11 dòng rồi có thanh cuộn dọc; ô tìm luôn ở trên cùng; cột đang chọn nằm trong tầm nhìn khi mở.
 - [ ] Thu nhỏ cửa sổ cho form chạm mép dưới, mở ô **Database**.
   **Đúng:** danh sách mở lên trên (hoặc cuộn được bên trong), không bị cắt ở mép cửa sổ.
 
