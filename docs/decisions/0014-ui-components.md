@@ -15,7 +15,7 @@ The window also kept the system's title bar above the toolbar. That is two bars 
 ### Three layers
 
 1. **Small parts in `ui/windows/src/lib/ui/`.** Each knows nothing about databases. It renders one design system class with typed props, as shadcn's components do.
-   - Controls: `Button`, `Input`, `Textarea`, `SearchField`, `Checkbox`, `Segmented`, `Swatches` (a connection's colour), `Combobox`.
+   - Controls: `Button`, `Input`, `Textarea`, `SearchField`, `Checkbox`, `Segmented`, `Swatches` (a connection's colour), `Combobox` (with `custom`, a value typed by hand). A list opens on the side of its trigger that has room, and scrolls inside that room (`lib/ui/place.ts`).
    - Labels and marks: `Field`, `Keys`, `Badge`, `Count`, `Dot`, `Icon`.
    - Menus: `Menu`, `MenuItem`, `MenuLabel`, `MenuSeparator`, `Popover`, `ContextMenu`.
    - Tabs, lists and trees: `TabList`, `Tab`, `ListItem`, `TreeRow`.

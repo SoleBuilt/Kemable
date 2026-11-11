@@ -46,6 +46,9 @@ export const ipc = {
   /** Connects, reads the version and the databases, and closes. `savedId` lends a kept password to a blank field. */
   testConnection: (config: ConnectionConfig, savedId: string | null, profileId: string | null = null) =>
     invoke<TestedConnection>("test_connection", { config, savedId, profileId }),
+  /** The databases the connect form's login may see: connects as Test does, lists them, closes. */
+  listFormDatabases: (config: ConnectionConfig, savedId: string | null, profileId: string | null) =>
+    invoke<string[]>("list_form_databases", { config, savedId, profileId }),
 
   /** The saved connections, in the order they were added. */
   listSaved: () => invoke<SavedConnection[]>("list_saved"),

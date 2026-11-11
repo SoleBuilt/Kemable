@@ -202,15 +202,55 @@ pub async fn test_connection(
     saved_id: Option<String>,
     profile_id: Option<String>,
 ) -> CommandResult<TestedConnection> {
+    sign_in_as_form(&library, &mut config, saved_id, profile_id)?;
+    try_connection(&state.registry, &config).await
+}
+
+/// Signs `config` in as the connect form would connect: with a credential
+/// profile, or with a saved connection's kept secret when the field is blank.
+fn sign_in_as_form(
+    library: &Library,
+    config: &mut ConnectionConfig,
+    saved_id: Option<String>,
+    profile_id: Option<String>,
+) -> CommandResult<()> {
     if profile_id.is_some() {
-        sign_in_with(&library, &mut config, profile_id.as_deref())?;
+        sign_in_with(library, config, profile_id.as_deref())?;
     } else if let Some(id) = saved_id
         && secret_is_blank(&config.target)
     {
         let (_, kept) = library.with(|library, vault| library.resolve(&id, vault))?;
         lend_secret(&mut config.target, kept.target);
     }
-    try_connection(&state.registry, &config).await
+    Ok(())
+}
+
+/// The databases the connect form's login may see, for its Database picker:
+/// connects as the form would, lists them, and closes again.
+#[tauri::command]
+pub async fn list_form_databases(
+    state: State<'_, Arc<AppState>>,
+    library: State<'_, Library>,
+    mut config: ConnectionConfig,
+    saved_id: Option<String>,
+    profile_id: Option<String>,
+) -> CommandResult<Vec<String>> {
+    sign_in_as_form(&library, &mut config, saved_id, profile_id)?;
+    form_databases(&state.registry, &config).await
+}
+
+pub(crate) async fn form_databases(registry: &DriverRegistry, config: &ConnectionConfig) -> CommandResult<Vec<String>> {
+    let driver = registry
+        .get(&config.engine)
+        .cloned()
+        .ok_or_else(|| DriverError::unsupported(format!("no driver for {}", config.engine)))?;
+    let connection = driver
+        .connect(config, CallOptions::default().with_timeout(CONNECT_TIMEOUT))
+        .await?;
+    let listed = connection.list_databases(metadata_options()).await;
+    // A close that fails leaves nothing the user can act on.
+    let _ = connection.close().await;
+    Ok(listed?.into_iter().map(|database| database.name).collect())
 }
 
 pub(crate) async fn try_connection(
