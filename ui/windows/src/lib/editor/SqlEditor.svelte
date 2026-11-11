@@ -30,9 +30,11 @@
     onRun: (request: RunRequest) => void;
     /** Names from the catalog at a UTF-8 byte offset (docs/decisions/0007-autocomplete.md). */
     complete?: (text: string, cursor: number) => Promise<CompletionReply | null>;
+    /** The text changed: typed, pasted, undone. */
+    onChange?: () => void;
   }
 
-  let { grammar, plain = false, initial = "", onRun, complete }: Props = $props();
+  let { grammar, plain = false, initial = "", onRun, complete, onChange }: Props = $props();
 
   let host: HTMLDivElement;
   let view: EditorView | null = null;
@@ -288,6 +290,9 @@
           theme,
           ranField,
           frameField,
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) onChange?.();
+          }),
         ],
     });
   }
@@ -298,6 +303,13 @@
    */
   export function saveState(): EditorState | null {
     return view?.state ?? null;
+  }
+
+  /** A tab's state from kept text, with the cursor at `cursor` (cut to the text): a page brought back at launch. */
+  export function stateWith(text: string, cursor: number): EditorState {
+    const state = makeState(text);
+    const at = Math.max(0, Math.min(cursor, state.doc.length));
+    return state.update({ selection: { anchor: at } }).state;
   }
 
   /** Shows `state` (a tab's saved one), or a fresh empty editor when null. */

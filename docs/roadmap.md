@@ -35,7 +35,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 - [ ] **Test connection** in the connect form, and a **Profile** in the palette. Test connection is built (2026-11-11): connect, read the version and the databases, close. Profile means credential profiles; its screens are in the prototype (Dialog · credential profiles, New connection · credentials from a profile), waiting for approval.
 - [x] **Ctrl+click picks rows one by one** in the grid (design system D21). Shift picks a range today; the core's copy takes one rectangle, so it needs a selection of several ranges. Built 2026-11-11: a selection is row spans of the same columns, copied by `ResultStore::copy_tsv_rows`.
 - [ ] **Open and save `.sql` files**, beside saved queries. Asked 2026-11-11, not decided.
-- [ ] **Pages across launches.** Query tabs and their text come back when the app opens again.
+- [x] **Pages across launches.** Query tabs and their text come back when the app opens again. Built 2026-11-11: per connection, when it opens again (ADR 0013, Consequences).
 - [x] **An orange style.** A second accent style like ERP Tinh gọn's orange `primary`, picked in Settings beside the default black and white. Only the accent tokens change; shapes stay. Decided 2026-11-10 (backlog B2). Built 2026-11-11: `data-style="orange"` on `<html>`, the tokens in `ui/windows/src/app.css`.
 
 ## Phase 2: daily use
