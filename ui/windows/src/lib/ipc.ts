@@ -191,6 +191,9 @@ export const ipc = {
     invoke<ResultWhere>("result_where", { conn, result, filters, matchAny }),
 };
 
+/** Work that must happen before the window closes from its close button, such as keeping the pages. */
+export const beforeClose = new Set<() => void>();
+
 /**
  * The app's window. It has no system title bar: the toolbar draws the
  * minimize, maximize and close buttons (docs/decisions/0014-ui-components.md).
@@ -198,7 +201,11 @@ export const ipc = {
 export const appWindow = {
   minimize: () => getCurrentWindow().minimize(),
   toggleMaximize: () => getCurrentWindow().toggleMaximize(),
-  close: () => getCurrentWindow().close(),
+  /** Runs the `beforeClose` work (keeping the pages), then closes. */
+  close: () => {
+    for (const work of beforeClose) work();
+    return getCurrentWindow().close();
+  },
   isMaximized: () => getCurrentWindow().isMaximized(),
   /** Calls `handler` after every resize; resolves to the function that stops it. */
   onResized: (handler: () => void) => getCurrentWindow().onResized(handler),

@@ -247,6 +247,14 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** editor có khung nhẹ quanh câu tạo ra result đang xem.
 - [ ] Kéo đường chia giữa editor và kết quả; double-click nó.
   **Đúng:** kéo được; double-click trả về chiều cao ban đầu.
+- [ ] Mở một connection đã lưu, gõ chữ khác nhau ở Query 1, 2, 3, để con trỏ giữa một dòng ở Query 2 và đang xem Query 2. Bấm nút đóng (×) của cửa sổ, mở lại app, mở lại connection đó.
+  **Đúng:** có Query 1, 2, 3 với đúng chữ cũ; đang xem Query 2, con trỏ ở chỗ cũ. Chưa có kết quả nào (kết quả không được giữ).
+- [ ] Gõ thêm vào Query 1 rồi đóng app ngay (trong 1 giây).
+  **Đúng:** mở lại vẫn có chữ vừa gõ.
+- [ ] Mở một connection khác (hoặc một file SQLite khác), rồi quay lại connection đầu.
+  **Đúng:** mỗi connection có tab và chữ của riêng nó.
+- [ ] Mở một bảng thành tab bảng, đóng rồi mở lại app và connection.
+  **Đúng:** chỉ tab query trở lại, tab bảng thì không.
 
 ### 8.3 Tab bảng
 - [ ] Double-click bảng `order_items`.

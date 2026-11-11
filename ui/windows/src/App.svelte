@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { EditorState } from "@codemirror/state";
+  import { connectionKey, readPages, writePages, type KeptPage } from "./lib/pages";
   import { open } from "@tauri-apps/plugin-dialog";
   import { tick, untrack } from "svelte";
   import SqlEditor, { type RunRequest } from "./lib/editor/SqlEditor.svelte";
@@ -11,7 +12,7 @@
   import FilterRow, { type Condition } from "./lib/grid/FilterRow.svelte";
   import Pager, { PAGE_SIZES } from "./lib/grid/Pager.svelte";
   import RowDetail from "./lib/grid/RowDetail.svelte";
-  import { asCoreError, ipc } from "./lib/ipc";
+  import { asCoreError, beforeClose, ipc } from "./lib/ipc";
   import HistoryList from "./lib/sidebar/HistoryList.svelte";
   import KeyBrowser from "./lib/sidebar/KeyBrowser.svelte";
   import ObjectTree, { type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
@@ -378,6 +379,7 @@
       editor?.restoreState(target.editor);
       void tick().then(() => editor?.focus());
     }
+    keepPagesSoon();
     return true;
   }
 
@@ -393,6 +395,7 @@
     unstash(page.state);
     editor?.restoreState(null);
     void tick().then(() => editor?.focus());
+    keepPagesSoon();
   }
 
   function releaseState(state: PageState) {
@@ -422,6 +425,7 @@
       rest = [...rest, { id: nextPageId++, kind: "query", number: page.kind === "query" ? page.number + 1 : 1, editor: null, state: emptyState() }];
     }
     pages = rest;
+    keepPagesSoon();
     if (!shown) return;
     const next = rest[Math.min(index, rest.length - 1)] ?? rest[0];
     if (!next) return;
@@ -429,6 +433,60 @@
     unstash(next.state);
     if (next.kind === "query") editor?.restoreState(next.editor);
   }
+
+  // --- Pages across launches (src/lib/pages.ts) ---------------------------
+
+  /** The connection whose query pages are kept; null with none open. */
+  let pagesKey: string | null = null;
+  let keepTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Keeps the query pages of the connection open now: their numbers, text and cursor. */
+  function keepPages() {
+    clearTimeout(keepTimer);
+    keepTimer = undefined;
+    if (!pagesKey) return;
+    const kept: KeptPage[] = [];
+    let active = 0;
+    for (const page of pages) {
+      if (page.kind !== "query") continue;
+      const state = page.id === activePage ? (editor?.saveState() ?? page.editor) : page.editor;
+      if (page.id === activePage) active = kept.length;
+      kept.push({ number: page.number, text: state?.doc.toString() ?? "", cursor: state?.selection.main.head ?? 0 });
+    }
+    writePages(pagesKey, { pages: kept, active, at: Date.now() });
+  }
+
+  /** Keeps the pages a moment after typing stops, so a keystroke never waits on storage. */
+  function keepPagesSoon() {
+    if (!pagesKey) return;
+    clearTimeout(keepTimer);
+    keepTimer = setTimeout(keepPages, 400);
+  }
+
+  /** Brings back the query pages kept for `key`, in place of the empty one a connection opens with. */
+  function restorePages(key: string) {
+    pagesKey = key;
+    const kept = readPages(key);
+    if (!kept || !editor) return;
+    const view = editor;
+    const restored: Page[] = kept.pages.map((page) => ({
+      id: nextPageId++,
+      kind: "query",
+      number: page.number,
+      editor: view.stateWith(page.text, page.cursor),
+      state: emptyState(),
+    }));
+    const shown = restored[kept.active] ?? restored[0];
+    if (!shown) return;
+    pages = restored;
+    activePage = shown.id;
+    unstash(emptyState());
+    view.restoreState(shown.editor);
+  }
+
+  // The close button and a page that goes away keep the last keystrokes too.
+  beforeClose.add(keepPages);
+  window.addEventListener("pagehide", keepPages);
 
   /** Every page's result sets go, and one empty query page stays; the editor keeps its text. */
   function resetPages() {
@@ -479,16 +537,19 @@
   }
 
   /** Opens a connection in place of the current one. Resolves to the error, or null. */
-  async function openWith(opening: () => Promise<OpenedConnection>): Promise<CoreError | null> {
+  async function openWith(opening: () => Promise<OpenedConnection>, filePath: string | null = null): Promise<CoreError | null> {
     if (anyEdits()) return { code: "config.invalid", message: "Save or discard the table's edits first (Ctrl+S)" };
     connecting = true;
     try {
       const opened = await opening();
       if (connection) void ipc.disconnect(connection.id);
+      keepPages();
+      pagesKey = null;
       resetPages();
       connection = opened;
       database = opened.database;
       await tick();
+      restorePages(connectionKey(opened, filePath));
       editor?.focus();
       return null;
     } catch (caught) {
@@ -500,7 +561,7 @@
 
   async function connectTo(path: string) {
     const config: ConnectionConfig = { engine: "sqlite", target: { kind: "file", path, readOnly: false } };
-    connectError = await openWith(() => ipc.connect(config));
+    connectError = await openWith(() => ipc.connect(config), path);
   }
 
   function disconnect() {
@@ -510,6 +571,8 @@
       return;
     }
     void ipc.disconnect(connection.id);
+    keepPages();
+    pagesKey = null;
     resetPages();
     connection = null;
     database = null;
@@ -1642,6 +1705,7 @@
             plain={keyValue}
             onRun={(request) => void startRun(request)}
             complete={completeAt}
+            onChange={keepPagesSoon}
           />
         </section>
 
