@@ -331,6 +331,8 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** thanh tab cuộn ngang (lăn chuột cũng cuộn), thanh cuộn mỏng; công cụ bên phải không bị đẩy ra ngoài.
 - [ ] Chạy script có 3 câu SELECT, bấm lần lượt Result 1, 2, 3.
   **Đúng:** editor có khung nhẹ quanh câu tạo ra result đang xem.
+- [ ] Thu hẹp cửa sổ (còn khoảng 800px), chạy script có câu `select * from <bảng có tên dài>` rồi 6 câu `select 1;`, mở Result 1.
+  **Đúng:** thanh Result chia hai phần: bên phải **Open <bảng> to edit**, Filter và nút Row detail luôn nằm trọn, tên bảng dài bị cắt bằng "…"; bên trái các tab Result cuộn ngang với thanh cuộn mỏng 4px, đường gạch dưới tab đang chọn vẫn thấy. Rê chuột lên một tab Result: tooltip "From statement … of the run" hiện đủ, không bị cắt. Mở Result 2 (không có Open … to edit): phần tab bên trái rộng ra chiếm chỗ trống. Cuộn phần tab sang phải hết rồi chạy lại: tab Result 1 tự cuộn về trong tầm nhìn.
 - [ ] Trong khung đó, bôi đen một chữ bằng chuột, rồi double-click một chữ khác.
   **Đúng:** thấy rõ phần đang bôi đen ngay trong khung. (Các chỗ khác có cùng chữ cũng được tô nhạt, đó là đánh dấu chữ giống nhau, không phải chỗ đang chọn.)
 - [ ] SQL Server: hai câu `select` trên hai dòng, không có `GO` ở giữa, Run (Ctrl+Shift+Enter). Bấm qua lại Result 1 và Result 2.

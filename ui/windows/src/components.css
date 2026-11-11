@@ -469,6 +469,29 @@ span.pb-cond-lead { display: inline-flex; color: var(--fg-muted); font-size: 12p
 .pb-doctabs-tabs .pb-doctab { height: 28px; border: 1px solid transparent; border-radius: var(--radius-sm); }
 .pb-doctabs-tabs .pb-doctab.is-active { background: var(--canvas); border-color: var(--line); box-shadow: var(--shadow-xs); }
 
+/* The result bar, like the page bar: the result tabs take what the tools leave and scroll sideways on
+   the same 4px bar; the tools keep their place at the end, at most 60% of the bar, where the Open
+   button's table name is cut short first. In a flex row the tabs stretch to the height above the
+   scrollbar, so the selected tab's line stays visible over it. */
+.pb-resultbar { gap: 0; min-width: 0; overflow: hidden; }
+.pb-resultbar-tabs { display: flex; flex: 1 1 0; min-width: 0; height: 100%; overflow-x: auto; overflow-y: hidden; scroll-padding-inline: var(--space-2); scrollbar-width: auto; scrollbar-color: auto; }
+.pb-resultbar-tabs > .pb-tabs { flex: none; height: auto; }
+.pb-resultbar-tabs::-webkit-scrollbar { height: 4px; }
+.pb-resultbar-tabs::-webkit-scrollbar-track { background: transparent; }
+.pb-resultbar-tabs::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border: 0; border-radius: 9999px; }
+.pb-resultbar-tabs::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+.pb-resultbar-tabs::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+@supports not selector(::-webkit-scrollbar) { .pb-resultbar-tabs { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; } }
+.pb-resultbar-tools { display: flex; align-items: center; flex: 0 1 auto; gap: var(--space-1); min-width: 0; max-width: 60%; padding-left: var(--space-2); }
+.pb-resultbar-tools > .pb-btn { flex: none; }
+.pb-resultbar-tools > .pb-btn.is-shrink { flex: 0 1 auto; min-width: 0; }
+.pb-btn-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* A tab's tip inside a strip that scrolls would be cut off by it, so it is drawn fixed, under the
+   tab the pointer is on (CSS anchor positioning), and hides with the tab when it scrolls away. */
+.pb-resultbar-tabs [data-tip]:hover, .pb-doctabs-tabs [data-tip]:hover { anchor-name: --pb-tip; }
+.pb-resultbar-tabs [data-tip]::after, .pb-doctabs-tabs [data-tip]::after { position: fixed; position-anchor: --pb-tip; top: calc(anchor(bottom) + 6px); left: anchor(left); transform: none; }
+
 /* A query tab that has run nothing has no results area: the editor fills the work area. */
 .pb-work > .is-hidden { display: none; }
 
