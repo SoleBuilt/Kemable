@@ -122,8 +122,8 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-clickaway { position: fixed; inset: 0; z-index: 55; }
 .pb-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; animation: pb-fade .12s var(--ease); }
 .pb-pop--end { left: auto; right: 0; }
-/* A list taller than the room placeBy found scrolls, with its search box kept at the top. */
-.pb-pop > .pb-menu { max-height: var(--pop-max, none); overflow-y: auto; overscroll-behavior: contain; }
+/* A list scrolls past about eleven options (a table's hundred columns in a filter), or past the room placeBy found, with its search box kept at the top. */
+.pb-pop > .pb-menu { max-height: min(var(--pop-max, 100vh), var(--size-pop-list)); overflow-y: auto; overscroll-behavior: contain; }
 .pb-pop > .pb-menu > .pb-menu-search { position: sticky; top: calc(var(--space-1) * -1); z-index: 1; background: var(--raised); }
 @keyframes pb-fade { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
 .pb-menu { display: flex; flex-direction: column; gap: 1px; min-width: 260px; padding: var(--space-1); border-radius: var(--radius-lg); background: var(--raised); box-shadow: var(--shadow-popover); }

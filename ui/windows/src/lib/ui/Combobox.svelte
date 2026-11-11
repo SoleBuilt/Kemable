@@ -105,6 +105,8 @@
     await tick();
     if (searchable) list?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
     else list?.querySelector<HTMLElement>("[role=option][aria-selected=true], [role=option]")?.focus({ preventScroll: true });
+    // In a long list the picked option may sit below the fold: bring it into the list's view.
+    list?.querySelector<HTMLElement>("[role=option][aria-selected=true]")?.scrollIntoView({ block: "nearest" });
   }
 
   function close(refocus = true) {
