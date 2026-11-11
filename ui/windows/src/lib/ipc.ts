@@ -5,6 +5,9 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   CredentialProfile,
+  LineEnding,
+  TextEncoding,
+  TextFile,
   BrowseQuery,
   BrowseStatements,
   ColumnInfo,
@@ -58,6 +61,12 @@ export const ipc = {
     invoke<SavedConnection>("save_connection", { connection, password }),
 
   deleteSaved: (id: string) => invoke<void>("delete_saved", { id }),
+
+  /** A `.sql` file's text, encoding and line endings (docs/decisions/0016-sql-files.md). */
+  readTextFile: (path: string) => invoke<TextFile>("read_text_file", { path }),
+  /** Writes a query page's text back in `encoding` with `lineEnding`. */
+  writeTextFile: (path: string, text: string, encoding: TextEncoding, lineEnding: LineEnding) =>
+    invoke<void>("write_text_file", { path, text, encoding, lineEnding }),
 
   /** The credential profiles, by name; their passwords stay in Windows Credential Manager. */
   listProfiles: () => invoke<CredentialProfile[]>("list_profiles"),

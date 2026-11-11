@@ -781,3 +781,54 @@ async fn the_forms_database_list_says_why_it_has_none() {
     assert_eq!(error.code, ErrorCode::Unsupported);
     assert!(state.server(1).is_err(), "listing registers no server");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_script_file_saves_back_in_the_encoding_it_was_read_in() {
+    use paboable_core::text_file::{LineEnding, TextEncoding};
+    let folder = std::env::temp_dir().join(format!("paboable-script-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("tạo bảng.sql");
+    let path_text = path.to_string_lossy().into_owned();
+    // SSMS's UTF-16 with CRLF.
+    let original: Vec<u8> = [0xFF, 0xFE]
+        .into_iter()
+        .chain("select N'ký'\r\nGO\r\n".encode_utf16().flat_map(u16::to_le_bytes))
+        .collect();
+    std::fs::write(&path, &original).unwrap();
+
+    let read = crate::commands::read_text_file(path_text.clone()).await.unwrap();
+    assert_eq!(read.text, "select N'ký'\nGO\n");
+    assert_eq!(
+        (read.encoding, read.line_ending),
+        (TextEncoding::Utf16Le, LineEnding::Crlf)
+    );
+
+    crate::commands::write_text_file(
+        path_text.clone(),
+        format!("{}select 2\n", read.text),
+        read.encoding,
+        read.line_ending,
+    )
+    .await
+    .unwrap();
+    let written = std::fs::read(&path).unwrap();
+    let expected: Vec<u8> = [0xFF, 0xFE]
+        .into_iter()
+        .chain(
+            "select N'ký'\r\nGO\r\nselect 2\r\n"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes),
+        )
+        .collect();
+    assert_eq!(written, expected);
+    assert!(
+        !folder.join("tạo bảng.paboable-save.tmp").exists(),
+        "no temporary file is left"
+    );
+
+    let missing = crate::commands::read_text_file(folder.join("gone.sql").to_string_lossy().into_owned())
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code, paboable_core::ErrorCode::Io);
+    let _ = std::fs::remove_dir_all(&folder);
+}

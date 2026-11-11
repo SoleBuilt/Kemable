@@ -17,6 +17,7 @@ pub mod keys;
 pub mod registry;
 pub mod sink;
 pub mod sql;
+pub mod text_file;
 pub mod value;
 
 pub use call::CallOptions;
