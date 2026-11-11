@@ -312,6 +312,28 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Mở một bảng thành tab bảng, đóng rồi mở lại app và connection.
   **Đúng:** chỉ tab query trở lại, tab bảng thì không.
 
+### 8.2b File `.sql`
+- [ ] Ở màn Welcome (chưa kết nối), nhấn **Ctrl+O**, chọn một file `.sql`.
+  **Đúng:** mở thành tab mang tên file (rê chuột lên tab thấy đường dẫn), có editor, không có sidebar. Bấm **Run**: status bar nhắc mở connection và Ctrl+K mở ra.
+- [ ] Chọn một connection trong Ctrl+K.
+  **Đúng:** tab file đi theo sang connection đó, chạy được.
+- [ ] Gõ thêm chữ.
+  **Đúng:** dấu × của tab đổi thành chấm tròn; rê chuột lên chấm thì lại thấy ×.
+- [ ] Nhấn **Ctrl+S**.
+  **Đúng:** chấm biến mất, status bar ghi "Saved <tên file>". Mở file bằng Notepad: đúng nội dung; file UTF-16 hay UTF-8 có BOM vẫn giữ nguyên mã hoá (Notepad ghi ở góc dưới), xuống dòng vẫn CRLF.
+- [ ] Ở tab **Query n** (chưa gắn file), nhấn **Ctrl+S**.
+  **Đúng:** hộp thoại Save As; lưu xong tab đổi tên thành tên file. **Ctrl+Shift+S** trên tab file: lưu ra tên khác, tab đổi theo.
+- [ ] Gõ thêm rồi bấm × của tab (hoặc Ctrl+W).
+  **Đúng:** hỏi "Save changes to <tên>?" với **Save**, **Don't save**, **Cancel**; Cancel giữ tab, Don't save đóng mất chữ mới, Save lưu rồi đóng.
+- [ ] Gõ thêm (chưa lưu), đóng app bằng nút ×, mở lại app và connection.
+  **Đúng:** không bị hỏi khi đóng app; mở lại thì tab file vẫn có chữ chưa lưu và chấm tròn. Nếu không sửa gì mà file bị đổi bằng Notepad, mở lại thấy nội dung mới của file.
+- [ ] Ctrl+K, nhóm **Recent files**.
+  **Đúng:** có các file vừa mở hoặc lưu, chọn là mở lại (nếu đã mở thì chuyển sang tab đó).
+- [ ] Mở một file không phải chữ (ví dụ đổi đuôi một file ảnh thành `.sql`).
+  **Đúng:** không mở; status bar báo "This file is not UTF-8 or UTF-16 text".
+- [ ] Ở tab bảng có chỉnh sửa, nhấn **Ctrl+S**.
+  **Đúng:** vẫn mở Preview & save như trước (Ctrl+S chỉ lưu file ở tab query).
+
 ### 8.3 Tab bảng
 - [ ] Double-click bảng `order_items`.
   **Đúng:** mở tab riêng có icon bảng và số dòng; không có editor; pager nằm bên phải status bar.

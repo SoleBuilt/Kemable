@@ -2,13 +2,23 @@
 // each connection's query tabs, their text and cursor, in the WebView's
 // storage. Table pages and results are not kept; they come from the server.
 
-import type { OpenedConnection } from "./types";
+import type { LineEnding, OpenedConnection, TextEncoding } from "./types";
+
+/** The `.sql` file a query page is (docs/decisions/0016-sql-files.md), as kept. */
+export interface KeptFile {
+  path: string;
+  encoding: TextEncoding;
+  lineEnding: LineEnding;
+  /** The page's text differed from the file: it comes back as it was, unsaved. */
+  dirty: boolean;
+}
 
 /** One query page as kept: its number ("Query 2"), its text and where the cursor was. */
 export interface KeptPage {
   number: number;
   text: string;
   cursor: number;
+  file?: KeptFile;
 }
 
 export interface KeptPages {
@@ -20,6 +30,8 @@ export interface KeptPages {
 }
 
 const KEY = "paboable.pages";
+/** Where the pages of `.sql` files opened with no connection are kept. */
+export const NO_CONNECTION = "none";
 /** The connections whose pages are kept; the least recently used go first. */
 const MAX_CONNECTIONS = 40;
 
@@ -42,10 +54,26 @@ function readAll(): Record<string, KeptPages> {
   }
 }
 
+function isFile(value: unknown): value is KeptFile {
+  if (typeof value !== "object" || value === null) return false;
+  const file = value as Record<string, unknown>;
+  return (
+    typeof file.path === "string" &&
+    ["utf8", "utf8Bom", "utf16Le", "utf16Be"].includes(String(file.encoding)) &&
+    (file.lineEnding === "crlf" || file.lineEnding === "lf") &&
+    typeof file.dirty === "boolean"
+  );
+}
+
 function isPage(value: unknown): value is KeptPage {
   if (typeof value !== "object" || value === null) return false;
   const page = value as Record<string, unknown>;
-  return typeof page.number === "number" && typeof page.text === "string" && typeof page.cursor === "number";
+  return (
+    typeof page.number === "number" &&
+    typeof page.text === "string" &&
+    typeof page.cursor === "number" &&
+    (page.file === undefined || isFile(page.file))
+  );
 }
 
 /** The pages kept for `conn`, or null when there are none (or what is kept is not readable). */
@@ -69,4 +97,36 @@ export function writePages(conn: string, kept: KeptPages): void {
   } catch {
     // A full or missing storage keeps nothing; the pages still work until the app closes.
   }
+}
+
+// --- Recent files, for Ctrl+K ------------------------------------------------
+
+const RECENT_KEY = "paboable.recentFiles";
+const MAX_RECENT = 10;
+
+/** The `.sql` files opened or saved last, newest first. */
+export function readRecentFiles(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((path): path is string => typeof path === "string").slice(0, MAX_RECENT) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Puts `path` first among the recent files; returns the list. */
+export function addRecentFile(path: string): string[] {
+  const same = (other: string) => other.toLowerCase() === path.toLowerCase();
+  const list = [path, ...readRecentFiles().filter((other) => !same(other))].slice(0, MAX_RECENT);
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch {
+    // Without storage the list lasts until the app closes.
+  }
+  return list;
+}
+
+/** A path's last part: the name a tab shows. */
+export function fileName(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
 }

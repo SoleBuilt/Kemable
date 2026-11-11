@@ -379,6 +379,11 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-doctab-x { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; font: inherit; cursor: default; border-radius: var(--radius-xs); color: var(--fg-muted); }
 .pb-doctab-x:hover { background: var(--hover); color: var(--fg); }
 .pb-doctab-x > .ic { width: 14px; height: 14px; }
+/* A file's page not saved: a dot where the × is, the × back on hover (as VS Code shows it). */
+.pb-doctab-x.is-dirty::before { content: ""; width: 8px; height: 8px; border-radius: var(--radius-full); background: currentColor; }
+.pb-doctab-x.is-dirty > .ic { display: none; }
+.pb-doctab-x.is-dirty:hover::before, .pb-doctab-x.is-dirty:focus-visible::before { display: none; }
+.pb-doctab-x.is-dirty:hover > .ic, .pb-doctab-x.is-dirty:focus-visible > .ic { display: inline; }
 
 /* Filter conditions, one per line: Where, then AND or OR on every line after it */
 .pb-filters--rows { flex-direction: column; align-items: stretch; gap: var(--space-1-5); }

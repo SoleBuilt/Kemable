@@ -20,6 +20,7 @@ use paboable_core::sql::{
     completion_context, completions, count_statement, edit_statement, page_statement, sorted_statement, split,
     statement_at,
 };
+use paboable_core::text_file::{self, LineEnding, TextEncoding, TextFile};
 use paboable_core::value::Value;
 use paboable_core::{CallOptions, DriverError};
 use paboable_storage::SavedConnection;
@@ -133,6 +134,56 @@ pub async fn save_connection(
 #[tauri::command]
 pub async fn delete_saved(library: State<'_, Library>, id: String) -> CommandResult<()> {
     library.with(|library, vault| library.delete(&id, vault))
+}
+
+/// A script file bigger than this is not opened: the editor is for scripts, not dumps.
+const MAX_SCRIPT_BYTES: u64 = 64 * 1024 * 1024;
+
+fn file_error(what: &str, path: &str, error: impl std::fmt::Display) -> DriverError {
+    DriverError::new(paboable_core::ErrorCode::Io, format!("{what} {path}: {error}"))
+}
+
+/// Reads a `.sql` file for a query page (`docs/decisions/0016-sql-files.md`):
+/// its text, and the encoding and line endings a save writes back.
+#[tauri::command]
+pub async fn read_text_file(path: String) -> CommandResult<TextFile> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let size = std::fs::metadata(&path)
+            .map_err(|error| file_error("cannot read", &path, error))?
+            .len();
+        if size > MAX_SCRIPT_BYTES {
+            return Err(DriverError::unsupported(format!(
+                "{path} is {size} bytes; scripts up to {MAX_SCRIPT_BYTES} open"
+            )));
+        }
+        let bytes = std::fs::read(&path).map_err(|error| file_error("cannot read", &path, error))?;
+        text_file::decode(&bytes)
+    })
+    .await
+    .map_err(|error| DriverError::internal(error.to_string()))?
+}
+
+/// Writes a query page's text to `path` in `encoding` with `line_ending`,
+/// through a temporary file and a rename, so a failed save leaves the old file.
+#[tauri::command]
+pub async fn write_text_file(
+    path: String,
+    text: String,
+    encoding: TextEncoding,
+    line_ending: LineEnding,
+) -> CommandResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = text_file::encode(&text, encoding, line_ending);
+        let target = Path::new(&path);
+        let temporary = target.with_extension("paboable-save.tmp");
+        std::fs::write(&temporary, bytes).map_err(|error| file_error("cannot write", &path, error))?;
+        std::fs::rename(&temporary, target).map_err(|error| {
+            let _ = std::fs::remove_file(&temporary);
+            file_error("cannot replace", &path, error)
+        })
+    })
+    .await
+    .map_err(|error| DriverError::internal(error.to_string()))?
 }
 
 /// The credential profiles, by name. Their passwords stay in the vault.

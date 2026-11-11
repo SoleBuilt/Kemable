@@ -54,6 +54,8 @@ pub fn run() {
             commands::list_saved,
             commands::save_connection,
             commands::delete_saved,
+            commands::read_text_file,
+            commands::write_text_file,
             commands::list_profiles,
             commands::save_profile,
             commands::delete_profile,

@@ -34,7 +34,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 - [ ] **The tree menu's other items.** DDL, structure, export and import, transfer, generate rows, rename, maintenance, truncate and drop (with a confirmation). They show disabled, marked "Later" (ADR 0013).
 - [x] **Test connection** in the connect form, and a **Profile** in the palette. Test connection is built (2026-11-11): connect, read the version and the databases, close. Profile means credential profiles, built 2026-11-11: `docs/decisions/0015-credential-profiles.md`.
 - [x] **Ctrl+click picks rows one by one** in the grid (design system D21). Shift picks a range today; the core's copy takes one rectangle, so it needs a selection of several ranges. Built 2026-11-11: a selection is row spans of the same columns, copied by `ResultStore::copy_tsv_rows`.
-- [ ] **Open and save `.sql` files**, beside saved queries. Decided 2026-11-11: `docs/decisions/0016-sql-files.md`.
+- [x] **Open and save `.sql` files**, beside saved queries. Decided and built 2026-11-11: `docs/decisions/0016-sql-files.md`.
 - [ ] **A file changed outside the app** shows a notice: Reload from disk, or keep my changes. Later, after `.sql` files (ADR 0016).
 - [ ] **Link a folder of `.sql` files** into the sidebar. Later, after `.sql` files (ADR 0016).
 - [ ] **The driver names a result's source table** (optional, not required): PostgreSQL's table OID per column, SQLite's column metadata, SQL Server's `sp_describe_first_result_set`. More exact than reading the statement, for "Open <table> to edit" and any later editing in place (ADR 0011, amended 2026-11-11).

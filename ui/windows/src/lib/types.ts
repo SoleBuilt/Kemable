@@ -174,6 +174,18 @@ export interface SavedConnection {
   color: string | null;
 }
 
+/** How a script file's bytes are written (docs/decisions/0016-sql-files.md). */
+export type TextEncoding = "utf8" | "utf8Bom" | "utf16Le" | "utf16Be";
+export type LineEnding = "crlf" | "lf";
+
+/** A script file's text with `
+` line endings, and how a save writes it back. */
+export interface TextFile {
+  text: string;
+  encoding: TextEncoding;
+  lineEnding: LineEnding;
+}
+
 /** A user and a password kept under a name, for many connections to sign in with. */
 export interface CredentialProfile {
   /** Empty for one not saved yet. */

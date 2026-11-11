@@ -39,6 +39,9 @@ pub enum ErrorCode {
     /// `in` with no values.
     #[serde(rename = "filter.invalid")]
     FilterInvalid,
+    /// A file's bytes are not UTF-8 or UTF-16 text (`text_file`).
+    #[serde(rename = "file.not_text")]
+    NotText,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -60,6 +63,7 @@ impl ErrorCode {
             Self::RowGone => "edit.row_gone",
             Self::FilterRaw => "filter.raw",
             Self::FilterInvalid => "filter.invalid",
+            Self::NotText => "file.not_text",
             Self::Internal => "internal",
         }
     }

@@ -1,7 +1,16 @@
 <script lang="ts">
   import type { EditorState } from "@codemirror/state";
-  import { connectionKey, readPages, writePages, type KeptPage } from "./lib/pages";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import {
+    NO_CONNECTION,
+    addRecentFile,
+    connectionKey,
+    fileName,
+    readPages,
+    readRecentFiles,
+    writePages,
+    type KeptPage,
+  } from "./lib/pages";
+  import { open, save } from "@tauri-apps/plugin-dialog";
   import { tick, untrack } from "svelte";
   import SqlEditor, { type RunRequest } from "./lib/editor/SqlEditor.svelte";
   import { errorTitle } from "./lib/errors";
@@ -18,6 +27,7 @@
   import ObjectTree, { type TreeScope, type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
   import QueryList from "./lib/sidebar/QueryList.svelte";
   import SaveQueryDialog from "./lib/sidebar/SaveQueryDialog.svelte";
+  import UnsavedDialog from "./lib/editor/UnsavedDialog.svelte";
   import TreeMenu from "./lib/sidebar/TreeMenu.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
   import ProfilesDialog from "./lib/connect/ProfilesDialog.svelte";
@@ -65,6 +75,9 @@
     SavedConnection,
     SavedQuery,
     TableRef,
+    LineEnding,
+    TextEncoding,
+    TextFile,
   } from "./lib/types";
 
   /**
@@ -176,6 +189,16 @@
     /** A query page's editor, kept while another page is shown. */
     editor: EditorState | null;
     state: PageState;
+    /** The `.sql` file a query page is (docs/decisions/0016-sql-files.md); null for "Query n". */
+    file: PageFile | null;
+  }
+
+  interface PageFile {
+    path: string;
+    encoding: TextEncoding;
+    lineEnding: LineEnding;
+    /** The text as last read from or written to the file: the page is unsaved while it differs. */
+    saved: string;
   }
 
   function emptyState(): PageState {
@@ -200,7 +223,7 @@
   }
 
   let nextPageId = 2;
-  let pages: Page[] = $state.raw([{ id: 1, kind: "query", number: 1, editor: null, state: emptyState() }]);
+  let pages: Page[] = $state.raw([{ id: 1, kind: "query", number: 1, editor: null, state: emptyState(), file: null }]);
   let activePage = $state(1);
   const currentPage = $derived(pages.find((page) => page.id === activePage));
   const onTablePage = $derived(currentPage?.kind === "table");
@@ -392,7 +415,7 @@
       return;
     }
     const number = Math.max(0, ...pages.filter((page) => page.kind === "query").map((page) => page.number)) + 1;
-    const page: Page = { id: nextPageId++, kind: "query", number, editor: null, state: emptyState() };
+    const page: Page = { id: nextPageId++, kind: "query", number, editor: null, state: emptyState(), file: null };
     pages = [...keepCurrent(), page];
     activePage = page.id;
     unstash(page.state);
@@ -406,9 +429,13 @@
   }
 
   /** Closes page `id`; the last query page closing leaves a fresh empty one, so there is always an editor. */
-  function closePage(id: number) {
+  function closePage(id: number, unsaved: "ask" | "drop" = "ask") {
     const page = pages.find((candidate) => candidate.id === id);
     if (!page) return;
+    if (unsaved === "ask" && page.file && pageDirty(page)) {
+      closing = { id, name: fileName(page.file.path) };
+      return;
+    }
     const shown = id === activePage;
     if (shown && running) {
       note("Stop the run before you close its page");
@@ -425,7 +452,10 @@
     const index = pages.findIndex((candidate) => candidate.id === id);
     let rest = (shown ? pages : keepCurrent()).filter((candidate) => candidate.id !== id);
     if (!rest.some((candidate) => candidate.kind === "query")) {
-      rest = [...rest, { id: nextPageId++, kind: "query", number: page.kind === "query" ? page.number + 1 : 1, editor: null, state: emptyState() }];
+      rest = [
+        ...rest,
+        { id: nextPageId++, kind: "query", number: page.kind === "query" ? page.number + 1 : 1, editor: null, state: emptyState(), file: null },
+      ];
     }
     pages = rest;
     keepPagesSoon();
@@ -454,7 +484,11 @@
       if (page.kind !== "query") continue;
       const state = page.id === activePage ? (editor?.saveState() ?? page.editor) : page.editor;
       if (page.id === activePage) active = kept.length;
-      kept.push({ number: page.number, text: state?.doc.toString() ?? "", cursor: state?.selection.main.head ?? 0 });
+      const text = state?.doc.toString() ?? "";
+      const file = page.file
+        ? { path: page.file.path, encoding: page.file.encoding, lineEnding: page.file.lineEnding, dirty: text !== page.file.saved }
+        : undefined;
+      kept.push({ number: page.number, text, cursor: state?.selection.main.head ?? 0, file });
     }
     writePages(pagesKey, { pages: kept, active, at: Date.now() });
   }
@@ -466,25 +500,49 @@
     keepTimer = setTimeout(keepPages, 400);
   }
 
-  /** Brings back the query pages kept for `key`, in place of the empty one a connection opens with. */
-  function restorePages(key: string) {
+  /**
+   * Brings back the query pages kept for `key`, in place of the empty one a
+   * connection opens with, and adds `carried` (the files opened before it).
+   * A file's page reads its file again: a page kept unsaved keeps its text.
+   */
+  async function restorePages(key: string, carried: Page[] = []) {
     pagesKey = key;
     const kept = readPages(key);
-    if (!kept || !editor) return;
+    if ((!kept && carried.length === 0) || !editor) return;
     const view = editor;
-    const restored: Page[] = kept.pages.map((page) => ({
-      id: nextPageId++,
-      kind: "query",
-      number: page.number,
-      editor: view.stateWith(page.text, page.cursor),
-      state: emptyState(),
-    }));
-    const shown = restored[kept.active] ?? restored[0];
+    const restored: Page[] = await Promise.all(
+      (kept?.pages ?? []).map(async (page): Promise<Page> => {
+        let text = page.text;
+        let file: PageFile | null = null;
+        if (page.file) {
+          const disk = await ipc.readTextFile(page.file.path).catch(() => null);
+          // A file gone or unreadable keeps the page's text, unsaved, so a save writes it again.
+          file = { path: page.file.path, encoding: disk?.encoding ?? page.file.encoding, lineEnding: disk?.lineEnding ?? page.file.lineEnding, saved: disk?.text ?? "" };
+          if (disk && !page.file.dirty) text = disk.text;
+        }
+        return { id: nextPageId++, kind: "query", number: page.number, editor: view.stateWith(text, page.cursor), state: emptyState(), file };
+      }),
+    );
+    // A carried file already kept for this connection is not opened twice.
+    const all = [...restored, ...carried.filter((page) => !restored.some((other) => other.file?.path === page.file?.path))];
+    const shown = carried.length > 0 ? all[all.length - 1] : (all[kept?.active ?? 0] ?? all[0]);
     if (!shown) return;
-    pages = restored;
+    pages = all;
     activePage = shown.id;
     unstash(emptyState());
     view.restoreState(shown.editor);
+    keepPagesSoon();
+  }
+
+  // Files opened with no connection come back at launch (ADR 0016): a page
+  // stands for them until the work area's editor mounts and reads them.
+  const keptWithout = readPages(NO_CONNECTION);
+  const keptFile = keptWithout?.pages.find((page) => page.file)?.file;
+  if (keptFile) {
+    const standIn: Page = { id: nextPageId++, kind: "query", number: 1, editor: null, state: emptyState(), file: { ...keptFile, saved: "" } };
+    pages = [standIn];
+    activePage = standIn.id;
+    void tick().then(() => restorePages(NO_CONNECTION));
   }
 
   // The close button and a page that goes away keep the last keystrokes too.
@@ -496,13 +554,14 @@
     for (const page of pages) if (page.id !== activePage) releaseState(page.state);
     clearResults();
     const kept = currentPage?.kind === "query" ? currentPage : null;
-    pages = [{ id: nextPageId++, kind: "query", number: 1, editor: null, state: emptyState() }];
+    pages = [{ id: nextPageId++, kind: "query", number: 1, editor: null, state: emptyState(), file: null }];
     activePage = pages[0]?.id ?? 1;
     unstash(emptyState());
     if (!kept) editor?.restoreState(null);
   }
 
   function pageTitle(page: Page): string {
+    if (page.file) return fileName(page.file.path);
     if (page.kind === "query") return `Query ${page.number}`;
     const tab = page.id === activePage ? tableTab : page.state.tableTab;
     return tab?.table.name ?? "Table";
@@ -546,13 +605,16 @@
     try {
       const opened = await opening();
       if (connection) void ipc.disconnect(connection.id);
+      // Files opened with no connection go to the one that opens now (ADR 0016).
+      const carried = connection ? [] : keepCurrent().filter((page) => page.file);
       keepPages();
+      if (carried.length > 0) writePages(NO_CONNECTION, { pages: [], active: 0, at: Date.now() });
       pagesKey = null;
       resetPages();
       connection = opened;
       database = opened.database;
       await tick();
-      restorePages(connectionKey(opened, filePath));
+      await restorePages(connectionKey(opened, filePath), carried);
       editor?.focus();
       return null;
     } catch (caught) {
@@ -640,17 +702,141 @@
     connectDialog = { engine, saved };
   }
 
+  /** The extensions Open file… reads as a script; anything else opens as a SQLite database. */
+  const SCRIPT_EXTENSIONS = ["sql", "txt"];
+  const SQLITE_EXTENSIONS = ["db", "sqlite", "sqlite3", "db3", "s3db"];
+
+  /** Ctrl+O: a `.sql` file opens on a query page, a SQLite file as a connection (ADR 0016). */
   async function openFile() {
     const path = await open({
       multiple: false,
       directory: false,
       filters: [
-        { name: "SQLite", extensions: ["db", "sqlite", "sqlite3", "db3", "s3db"] },
+        { name: "SQL scripts and SQLite databases", extensions: [...SCRIPT_EXTENSIONS, ...SQLITE_EXTENSIONS] },
+        { name: "SQL scripts", extensions: SCRIPT_EXTENSIONS },
+        { name: "SQLite", extensions: SQLITE_EXTENSIONS },
         { name: "All files", extensions: ["*"] },
       ],
     });
-    if (typeof path === "string") await connectTo(path);
+    if (typeof path !== "string") return;
+    const extension = path.split(".").pop()?.toLowerCase() ?? "";
+    if (SCRIPT_EXTENSIONS.includes(extension)) await openScript(path);
+    else await connectTo(path);
   }
+
+  // --- .sql files (docs/decisions/0016-sql-files.md) --------------------------
+
+  let recentFiles: string[] = $state(readRecentFiles());
+  /** Goes up as the editor's text changes, so the tabs read whether a file is saved. */
+  let editTick = $state(0);
+  /** A file's page asked to close while unsaved. */
+  let closing: { id: number; name: string } | null = $state(null);
+
+  /** The text a page has now: the editor's for the page shown. */
+  function pageText(page: Page): string {
+    const state = page.id === activePage ? (editor?.saveState() ?? page.editor) : page.editor;
+    return state?.doc.toString() ?? "";
+  }
+
+  function pageDirty(page: Page): boolean {
+    return page.file !== null && pageText(page) !== page.file.saved;
+  }
+
+  function onEditorChange() {
+    editTick++;
+    keepPagesSoon();
+  }
+
+  /** Opens `path` on a query page, or shows the page that already has it. */
+  async function openScript(path: string) {
+    const same = (other: string | undefined) => other?.toLowerCase() === path.toLowerCase();
+    const existing = pages.find((page) => same(page.file?.path));
+    if (existing) {
+      switchTo(existing.id);
+      return;
+    }
+    if (running) {
+      note("Wait for the run to end, or stop it, before you open a page");
+      return;
+    }
+    let read: TextFile;
+    try {
+      read = await ipc.readTextFile(path);
+    } catch (caught) {
+      const error = asCoreError(caught);
+      note(`${errorTitle(error)}: ${error.message}`);
+      return;
+    }
+    const current = keepCurrent();
+    // An empty, untouched "Query n" gives its place to the file, as an editor's new tab does.
+    const blank = current.length === 1 && current[0]?.kind === "query" && !current[0].file && pageText(current[0]) === "";
+    const number = Math.max(0, ...current.filter((page) => page.kind === "query").map((page) => page.number)) + 1;
+    const page: Page = {
+      id: nextPageId++,
+      kind: "query",
+      number,
+      editor: null,
+      state: emptyState(),
+      file: { path, encoding: read.encoding, lineEnding: read.lineEnding, saved: read.text },
+    };
+    pages = blank ? [page] : [...current, page];
+    activePage = page.id;
+    unstash(emptyState());
+    // With no connection the work area mounts with the first file: wait for its editor.
+    await tick();
+    if (!editor) return;
+    const state = editor.stateWith(read.text, 0);
+    pages = pages.map((other) => (other.id === page.id ? { ...other, editor: state } : other));
+    editor.restoreState(state);
+    pagesKey ??= connection ? null : NO_CONNECTION;
+    recentFiles = addRecentFile(path);
+    keepPagesSoon();
+    void tick().then(() => editor?.focus());
+  }
+
+  /** Ctrl+S on a query page: writes its file; a page with none asks where (Save As). */
+  async function saveScript(asNew = false) {
+    const page = currentPage;
+    if (!page || page.kind !== "query") return;
+    const text = pageText(page);
+    let target = page.file;
+    if (!target || asNew) {
+      const path = await save({
+        defaultPath: page.file?.path ?? `${pageTitle(page)}.sql`,
+        filters: [{ name: "SQL scripts", extensions: ["sql"] }],
+      });
+      if (typeof path !== "string") return;
+      // A new file is UTF-8 with CRLF; Save As keeps the encoding of the file it came from.
+      target = { path, encoding: page.file?.encoding ?? "utf8", lineEnding: page.file?.lineEnding ?? "crlf", saved: "" };
+    }
+    try {
+      await ipc.writeTextFile(target.path, text, target.encoding, target.lineEnding);
+    } catch (caught) {
+      const error = asCoreError(caught);
+      note(`Not saved: ${errorTitle(error)}: ${error.message}`);
+      return false;
+    }
+    const file: PageFile = { ...target, saved: text };
+    pages = pages.map((other) => (other.id === page.id ? { ...other, file } : other));
+    pagesKey ??= connection ? null : NO_CONNECTION;
+    recentFiles = addRecentFile(file.path);
+    keepPagesSoon();
+    note(`Saved ${fileName(file.path)}`);
+    return true;
+  }
+
+  /** The answer to "Save changes to <file>?" as its page closes. */
+  async function answerClosing(answer: "save" | "drop" | "cancel") {
+    const target = closing;
+    closing = null;
+    if (!target || answer === "cancel") return;
+    if (answer === "save") {
+      if (!switchTo(target.id)) return;
+      if (!(await saveScript())) return;
+    }
+    closePage(target.id, "drop");
+  }
+
 
   function clearResults() {
     for (const set of sets) void ipc.releaseResult(set.result);
@@ -695,6 +881,11 @@
     fromEditor = true,
     overrides: { inDatabase?: string | null; rowLimit?: number | null; record?: boolean; tablePage?: boolean } = {},
   ) {
+    if (!connection && !running) {
+      note("Open a connection to run this script: pick one in Ctrl+K");
+      openPalette();
+      return;
+    }
     if (!connection || running) return;
     if (hasEdits) {
       note("Save or discard the table's edits first (Ctrl+S)");
@@ -971,7 +1162,7 @@
       pageSql: "",
       countSql: "",
     };
-    const page: Page = { id: nextPageId++, kind: "table", number: 0, editor: null, state: { ...emptyState(), tableTab: next } };
+    const page: Page = { id: nextPageId++, kind: "table", number: 0, editor: null, state: { ...emptyState(), tableTab: next }, file: null };
     pages = [...keepCurrent(), page];
     activePage = page.id;
     unstash(page.state);
@@ -1508,6 +1699,14 @@
       dot: entry.color ?? "gray",
       run: () => void openSaved(entry),
     })),
+    ...recentFiles.map((path) => ({
+      id: `file:${path}`,
+      group: "Recent files",
+      label: fileName(path),
+      meta: path,
+      icon: "file" as const,
+      run: () => void openScript(path),
+    })),
     { id: "settings", group: "Settings", label: "Settings…", icon: "settings", keys: ["Ctrl", ","], run: () => (settingsOpen = true) },
     {
       id: "profiles",
@@ -1541,17 +1740,21 @@
     } else if (ctrl && key === ",") {
       event.preventDefault();
       settingsOpen = true;
-    } else if (ctrl && key === "t" && connection) {
+    } else if (ctrl && key === "t" && workspace) {
       event.preventDefault();
       newQueryPage();
-    } else if (ctrl && key === "w" && connection) {
+    } else if (ctrl && key === "w" && workspace) {
       event.preventDefault();
       closePage(activePage);
-    } else if (ctrl && event.key === "Tab" && connection && pages.length > 1) {
+    } else if (ctrl && event.key === "Tab" && workspace && pages.length > 1) {
       event.preventDefault();
       const index = pages.findIndex((page) => page.id === activePage);
       const next = pages[(index + (event.shiftKey ? -1 : 1) + pages.length) % pages.length];
       if (next) switchTo(next.id);
+    } else if (ctrl && key === "s" && workspace && currentPage?.kind === "query") {
+      // A query page saves its file; Ctrl+Shift+S saves it under another name.
+      event.preventDefault();
+      void saveScript(event.shiftKey);
     } else if (ctrl && !event.shiftKey && key === "s") {
       event.preventDefault();
       if (hasEdits) void openPreview();
@@ -1605,14 +1808,19 @@
   /** The saved connection open now, for Edit this connection… */
   const editableSaved = $derived(connection?.savedId ? (library.find((entry) => entry.id === connection?.savedId) ?? null) : null);
 
-  const pageTabs: PageTabItem[] = $derived(
-    pages.map((page) => ({
+  const pageTabs: PageTabItem[] = $derived.by(() => {
+    void editTick;
+    return pages.map((page) => ({
       id: page.id,
       title: pageTitle(page),
       icon: page.kind === "table" ? "table" : "file",
       count: page.kind === "table" ? pageCount(page) || undefined : undefined,
-    })),
-  );
+      dirty: page.file ? pageDirty(page) : undefined,
+      tip: page.file?.path,
+    }));
+  });
+  /** Pages to show: a connection's, or `.sql` files opened with none (ADR 0016). */
+  const workspace = $derived(connection !== null || pages.some((page) => page.file !== null));
 
   const resultTabs: ResultTabItem[] = $derived(
     sets.map((set, index) => ({
@@ -1650,9 +1858,10 @@
     <InfoBar tone="danger" strip title={errorTitle(connectError)} message={connectError.message} onDismiss={() => (connectError = null)} />
   {/if}
 
-  {#if connection}
-    {@const open = connection}
-    <div class="pb-mid" style:grid-template-columns="{sidebarWidth}px minmax(0, 1fr)">
+  {#if workspace}
+    <div class="pb-mid" style:grid-template-columns={connection ? `${sidebarWidth}px minmax(0, 1fr)` : "minmax(0, 1fr)"}>
+      {#if connection}
+      {@const open = connection}
       <!-- Sidebar: Objects fills it; Queries and History fold (D19) -->
       <aside class="pb-side" aria-label="Objects, saved queries and history">
         <SidePane title={keyValue ? "Keys" : "Objects"} main>
@@ -1722,6 +1931,7 @@
         </SidePane>
       </aside>
       <Splitter orientation="vertical" bind:value={sidebarWidth} min={180} max={480} reset={260} label="Resize the sidebar" style="left: {sidebarWidth - 3}px" />
+      {/if}
 
       <main class="pb-work" style:grid-template-rows={workRows}>
         <!-- Pages: tabs on the left, the open page's tools on the right (D15) -->
@@ -1768,7 +1978,7 @@
             plain={keyValue}
             onRun={(request) => void startRun(request)}
             complete={completeAt}
-            onChange={keepPagesSoon}
+            onChange={onEditorChange}
           />
         </section>
 
@@ -1891,6 +2101,7 @@
   <StatusBar>
     {#if !connection}
       <span>{connecting ? "Connecting…" : "No connection"}</span>
+      {#if statusNote}<span class="is-note">{statusNote}</span>{/if}
     {:else}
       {#if running}
         <span class="is-live"><Icon name="loader" size="sm" spin />Running…</span>
@@ -2027,6 +2238,11 @@
       if (!preview?.busy) preview = null;
     }}
   />
+{/if}
+
+{#if closing}
+  {@const target = closing}
+  <UnsavedDialog name={target.name} onAnswer={(answer) => void answerClosing(answer)} />
 {/if}
 
 {#if askPassword}

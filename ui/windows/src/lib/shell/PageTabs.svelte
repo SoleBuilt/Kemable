@@ -7,6 +7,10 @@
     icon: IconName;
     /** A table page's row count, as the tab shows it. */
     count?: string;
+    /** A `.sql` file's page whose text is not saved: a dot where the × is, until hovered. */
+    dirty?: boolean;
+    /** The tab's tip: a file page's full path. */
+    tip?: string;
   }
 </script>
 
@@ -14,6 +18,7 @@
   import type { Snippet } from "svelte";
   import Count from "../ui/Count.svelte";
   import Icon from "../ui/Icon.svelte";
+  import { tipAttrs } from "../ui/tip";
 
   /**
    * The page bar (docs/decisions/0013-pages-and-tabs.md): the open pages on
@@ -47,6 +52,7 @@
           role="tab"
           tabindex="0"
           aria-selected={tab.id === active}
+          {...tipAttrs(tab.tip, "start")}
           onclick={() => onSelect(tab.id)}
           onauxclick={(event) => {
             if (event.button === 1) onClose(tab.id);
@@ -63,7 +69,8 @@
           <button
             type="button"
             class="pb-doctab-x"
-            aria-label="Close {tab.title}"
+            class:is-dirty={tab.dirty}
+            aria-label={tab.dirty ? `Close ${tab.title}, not saved` : `Close ${tab.title}`}
             onclick={(event) => {
               event.stopPropagation();
               onClose(tab.id);
