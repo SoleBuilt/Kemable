@@ -15,7 +15,7 @@
   import { asCoreError, beforeClose, ipc } from "./lib/ipc";
   import HistoryList from "./lib/sidebar/HistoryList.svelte";
   import KeyBrowser from "./lib/sidebar/KeyBrowser.svelte";
-  import ObjectTree, { type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
+  import ObjectTree, { type TreeScope, type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
   import QueryList from "./lib/sidebar/QueryList.svelte";
   import SaveQueryDialog from "./lib/sidebar/SaveQueryDialog.svelte";
   import TreeMenu from "./lib/sidebar/TreeMenu.svelte";
@@ -1436,6 +1436,25 @@
     editor?.focus();
   }
 
+  // --- The tree shows every database, or only the one in use ---
+  const TREE_SCOPE_KEY = "paboable.treeScope";
+  function readTreeScope(): TreeScope {
+    try {
+      return localStorage.getItem(TREE_SCOPE_KEY) === "current" ? "current" : "all";
+    } catch {
+      return "all";
+    }
+  }
+  let treeScope: TreeScope = $state(readTreeScope());
+  function toggleTreeScope() {
+    treeScope = treeScope === "all" ? "current" : "all";
+    try {
+      localStorage.setItem(TREE_SCOPE_KEY, treeScope);
+    } catch {
+      // Without storage the choice lasts until the app closes.
+    }
+  }
+
   async function refreshObjects() {
     if (!connection) return;
     void ipc.forgetCatalog(connection.id);
@@ -1638,6 +1657,18 @@
       <aside class="pb-side" aria-label="Objects, saved queries and history">
         <SidePane title={keyValue ? "Keys" : "Objects"} main>
           {#snippet actions()}
+            {#if !keyValue && open.engine.hasDatabases}
+              <Button
+                variant="ghost"
+                class="pb-pane-btn"
+                icon="list-tree"
+                open={treeScope === "current"}
+                label={treeScope === "current" ? "Show every database" : "Show only the database in use"}
+                tip={treeScope === "current" ? "Show every database" : `Show only ${database ?? "the database in use"}`}
+                tipAt="end"
+                onclick={toggleTreeScope}
+              />
+            {/if}
             <Button
               variant="ghost"
               class="pb-pane-btn"
@@ -1666,6 +1697,7 @@
               connection={open}
               {database}
               {refreshKey}
+              scope={treeScope}
               onOpen={(object, inDatabase, newTab) => void openObject(object, inDatabase, newTab)}
               onUseDatabase={useDatabase}
               onCopy={copyText}

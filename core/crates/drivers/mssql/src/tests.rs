@@ -389,3 +389,24 @@ async fn a_wrong_password_is_an_auth_error() {
         .expect("a refusal");
     assert_eq!(error.code, ErrorCode::Auth);
 }
+
+#[test]
+fn objects_fall_in_ssms_folders_procedures_table_valued_and_scalar_functions() {
+    use crate::connection::object_kind;
+    use paboable_core::catalog::ObjectKind;
+    for (code, kind) in [
+        ("U", ObjectKind::Table),
+        ("V", ObjectKind::View),
+        ("SO", ObjectKind::Sequence),
+        ("P", ObjectKind::Procedure),
+        ("PC", ObjectKind::Procedure),
+        ("IF", ObjectKind::TableFunction),
+        ("TF", ObjectKind::TableFunction),
+        ("FT", ObjectKind::TableFunction),
+        ("FN", ObjectKind::Function),
+        ("FS", ObjectKind::Function),
+        ("TR", ObjectKind::Other),
+    ] {
+        assert_eq!(object_kind(code), kind, "{code}");
+    }
+}

@@ -177,9 +177,14 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 /* Tree and lists */
 .pb-search { display: flex; align-items: center; gap: var(--space-2); height: var(--size-control); margin: var(--space-2) var(--space-2) var(--space-1); padding: 0 var(--space-2) 0 var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--canvas); color: var(--fg-muted); }
 .pb-search input { flex: 1; min-width: 0; border: 0; outline: none; background: none; color: var(--fg); font: inherit; }
-/* A row is as wide as its name or the pane, whichever is wider, so a long name's selection still covers it after scrolling sideways. */
-.pb-tree { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: var(--space-1) var(--space-2); }
-.pb-tree > .pb-tree-error { align-self: stretch; }
+.pb-tree { display: flex; flex-direction: column; gap: 1px; padding: var(--space-1) var(--space-2); }
+/* The object tree draws only the rows in view, each placed at its own top. A row is as wide as its name
+   or the pane, whichever is wider, so a long name's selection still covers it after scrolling sideways. */
+.pb-tree.is-virtual { position: relative; display: block; padding: 0; width: max(100%, calc(var(--tree-width, 0px) + var(--space-4))); }
+.pb-tree-slot { position: absolute; left: var(--space-2); display: flex; min-width: calc(100% - var(--space-4)); }
+.pb-tree-slot.is-wide { right: var(--space-2); }
+.pb-tree-slot > .pb-tree-error { flex: 1; margin: 0; }
+.pb-tree-error.is-clamped { height: 64px; overflow: hidden; }
 .pb-tree-row { display: flex; align-items: center; gap: var(--space-1-5); min-width: 100%; height: var(--size-row); padding: 0 var(--space-2) 0 calc(var(--space-1) + var(--depth, 0) * 16px); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font: inherit; text-align: left; white-space: nowrap; transition: background-color .12s var(--ease), color .12s var(--ease); }
 .pb-tree-row:hover { background: var(--hover); color: var(--fg); }
 .pb-tree-row.is-selected { background: var(--selection); color: var(--fg); font-weight: 550; }

@@ -43,3 +43,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0013 | [The work area holds pages: query tabs and table tabs, each with its tools on one bar](0013-pages-and-tabs.md) |
 | 0014 | [Small components in lib/ui; pages only put them together; the window draws its own title bar](0014-ui-components.md) |
 | 0015 | [Credential profiles: a user and a password under a name, shared by saved connections](0015-credential-profiles.md) |
+| 0016 | [A query page can be a `.sql` file](0016-sql-files.md) |

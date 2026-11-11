@@ -49,6 +49,7 @@ The user's statement is theirs. Paboable does not change it.
 
 - A query result is never editable (ADR 0010). When the core can name exactly one table behind it (one plain `SELECT` from one table, with no join, no `GROUP BY` and no set operation), the result bar shows "Open <table> to edit", which opens that table's tab as the object tree does: the whole table, not only the rows of the result.
 - When the core cannot be sure, the button does not show.
+- Amended 2026-11-11, with the user: the core reads the statement (not the driver) to name the table. The statement's `WHERE` comes along as the table tab's filter when every condition is one the filter row can hold (a column, a comparison and a value, joined all by `AND` or all by `OR`); otherwise the whole table opens and the status bar says the `WHERE` was left behind. Asking the driver which table each column comes from (PostgreSQL's table OID, SQLite's column metadata, SQL Server's `sp_describe_first_result_set`) is in the backlog, optional.
 
 ## Rationale
 
