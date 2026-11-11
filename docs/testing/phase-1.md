@@ -342,7 +342,7 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Trên Windows 10 (nếu có), bật Mica.
   **Đúng:** dòng gợi ý đổi thành "This Windows cannot show Mica. It needs Windows 11."; app vẫn đặc, không lộ desktop.
 - [ ] **Đo tốc độ** (cửa sổ giờ luôn trong suốt): chạy câu lệnh 2,000,000 dòng ở `.claude/rules/data-grid.md` trên SQLite in-memory, cuộn bằng chuột, thanh cuộn và bàn phím, một lần với Mica Off và một lần với Mica On.
-  **Đúng:** DevTools › Performance (chuột phải › Inspect, bản dev) cho frame dưới 8 ms ở cả hai lần. Ghi số đo vào mô tả của merge.
+  **Đúng:** DevTools › Performance (chuột phải › Inspect, bản dev) cho frame dưới 8 ms ở cả hai lần. Ghi số đo vào mô tả của merge. (Đã đo tự động ngày 2026-11-11 trên một máy: không khác nhau; số đo ở ADR 0012, Consequences. Vẫn nên thử bằng tay trên máy khác, nhất là màn hình 120 Hz hoặc 4K.)
 
 ---
 
