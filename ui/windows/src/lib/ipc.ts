@@ -2,6 +2,7 @@
 // its types, so a rename in commands.rs fails `pnpm check` instead of at runtime.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   CredentialProfile,
@@ -225,6 +226,8 @@ export const beforeClose = new Set<() => void>();
  */
 export const appWindow = {
   minimize: () => getCurrentWindow().minimize(),
+  /** Zooms the whole window's content, as Ctrl+= does in VS Code; 1 is 100 %. */
+  setZoom: (factor: number) => getCurrentWebview().setZoom(factor),
   toggleMaximize: () => getCurrentWindow().toggleMaximize(),
   /** Runs the `beforeClose` work (keeping the pages), then closes. */
   close: () => {
