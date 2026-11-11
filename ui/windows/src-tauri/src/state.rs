@@ -46,6 +46,9 @@ pub struct ResultOrigin {
     /// alone means the same thing.
     pub alone: bool,
     pub row_limit: Option<u64>,
+    /// The statement inside a SQL Server batch that made this set
+    /// (`paboable_core::sql::batch_queries`), for "Open <table> to edit".
+    pub part: Option<String>,
 }
 
 /// A connection the user opened: one server, and a session per database
@@ -186,6 +189,16 @@ impl AppState {
 
     pub fn origin(&self, id: u64) -> Option<ResultOrigin> {
         lock(&self.results).get(&id).and_then(|(_, origin)| origin.clone())
+    }
+
+    /// The sets of a batch whose results did not match its reading: their parts are wrong.
+    pub fn forget_parts(&self, ids: &[u64]) {
+        let mut results = lock(&self.results);
+        for id in ids {
+            if let Some((_, Some(origin))) = results.get_mut(id) {
+                origin.part = None;
+            }
+        }
     }
 
     pub fn result(&self, id: u64) -> Result<Arc<ResultStore>> {

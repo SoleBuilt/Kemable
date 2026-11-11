@@ -111,6 +111,8 @@ struct RunSink {
     /// (`paboable_core::sql::batch_queries`), and how many sets it made so far.
     parts: Mutex<Option<Vec<Range<usize>>>>,
     sets_here: AtomicUsize,
+    /// The ids of the sets the current statement made, to forget their parts.
+    ids_here: Mutex<Vec<u64>>,
 }
 
 impl RunSink {
@@ -153,19 +155,23 @@ impl ResultSink for RunSink {
     fn begin_set(&self, columns: Vec<ColumnMeta>) {
         self.close_open_set();
         let store = Arc::new(ResultStore::new(columns.clone(), self.row_limit));
-        let origin = self.origin.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        let id = self.state.add_result(Arc::clone(&store), Some(origin));
         let made = self.sets_here.fetch_add(1, Ordering::Relaxed);
-        let part = self
+        let range = self
             .parts
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .as_ref()
-            .and_then(|parts| parts.get(made))
-            .map(|range| Part {
-                start: range.start,
-                end: range.end,
-            });
+            .and_then(|parts| parts.get(made).cloned());
+        let mut origin = self.origin.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        origin.part = range
+            .clone()
+            .and_then(|range| origin.statement.get(range).map(str::to_owned));
+        let id = self.state.add_result(Arc::clone(&store), Some(origin));
+        self.ids_here.lock().unwrap_or_else(PoisonError::into_inner).push(id);
+        let part = range.map(|range| Part {
+            start: range.start,
+            end: range.end,
+        });
         self.send(RunEvent::SetStarted {
             result: id,
             statement: self.statement(),
@@ -252,11 +258,13 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
             statement: String::new(),
             alone: run.statements.len() == 1,
             row_limit: run.row_limit,
+            part: None,
         }),
         row_limit: run.row_limit,
         rows: Mutex::new(None),
         parts: Mutex::new(None),
         sets_here: AtomicUsize::new(0),
+        ids_here: Mutex::new(Vec::new()),
     });
     let mut database = run.database.clone();
     let mut failed = false;
@@ -284,6 +292,7 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
             .flatten();
         *sink.parts.lock().unwrap_or_else(PoisonError::into_inner) = parts;
         sink.sets_here.store(0, Ordering::Relaxed);
+        sink.ids_here.lock().unwrap_or_else(PoisonError::into_inner).clear();
         let statement_started = Instant::now();
         let ran_in = database.clone();
         let outcome = match statement.kind {
@@ -312,6 +321,7 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
             .as_ref()
             .map(Vec::len);
         if expected.is_some_and(|expected| made > 0 && made != expected) {
+            state.forget_parts(&sink.ids_here.lock().unwrap_or_else(PoisonError::into_inner));
             sink.send(RunEvent::PartsDropped { statement: index });
         }
         if run.record && statement.kind == StatementKind::Sql {

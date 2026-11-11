@@ -8,6 +8,7 @@ mod edit;
 mod lex;
 mod literal;
 mod result_filter;
+mod result_source;
 mod sorted;
 mod split;
 
@@ -21,6 +22,7 @@ pub use database_change::{DatabaseChange, database_change};
 pub use edit::{NewValue, RowEdit, edit_statement};
 pub use literal::{typed as typed_literal, value_literal};
 pub use result_filter::{ResultFilter, ResultWhere, in_items, result_where};
+pub use result_source::{ResultSource, result_source};
 pub use sorted::{SortColumn, sorted_statement};
 pub use split::{StatementKind, StatementSpan, split, statement_at};
 

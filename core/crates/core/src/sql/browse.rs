@@ -7,7 +7,7 @@
 //! statement. A raw filter is the user's own SQL and is written as typed,
 //! in parentheses, but it must hold a single expression: a `;` refuses it.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::literal::typed as literal;
 use super::result_filter::in_items;
@@ -16,7 +16,7 @@ use crate::catalog::TableRef;
 use crate::error::DriverError;
 
 /// How a filter compares its column with its value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FilterOp {
     Equals,
@@ -39,7 +39,7 @@ pub enum FilterOp {
     Raw,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Filter {
     pub column: String,

@@ -5,6 +5,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   CredentialProfile,
+  ResultSource,
   LineEnding,
   TextEncoding,
   TextFile,
@@ -62,6 +63,8 @@ export const ipc = {
 
   deleteSaved: (id: string) => invoke<void>("delete_saved", { id }),
 
+  /** The one table result `result` comes from, with its WHERE as filters; null when it is not one table's rows. */
+  resultSource: (result: number) => invoke<ResultSource | null>("result_source", { result }),
   /** A `.sql` file's text, encoding and line endings (docs/decisions/0016-sql-files.md). */
   readTextFile: (path: string) => invoke<TextFile>("read_text_file", { path }),
   /** Writes a query page's text back in `encoding` with `lineEnding`. */
