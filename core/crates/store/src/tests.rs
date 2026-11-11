@@ -6,7 +6,7 @@ use paboable_core::error::ErrorCode;
 use paboable_core::sql::{FilterOp, ResultFilter};
 use paboable_core::value::{Value, ValueKind};
 
-use crate::{CellRange, CellValue, ResultStore, SortKey, WindowReader, WindowRequest};
+use crate::{CellRange, CellValue, ResultStore, RowSpan, SortKey, WindowReader, WindowRequest};
 
 fn column(name: &str, kind: ValueKind) -> ColumnMeta {
     ColumnMeta {
@@ -400,4 +400,28 @@ fn a_million_rows_filter_and_sort_in_time() {
         store.state().shown_rows,
         started.elapsed() - filtered
     );
+}
+
+#[test]
+fn rows_picked_one_by_one_copy_in_the_order_given_through_the_filter() {
+    let store = people();
+    let span = |first_row, row_count| RowSpan { first_row, row_count };
+    assert_eq!(
+        store
+            .copy_tsv_rows(&[span(0, 1), span(2, 2), span(5, 1)], 0, 2, true)
+            .unwrap(),
+        "n\tname\r\n3\tAlice\r\n\tCarol\r\n-2\t\r\n3\tÑandú\r\n"
+    );
+    // One column, a span past the end cut to the rows there are.
+    assert_eq!(
+        store.copy_tsv_rows(&[span(1, 1), span(4, 99)], 1, 1, false).unwrap(),
+        "bob\r\nalicia\r\nÑandú\r\n"
+    );
+    // Through the filter, as a rectangle copy goes.
+    store.filter(&[condition(1, FilterOp::Contains, "a")], false).unwrap();
+    assert_eq!(
+        store.copy_tsv_rows(&[span(3, 1), span(0, 1)], 1, 1, false).unwrap(),
+        "Ñandú\r\nAlice\r\n"
+    );
+    assert_eq!(store.copy_tsv_rows(&[], 0, 2, false).unwrap(), "");
 }

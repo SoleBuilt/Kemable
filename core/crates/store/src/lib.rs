@@ -9,5 +9,5 @@ pub mod window;
 #[cfg(test)]
 mod tests;
 
-pub use store::{CHUNK_ROWS, CellRange, CellValue, MAX_COPY_CELLS, ResultStore, SortKey, StoreState};
+pub use store::{CHUNK_ROWS, CellRange, CellValue, MAX_COPY_CELLS, ResultStore, RowSpan, SortKey, StoreState};
 pub use window::{WindowReader, WindowRequest};

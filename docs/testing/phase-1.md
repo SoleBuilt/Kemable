@@ -150,12 +150,24 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Click ô góc trên trái, hoặc Ctrl+A.
   **Đúng:** chọn tất cả.
 - [ ] Shift + mũi tên hoặc Page Down mở rộng vùng chọn; Esc thu về một ô.
+- [ ] Click dòng 2, rồi **Ctrl+click** số dòng 5 và một ô ở dòng 9.
+  **Đúng:** dòng 2, 5, 9 được tô cả dòng, các dòng giữa thì không; status bar ghi "3 rows selected".
+- [ ] **Ctrl+click** lại dòng 5.
+  **Đúng:** dòng 5 bỏ chọn, dòng 2 và 9 vẫn chọn; con trỏ ô nằm ở dòng 5.
+- [ ] Sau đó **Shift+click** dòng 12.
+  **Đúng:** thêm dòng 5 đến 12, dòng 2 vẫn chọn.
+- [ ] Click thường một ô.
+  **Đúng:** các dòng đã chọn bỏ hết, chỉ còn ô đó.
 
 ### 4.3 Copy
 - [ ] Chọn vùng 3×3, **Ctrl+C**, dán vào Excel.
   **Đúng:** đúng 3×3 ô; NULL thành ô trống; status bar báo "Copied 9 cells".
 - [ ] **Ctrl+Shift+C** rồi dán.
   **Đúng:** có thêm dòng tên cột.
+- [ ] Ctrl+click chọn dòng 2, 5, 9 rồi **Ctrl+C**, dán vào Excel.
+  **Đúng:** 3 dòng liền nhau theo thứ tự 2, 5, 9, đủ mọi cột.
+- [ ] Trên tab bảng có khóa chính, Ctrl+click chọn 2 dòng cách nhau, nhấn **Delete**.
+  **Đúng:** chỉ 2 dòng đó bị gạch để xóa; nhấn Delete lần nữa thì bỏ gạch.
 - [ ] Copy một ô chứa xuống dòng hoặc dấu `"` (ví dụ từ `select 'a"b' || chr(10) || 'c'` trên Postgres) rồi dán vào Excel.
   **Đúng:** nằm gọn trong một ô.
 

@@ -25,7 +25,7 @@ use paboable_core::{CallOptions, DriverError};
 use paboable_storage::SavedConnection;
 use paboable_storage::history::{HistoryEntry, HistoryQuery};
 use paboable_storage::queries::SavedQuery;
-use paboable_store::{CellRange, MAX_COPY_CELLS, ResultStore, SortKey, WindowRequest};
+use paboable_store::{MAX_COPY_CELLS, ResultStore, RowSpan, SortKey, WindowRequest};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::{Channel, Response};
@@ -602,22 +602,30 @@ pub async fn fetch_window(
 pub async fn copy_range(
     state: State<'_, Arc<AppState>>,
     result: u64,
-    first_row: u64,
-    row_count: u64,
+    rows: Vec<RowSpanArg>,
     first_column: usize,
     column_count: usize,
     with_headers: bool,
 ) -> CommandResult<String> {
-    let range = CellRange {
-        first_row,
-        row_count,
-        first_column,
-        column_count,
-    };
+    let rows: Vec<RowSpan> = rows
+        .into_iter()
+        .map(|span| RowSpan {
+            first_row: span.first_row,
+            row_count: span.row_count,
+        })
+        .collect();
     state
         .result(result)?
-        .copy_tsv(range, with_headers)
+        .copy_tsv_rows(&rows, first_column, column_count, with_headers)
         .ok_or_else(|| DriverError::unsupported(format!("copying more than {MAX_COPY_CELLS} cells at once")))
+}
+
+/// Rows of a selection: one span for a rectangle, one per run of rows picked with Ctrl+click.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RowSpanArg {
+    first_row: u64,
+    row_count: u64,
 }
 
 /// Every value of one row, for the detail pane.

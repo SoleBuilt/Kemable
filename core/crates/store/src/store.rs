@@ -341,13 +341,40 @@ impl ResultStore {
     /// `headers`, the column names come first. `None` when the range holds
     /// more than [`MAX_COPY_CELLS`] cells.
     pub fn copy_tsv(&self, range: CellRange, headers: bool) -> Option<String> {
+        let rows = [RowSpan {
+            first_row: range.first_row,
+            row_count: range.row_count,
+        }];
+        self.copy_tsv_rows(&rows, range.first_column, range.column_count, headers)
+    }
+
+    /// The same columns of several spans of rows, one span after the other in
+    /// the order given, as [`copy_tsv`](Self::copy_tsv) writes them: the rows
+    /// picked one by one in the grid (Ctrl+click). The column names, with
+    /// `headers`, come once. `None` when the spans hold more than
+    /// [`MAX_COPY_CELLS`] cells in all.
+    pub fn copy_tsv_rows(
+        &self,
+        rows: &[RowSpan],
+        first_column: usize,
+        column_count: usize,
+        headers: bool,
+    ) -> Option<String> {
         let inner = self.read();
         let shown = inner.shown_rows();
-        let first_row = range.first_row.min(shown);
-        let rows = range.row_count.min(shown - first_row);
-        let first_column = range.first_column.min(self.columns.len());
-        let columns = range.column_count.min(self.columns.len() - first_column);
-        if rows.saturating_mul(columns as u64) > MAX_COPY_CELLS {
+        let first_column = first_column.min(self.columns.len());
+        let columns = column_count.min(self.columns.len() - first_column);
+        let spans: Vec<(u64, u64)> = rows
+            .iter()
+            .map(|span| {
+                let first = span.first_row.min(shown);
+                (first, span.row_count.min(shown - first))
+            })
+            .collect();
+        let cells = spans.iter().fold(0u64, |total, (_, count)| {
+            total.saturating_add(count.saturating_mul(columns as u64))
+        });
+        if cells > MAX_COPY_CELLS {
             return None;
         }
         let mut out = String::new();
@@ -357,10 +384,12 @@ impl ResultStore {
                 .map(|column| Some(column.name.clone()));
             push_tsv_row(&mut out, names);
         }
-        for row in first_row..first_row + rows {
-            let cells =
-                (first_column..first_column + columns).map(|column| cell_text_in(&inner, row, column).flatten());
-            push_tsv_row(&mut out, cells);
+        for (first, count) in spans {
+            for row in first..first + count {
+                let cells =
+                    (first_column..first_column + columns).map(|column| cell_text_in(&inner, row, column).flatten());
+                push_tsv_row(&mut out, cells);
+            }
         }
         Some(out)
     }
@@ -477,6 +506,13 @@ fn sort_rows(inner: &Inner, rows: &mut [u64], keys: &[SortKey], width: usize) {
 /// The most cells one copy takes, so selecting everything in a huge result
 /// does not build gigabytes of text.
 pub const MAX_COPY_CELLS: u64 = 2_000_000;
+
+/// Rows from the first, in the order rows are shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowSpan {
+    pub first_row: u64,
+    pub row_count: u64,
+}
 
 /// A rectangle of cells, rows and columns from their first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
