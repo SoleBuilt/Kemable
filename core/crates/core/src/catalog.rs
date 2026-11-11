@@ -26,7 +26,10 @@ pub enum ObjectKind {
     MaterializedView,
     Index,
     Trigger,
+    /// A function that returns a value: SQL Server's scalar-valued function, PostgreSQL's function.
     Function,
+    /// A function that returns rows, read in a `FROM`: SQL Server's table-valued function.
+    TableFunction,
     Procedure,
     Sequence,
     Collection,

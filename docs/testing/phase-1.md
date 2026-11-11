@@ -151,6 +151,12 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** nền chọn phủ hết tên bảng cả khi cuộn ngang, không bị cắt ở mép sidebar.
 - [ ] Chọn một bảng, nhấn **Ctrl+C**, qua editor nhấn **Ctrl+V**. Làm lại với một database.
   **Đúng:** dán ra đúng tên; status bar ghi "Copied the name". **Ctrl+Enter** trên một bảng mở nó ở tab mới.
+- [ ] Bấm nút cây (bên trái nút ↻ trên header OBJECTS).
+  **Đúng:** nút đổi sang trạng thái bấm; cây chỉ còn database đang dùng, bắt đầu từ các schema (không có dòng database). Đổi database ở toolbar: cây đổi theo. Bấm lại: về lại tất cả database. Mở lại app: nhớ lựa chọn.
+- [ ] Mở một database có hàng nghìn bảng (ví dụ database Business Central), cuộn nhanh xuống cuối và cuộn ngang.
+  **Đúng:** cây hiện ngay khi mở, cuộn mượt, không có khoảng trống; dòng chọn vẫn phủ hết tên khi cuộn ngang.
+- [ ] SQL Server: một database có stored procedure và function.
+  **Đúng:** có các thư mục **Stored Procedures**, **Table-valued Functions**, **Scalar-valued Functions** (đóng sẵn), mỗi thư mục đúng loại của nó.
 - [ ] Chuột phải vào chỗ trống của sidebar, vào editor, vào status bar.
   **Đúng:** không hiện menu của trình duyệt (Back, Print, Inspect, Emoji…). Chuột phải vào bảng hoặc database trên cây vẫn hiện menu của app.
 

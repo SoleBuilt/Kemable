@@ -323,10 +323,24 @@ from sys.schemas s
 where s.name not in ('sys', 'INFORMATION_SCHEMA', 'guest') and s.name not like 'db[_]%'
 order by s.name";
 
+/// The kind of a `sys.objects.type`, in SSMS's folders: stored procedures,
+/// table-valued and scalar-valued functions, each T-SQL or CLR.
+pub(crate) fn object_kind(code: &str) -> ObjectKind {
+    match code {
+        "U" => ObjectKind::Table,
+        "V" => ObjectKind::View,
+        "SO" => ObjectKind::Sequence,
+        "P" | "PC" => ObjectKind::Procedure,
+        "IF" | "TF" | "FT" => ObjectKind::TableFunction,
+        "FN" | "FS" => ObjectKind::Function,
+        _ => ObjectKind::Other,
+    }
+}
+
 const OBJECTS: &str = "\
 select o.name, rtrim(o.type)
 from sys.objects o join sys.schemas s on s.schema_id = o.schema_id
-where s.name = @P1 and o.is_ms_shipped = 0 and o.type in ('U', 'V', 'SO', 'P', 'FN', 'IF', 'TF')
+where s.name = @P1 and o.is_ms_shipped = 0 and o.type in ('U', 'V', 'SO', 'P', 'PC', 'FN', 'FS', 'IF', 'TF', 'FT')
 order by case rtrim(o.type) when 'U' then 0 when 'V' then 1 when 'SO' then 2 when 'P' then 3 else 4 end, o.name";
 
 const COLUMNS: &str = "\
@@ -396,14 +410,7 @@ impl Connection for MssqlConnection {
         let rows = self.catalog_rows(OBJECTS, &[schema], &options).await?;
         rows.iter()
             .map(|row| {
-                let kind = match text(row, 1)?.as_deref() {
-                    Some("U") => ObjectKind::Table,
-                    Some("V") => ObjectKind::View,
-                    Some("SO") => ObjectKind::Sequence,
-                    Some("P") => ObjectKind::Procedure,
-                    Some("FN" | "IF" | "TF") => ObjectKind::Function,
-                    _ => ObjectKind::Other,
-                };
+                let kind = object_kind(text(row, 1)?.as_deref().unwrap_or_default());
                 Ok(ObjectInfo {
                     schema: Some(schema.to_owned()),
                     name: text(row, 0)?.unwrap_or_default(),

@@ -106,6 +106,7 @@ export type ObjectKind =
   | "table"
   | "view"
   | "materializedView"
+  | "tableFunction"
   | "index"
   | "trigger"
   | "function"
