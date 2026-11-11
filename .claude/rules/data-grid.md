@@ -32,4 +32,4 @@ The grid is `GridEngine` (`engine.ts`): one canvas laid over a native scroll con
 
 ## Checking a change
 
-Open a large result (`with recursive c(x) as (select 1 union all select x + 1 from c limit 2000000) select x, x * 2, 'row ' || x from c` on an in-memory SQLite) and scroll with the wheel, the scrollbar and the keyboard. Scrolling must stay smooth while rows still arrive, and Chrome DevTools' Performance panel (right-click, Inspect, in a dev build) must show frames under 8 ms.
+Open a large result (`with recursive c(x) as (select 1 union all select x + 1 from c limit 2000000) select x, x * 2, 'row ' || x from c` on an in-memory SQLite) and scroll with the wheel, the scrollbar and the keyboard. Scrolling must stay smooth while rows still arrive, and Chrome DevTools' Performance panel (F12 or Ctrl+Shift+I in a dev build; the app has no browser right-click menu) must show frames under 8 ms.

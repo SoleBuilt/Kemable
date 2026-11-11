@@ -83,7 +83,8 @@
       color: "var(--fg)",
     },
     // The statement behind the result shown: a thin frame and a faint tint, behind the text (D23).
-    ".cm-stmt": { backgroundColor: "var(--muted)", boxShadow: "inset 1px 0 var(--input), inset -1px 0 var(--input)" },
+    // The tint is see-through: a line's background covers CodeMirror's selection layer, which sits under the text.
+    ".cm-stmt": { backgroundColor: "var(--statement)", boxShadow: "inset 1px 0 var(--input), inset -1px 0 var(--input)" },
     ".cm-stmt.cm-stmt-first": {
       boxShadow: "inset 1px 0 var(--input), inset -1px 0 var(--input), inset 0 1px var(--input)",
       borderTopLeftRadius: "var(--radius-sm)",

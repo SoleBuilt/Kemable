@@ -1,6 +1,7 @@
 //! A run: the statements of one script, executed in order on one server,
 //! with what they return streamed to the UI.
 
+use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -9,7 +10,7 @@ use paboable_core::catalog::ColumnMeta;
 use paboable_core::command::select_database;
 use paboable_core::connection::Connection;
 use paboable_core::sink::ResultSink;
-use paboable_core::sql::{DatabaseChange, SqlGrammar, StatementKind, database_change};
+use paboable_core::sql::{DatabaseChange, SqlGrammar, StatementKind, batch_queries, database_change};
 use paboable_core::value::Value;
 use paboable_core::{CallOptions, DriverError};
 use paboable_store::ResultStore;
@@ -38,6 +39,14 @@ pub enum RunEvent {
         result: u64,
         statement: usize,
         columns: Vec<ColumnMeta>,
+        /// The statement inside a SQL Server batch that made this set, as
+        /// byte offsets into the batch's text; `None` when it cannot be told.
+        part: Option<Part>,
+    },
+    /// The sets of `statement` did not match the statements its batch was
+    /// read as (one failed, say): their `part`s are wrong, so drop them.
+    PartsDropped {
+        statement: usize,
     },
     Rows {
         result: u64,
@@ -73,6 +82,13 @@ pub enum RunEvent {
     },
 }
 
+/// Byte offsets into a statement's text.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct Part {
+    start: usize,
+    end: usize,
+}
+
 struct OpenSet {
     id: u64,
     store: Arc<ResultStore>,
@@ -91,6 +107,10 @@ struct RunSink {
     row_limit: Option<u64>,
     /// Rows the current statement returned, or affected, for the history.
     rows: Mutex<Option<i64>>,
+    /// The statements of the current SQL Server batch that each make one set
+    /// (`paboable_core::sql::batch_queries`), and how many sets it made so far.
+    parts: Mutex<Option<Vec<Range<usize>>>>,
+    sets_here: AtomicUsize,
 }
 
 impl RunSink {
@@ -135,10 +155,22 @@ impl ResultSink for RunSink {
         let store = Arc::new(ResultStore::new(columns.clone(), self.row_limit));
         let origin = self.origin.lock().unwrap_or_else(PoisonError::into_inner).clone();
         let id = self.state.add_result(Arc::clone(&store), Some(origin));
+        let made = self.sets_here.fetch_add(1, Ordering::Relaxed);
+        let part = self
+            .parts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .and_then(|parts| parts.get(made))
+            .map(|range| Part {
+                start: range.start,
+                end: range.end,
+            });
         self.send(RunEvent::SetStarted {
             result: id,
             statement: self.statement(),
             columns,
+            part,
         });
         *self.open() = Some(OpenSet {
             id,
@@ -223,6 +255,8 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
         }),
         row_limit: run.row_limit,
         rows: Mutex::new(None),
+        parts: Mutex::new(None),
+        sets_here: AtomicUsize::new(0),
     });
     let mut database = run.database.clone();
     let mut failed = false;
@@ -244,6 +278,12 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
         });
 
         *sink.rows.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        // A batch's results come back in order; reading the batch tells which statement made each.
+        let parts = (run.grammar == Some(SqlGrammar::SqlServer) && statement.kind == StatementKind::Sql)
+            .then(|| batch_queries(text))
+            .flatten();
+        *sink.parts.lock().unwrap_or_else(PoisonError::into_inner) = parts;
+        sink.sets_here.store(0, Ordering::Relaxed);
         let statement_started = Instant::now();
         let ran_in = database.clone();
         let outcome = match statement.kind {
@@ -264,6 +304,16 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
                     .map(|()| follow(&run, text, &mut database))
             }
         };
+        let made = sink.sets_here.load(Ordering::Relaxed);
+        let expected = sink
+            .parts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map(Vec::len);
+        if expected.is_some_and(|expected| made > 0 && made != expected) {
+            sink.send(RunEvent::PartsDropped { statement: index });
+        }
         if run.record && statement.kind == StatementKind::Sql {
             let rows = *sink.rows.lock().unwrap_or_else(PoisonError::into_inner);
             record(

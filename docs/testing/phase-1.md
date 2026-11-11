@@ -14,7 +14,7 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 2. Có sẵn trên máy (đã dùng khi làm Phase 1):
    - PostgreSQL 17 ở `localhost:5432`, user `postgres`, database `demo_sales` có dữ liệu mẫu (`scripts/demo/postgres-demo-sales.sql`).
    - SQL Server 2025 ở `localhost`, đăng nhập bằng Windows Authentication.
-3. Mở DevTools khi cần xem lỗi JavaScript: chuột phải trong app, chọn **Inspect** (chỉ có ở bản dev).
+3. Mở DevTools khi cần xem lỗi JavaScript: bấm F12 hoặc Ctrl+Shift+I (chỉ có ở bản dev; app không còn menu chuột phải của trình duyệt).
 
 ---
 
@@ -137,6 +137,12 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** chỉ còn các bảng có tên khớp.
 - [ ] Chạy `create table thu_refresh (x int);` rồi xem sidebar.
   **Đúng:** bảng mới tự hiện. Nhấn **Ctrl+R** hoặc nút ↻ cũng làm mới được.
+- [ ] Thu hẹp sidebar, bấm chọn một bảng có tên dài hơn sidebar, rồi cuộn ngang sidebar.
+  **Đúng:** nền chọn phủ hết tên bảng cả khi cuộn ngang, không bị cắt ở mép sidebar.
+- [ ] Chọn một bảng, nhấn **Ctrl+C**, qua editor nhấn **Ctrl+V**. Làm lại với một database.
+  **Đúng:** dán ra đúng tên; status bar ghi "Copied the name". **Ctrl+Enter** trên một bảng mở nó ở tab mới.
+- [ ] Chuột phải vào chỗ trống của sidebar, vào editor, vào status bar.
+  **Đúng:** không hiện menu của trình duyệt (Back, Print, Inspect, Emoji…). Chuột phải vào bảng hoặc database trên cây vẫn hiện menu của app.
 
 ### 3.1 Script tạo database
 - [ ] Postgres, Run all:
@@ -269,6 +275,14 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** thanh tab cuộn ngang (lăn chuột cũng cuộn), thanh cuộn mỏng; công cụ bên phải không bị đẩy ra ngoài.
 - [ ] Chạy script có 3 câu SELECT, bấm lần lượt Result 1, 2, 3.
   **Đúng:** editor có khung nhẹ quanh câu tạo ra result đang xem.
+- [ ] Trong khung đó, bôi đen một chữ bằng chuột, rồi double-click một chữ khác.
+  **Đúng:** thấy rõ phần đang bôi đen ngay trong khung. (Các chỗ khác có cùng chữ cũng được tô nhạt, đó là đánh dấu chữ giống nhau, không phải chỗ đang chọn.)
+- [ ] SQL Server: hai câu `select` trên hai dòng, không có `GO` ở giữa, Run (Ctrl+Shift+Enter). Bấm qua lại Result 1 và Result 2.
+  **Đúng:** mỗi Result có khung quanh đúng câu `select` của nó (cả batch vẫn gửi một lần như SSMS).
+- [ ] Ở script đó, mở Result 2, bấm header cột đầu để sort; rồi qua Result 1 sort cột đầu.
+  **Đúng:** chỉ Result đang xem được sort, vẫn ở tab đó; status bar ghi "sorted in Paboable"; Result kia giữ nguyên, không có mũi tên sort.
+- [ ] SQL Server: `exec sp_who` rồi `select 1` (không `GO`), Run.
+  **Đúng:** ra các Result nhưng không có khung (batch có `EXEC` không đọc được chắc chắn câu nào ra Result nào).
 - [ ] Kéo đường chia giữa editor và kết quả; double-click nó.
   **Đúng:** kéo được; double-click trả về chiều cao ban đầu.
 - [ ] Mở một connection đã lưu, gõ chữ khác nhau ở Query 1, 2, 3, để con trỏ giữa một dòng ở Query 2 và đang xem Query 2. Bấm nút đóng (×) của cửa sổ, mở lại app, mở lại connection đó.
@@ -342,7 +356,7 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Trên Windows 10 (nếu có), bật Mica.
   **Đúng:** dòng gợi ý đổi thành "This Windows cannot show Mica. It needs Windows 11."; app vẫn đặc, không lộ desktop.
 - [ ] **Đo tốc độ** (cửa sổ giờ luôn trong suốt): chạy câu lệnh 2,000,000 dòng ở `.claude/rules/data-grid.md` trên SQLite in-memory, cuộn bằng chuột, thanh cuộn và bàn phím, một lần với Mica Off và một lần với Mica On.
-  **Đúng:** DevTools › Performance (chuột phải › Inspect, bản dev) cho frame dưới 8 ms ở cả hai lần. Ghi số đo vào mô tả của merge. (Đã đo tự động ngày 2026-11-11 trên một máy: không khác nhau; số đo ở ADR 0012, Consequences. Vẫn nên thử bằng tay trên máy khác, nhất là màn hình 120 Hz hoặc 4K.)
+  **Đúng:** DevTools › Performance (F12, bản dev) cho frame dưới 8 ms ở cả hai lần. Ghi số đo vào mô tả của merge. (Đã đo tự động ngày 2026-11-11 trên một máy: không khác nhau; số đo ở ADR 0012, Consequences. Vẫn nên thử bằng tay trên máy khác, nhất là màn hình 120 Hz hoặc 4K.)
 
 ---
 

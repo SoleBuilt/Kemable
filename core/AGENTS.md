@@ -13,7 +13,7 @@ The Rust crates every UI builds on: the domain types and the driver contract, on
 
 ## Map
 
-- `crates/core`: `value`, `format`, `catalog`, `config`, `engine`, `error`, `call`, `sink`, `connection`, `driver`, `registry`, `sql` (script splitting per grammar).
+- `crates/core`: `value`, `format`, `catalog`, `config`, `engine`, `error`, `call`, `sink`, `connection`, `driver`, `registry`, `sql` (script splitting per grammar, and `batch`: the statements inside a SQL Server batch).
 - `crates/store`: `ResultStore` (columnar chunks, with its sort and filter as row orders over them: `order.rs`, `filter.rs`) and `window` (the packed window format and its reader).
 - `crates/storage`: `ConnectionLibrary` (saved connections, `connections.json`, atomic writes, never over a file it cannot read), `profiles` (credential profiles, `profiles.json`, ADR 0015), `queries`, `history`, and the `SecretVault` trait.
 - `crates/drivers/<engine>`: one crate per engine, each exporting a `Driver` and its `EngineInfo`. Today: `sqlite`, `postgres`, `mssql`.
