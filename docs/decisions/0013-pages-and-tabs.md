@@ -53,7 +53,6 @@ The first window had one editor and one row of result tabs. A table opened from 
 - Still to build, and shown disabled or left out for now (`docs/roadmap.md`):
   - in the tree menu: DDL, structure, export and import, truncate and drop;
   - Profile;
-  - Ctrl+click to pick rows one by one in the grid;
   - connection colours;
   - opening and saving `.sql` files;
   - a tab bar for Redis.

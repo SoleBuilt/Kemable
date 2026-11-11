@@ -66,6 +66,12 @@ export interface OpenedConnection {
   title: string;
 }
 
+/** Rows from the first, in the order the grid shows them. */
+export interface RowSpan {
+  firstRow: number;
+  rowCount: number;
+}
+
 /** What Test in the connect form learned; nothing stays open after it. */
 export interface TestedConnection {
   serverVersion: string | null;

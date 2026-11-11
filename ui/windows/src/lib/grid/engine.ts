@@ -6,7 +6,7 @@
 // windows of BLOCK_ROWS rows; nothing per cell lives in the DOM
 // (.claude/rules/data-grid.md).
 
-import type { ColumnMeta } from "../types";
+import type { ColumnMeta, RowSpan } from "../types";
 import { isNumericKind, ResultWindow } from "./window";
 
 /** A row: 28px, or 24px in the compact density Settings offers (docs/decisions/0012-design-system.md, D9). */
@@ -55,12 +55,22 @@ export interface CellRect {
   columnCount: number;
 }
 
+/**
+ * What is selected: the same columns of one or more spans of rows, sorted and
+ * apart. A rectangle is one span; rows picked with Ctrl+click are several.
+ */
+export interface GridSelection {
+  rows: RowSpan[];
+  firstColumn: number;
+  columnCount: number;
+}
+
 export interface GridCallbacks {
   fetchWindow: FetchWindow;
   /** Ctrl+C copies the selection; Ctrl+Shift+C adds the column names. */
-  copy: (result: number, rect: CellRect, withHeaders: boolean) => void;
+  copy: (result: number, selection: GridSelection, withHeaders: boolean) => void;
   /** The cell cursor or the selection moved; null when nothing is selected. */
-  selectionChanged: (result: number, focus: Cell | null, rect: CellRect | null) => void;
+  selectionChanged: (result: number, focus: Cell | null, selection: GridSelection | null) => void;
   /** A plain header click: sort by `column`; with Shift, as one more key. */
   sortRequested: (column: number, additive: boolean) => void;
   /**
@@ -69,7 +79,7 @@ export interface GridCallbacks {
    */
   editRequested?: (cell: Cell, typed: string | null) => void;
   /** Delete on a selection: the owner marks its rows. */
-  deleteRequested?: (firstRow: number, rowCount: number) => void;
+  deleteRequested?: (rows: RowSpan[]) => void;
 }
 
 /**
@@ -106,6 +116,52 @@ interface Selection {
   /** The cell cursor: the end that moves, drawn with a border. */
   focus: Cell;
   mode: SelectionMode;
+  /** Rows picked with Ctrl+click before the span from anchor to focus, sorted and apart ("rows" mode only). */
+  picked: RowSpan[];
+  /** Whether the span from anchor to focus is selected; false after Ctrl+click drops the row under the cursor. */
+  live: boolean;
+}
+
+/** A selection from `anchor` to `focus`, with no rows picked before it. */
+function spanning(anchor: Cell, focus: Cell, mode: SelectionMode): Selection {
+  return { anchor, focus, mode, picked: [], live: true };
+}
+
+/** The spans sorted, cut to `total` rows, and joined where they touch. */
+function mergeSpans(spans: RowSpan[], total: number): RowSpan[] {
+  const sorted = spans
+    .map((span) => ({ firstRow: span.firstRow, rowCount: Math.min(span.firstRow + span.rowCount, total) - span.firstRow }))
+    .filter((span) => span.rowCount > 0)
+    .sort((a, b) => a.firstRow - b.firstRow);
+  const merged: RowSpan[] = [];
+  for (const span of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && span.firstRow <= last.firstRow + last.rowCount) {
+      last.rowCount = Math.max(last.rowCount, span.firstRow + span.rowCount - last.firstRow);
+    } else {
+      merged.push({ ...span });
+    }
+  }
+  return merged;
+}
+
+/** The spans without `row`. */
+function withoutRow(spans: RowSpan[], row: number): RowSpan[] {
+  const out: RowSpan[] = [];
+  for (const span of spans) {
+    const end = span.firstRow + span.rowCount;
+    if (row < span.firstRow || row >= end) {
+      out.push(span);
+      continue;
+    }
+    if (row > span.firstRow) out.push({ firstRow: span.firstRow, rowCount: row - span.firstRow });
+    if (row + 1 < end) out.push({ firstRow: row + 1, rowCount: end - row - 1 });
+  }
+  return out;
+}
+
+function spansHold(spans: RowSpan[], row: number): boolean {
+  return spans.some((span) => row >= span.firstRow && row < span.firstRow + span.rowCount);
 }
 
 interface Theme {
@@ -444,16 +500,16 @@ export class GridEngine {
       }
     }
 
-    // The selection, clipped to the body: only its visible part is filled.
-    const rect = this.selectionRect();
-    if (rect) {
-      const top = Math.max(rect.firstRow, firstRow);
-      const bottom = Math.min(rect.firstRow + rect.rowCount, endRow);
-      if (bottom > top) {
-        const left = Math.max(originX + (this.lefts[rect.firstColumn] ?? 0), this.gutterWidth);
-        const right = originX + (this.lefts[rect.firstColumn + rect.columnCount] ?? 0);
-        context.fillStyle = theme.selection;
-        context.fillRect(left, firstY + (top - firstRow) * ROW_HEIGHT, right - left, (bottom - top) * ROW_HEIGHT);
+    // The selection, clipped to the body: only the visible part of each span is filled.
+    const selected = this.selectionSpans();
+    if (selected) {
+      const left = Math.max(originX + (this.lefts[selected.firstColumn] ?? 0), this.gutterWidth);
+      const right = originX + (this.lefts[selected.firstColumn + selected.columnCount] ?? 0);
+      context.fillStyle = theme.selection;
+      for (const span of selected.rows) {
+        const top = Math.max(span.firstRow, firstRow);
+        const bottom = Math.min(span.firstRow + span.rowCount, endRow);
+        if (bottom > top) context.fillRect(left, firstY + (top - firstRow) * ROW_HEIGHT, right - left, (bottom - top) * ROW_HEIGHT);
       }
     }
 
@@ -565,13 +621,13 @@ export class GridEngine {
     context.textAlign = "right";
     for (let row = firstRow; row < endRow; row++) {
       const y = firstY + (row - firstRow) * ROW_HEIGHT;
-      const selected = rect !== null && row >= rect.firstRow && row < rect.firstRow + rect.rowCount;
-      if (selected) {
+      const marked = selected !== null && spansHold(selected.rows, row);
+      if (marked) {
         context.fillStyle = theme.selection;
         context.fillRect(0, y, this.gutterWidth, ROW_HEIGHT);
       }
       if (y + ROW_HEIGHT / 2 < HEADER_HEIGHT) continue;
-      context.fillStyle = selected ? theme.text : theme.muted;
+      context.fillStyle = marked ? theme.text : theme.muted;
       const label = this.edits && row >= this.edits.baseRows ? "+" : this.edits?.deleted(row) ? `− ${row + 1}` : String(row + 1);
       context.fillText(label, this.gutterWidth - CELL_PADDING, y + ROW_HEIGHT / 2);
     }
@@ -589,7 +645,7 @@ export class GridEngine {
       const clipLeft = Math.max(x, this.gutterWidth);
       context.rect(clipLeft, 0, x + columnWidth - clipLeft, HEADER_HEIGHT);
       context.clip();
-      if (rect && column >= rect.firstColumn && column < rect.firstColumn + rect.columnCount) {
+      if (selected && column >= selected.firstColumn && column < selected.firstColumn + selected.columnCount) {
         context.fillStyle = theme.selection;
         context.fillRect(x, 0, columnWidth, HEADER_HEIGHT);
       }
@@ -682,12 +738,24 @@ export class GridEngine {
       this.callbacks.sortRequested(hit.column, event.shiftKey);
       return;
     } else if (hit.area === "corner") {
-      this.select({ anchor: { row: 0, column: 0 }, focus: { row: 0, column: 0 }, mode: "all" });
+      this.select(spanning({ row: 0, column: 0 }, { row: 0, column: 0 }, "all"));
       return;
     }
     if (mode === null || cell === null || this.totalRows === 0 && mode !== "columns") return;
-    const anchor = extend && this.selection ? this.selection.anchor : cell;
-    this.select({ anchor, focus: cell, mode });
+    // Ctrl+click on a row number or a cell picks that row, or drops it (design system D21).
+    if (ctrl && !extend && (mode === "rows" || mode === "cells")) {
+      this.pickRow(cell);
+      return;
+    }
+    const previous = this.selection;
+    if (extend && previous && previous.picked.length > 0) {
+      // Shift after Ctrl+click adds the rows from the anchor, keeping those picked.
+      const focus = { row: cell.row, column: previous.focus.column };
+      this.select({ anchor: previous.anchor, focus, mode: "rows", picked: previous.picked, live: true });
+      return;
+    }
+    const anchor = extend && previous ? previous.anchor : cell;
+    this.select(spanning(anchor, cell, mode));
     this.dragging = mode;
     this.scroller.setPointerCapture(event.pointerId);
   }
@@ -712,7 +780,7 @@ export class GridEngine {
             ? { row: this.selection.focus.row, column: cell.column }
             : cell;
       if (focus.row !== this.selection.focus.row || focus.column !== this.selection.focus.column) {
-        this.select({ ...this.selection, focus });
+        this.select({ ...this.selection, focus, live: true });
       }
       return;
     }
@@ -727,28 +795,38 @@ export class GridEngine {
     this.scroller.releasePointerCapture(event.pointerId);
   }
 
-  /** The rectangle the selection covers, cut to the data. */
-  private selectionRect(): CellRect | null {
+  /** The rows and columns the selection covers, cut to the data. */
+  private selectionSpans(): GridSelection | null {
     const selection = this.selection;
     const columns = this.source?.columns.length ?? 0;
     if (!selection || columns === 0) return null;
     const { anchor, focus, mode } = selection;
     const rows = mode === "columns" || mode === "all" ? { first: 0, count: this.totalRows } : span(anchor.row, focus.row);
     const cols = mode === "rows" || mode === "all" ? { first: 0, count: columns } : span(anchor.column, focus.column);
-    const lastRow = Math.min(rows.first + rows.count, this.totalRows);
     const lastColumn = Math.min(cols.first + cols.count, columns);
-    if (lastRow <= rows.first || lastColumn <= cols.first) return null;
-    return {
-      firstRow: rows.first,
-      rowCount: lastRow - rows.first,
-      firstColumn: cols.first,
-      columnCount: lastColumn - cols.first,
-    };
+    if (lastColumn <= cols.first) return null;
+    const spans = mode === "rows" ? [...selection.picked] : [];
+    if (selection.live) spans.push({ firstRow: rows.first, rowCount: rows.count });
+    const merged = mergeSpans(spans, this.totalRows);
+    if (merged.length === 0) return null;
+    return { rows: merged, firstColumn: cols.first, columnCount: lastColumn - cols.first };
+  }
+
+  /**
+   * Ctrl+click: the rows already selected stay, and `cell`'s row joins them,
+   * or leaves them when it was selected. The cursor moves there either way.
+   */
+  private pickRow(cell: Cell): void {
+    const rows = this.selectionSpans()?.rows ?? [];
+    const picked = spansHold(rows, cell.row)
+      ? withoutRow(rows, cell.row)
+      : mergeSpans([...rows, { firstRow: cell.row, rowCount: 1 }], this.totalRows);
+    this.select({ anchor: cell, focus: cell, mode: "rows", picked, live: false });
   }
 
   private select(selection: Selection | null): void {
     this.selection = selection;
-    if (this.source) this.callbacks.selectionChanged(this.source.result, selection?.focus ?? null, this.selectionRect());
+    if (this.source) this.callbacks.selectionChanged(this.source.result, selection?.focus ?? null, this.selectionSpans());
     this.scheduleDraw();
   }
 
@@ -782,14 +860,14 @@ export class GridEngine {
     const ctrl = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
     if (ctrl && key === "c") {
-      const rect = this.selectionRect();
-      if (rect) this.callbacks.copy(source.result, rect, event.shiftKey);
+      const selected = this.selectionSpans();
+      if (selected) this.callbacks.copy(source.result, selected, event.shiftKey);
       event.preventDefault();
       return;
     }
     if (ctrl && key === "a") {
       const focus = this.selection?.focus ?? { row: 0, column: 0 };
-      this.select({ anchor: { row: 0, column: 0 }, focus, mode: "all" });
+      this.select(spanning({ row: 0, column: 0 }, focus, "all"));
       event.preventDefault();
       return;
     }
@@ -807,14 +885,14 @@ export class GridEngine {
       }
     }
     if (event.key === "Delete" && this.callbacks.deleteRequested) {
-      const rect = this.selectionRect();
-      if (rect) this.callbacks.deleteRequested(rect.firstRow, rect.rowCount);
+      const selected = this.selectionSpans();
+      if (selected) this.callbacks.deleteRequested(selected.rows);
       event.preventDefault();
       return;
     }
     if (event.key === "Escape" && this.selection) {
       const focus = this.selection.focus;
-      this.select({ anchor: focus, focus, mode: "cells" });
+      this.select(spanning(focus, focus, "cells"));
       event.preventDefault();
       return;
     }
@@ -861,9 +939,11 @@ export class GridEngine {
     // Shift with an arrow or page key extends; Tab and a plain move collapse to the cursor.
     if (event.shiftKey && event.key !== "Tab" && this.selection) {
       const mode = this.selection.mode === "all" ? "cells" : this.selection.mode;
-      this.select({ anchor: this.selection.anchor, focus, mode });
+      // Rows picked with Ctrl+click stay while Shift adds the rows from the anchor.
+      const picked = mode === "rows" ? this.selection.picked : [];
+      this.select({ anchor: this.selection.anchor, focus, mode, picked, live: true });
     } else {
-      this.select({ anchor: focus, focus, mode: "cells" });
+      this.select(spanning(focus, focus, "cells"));
     }
     this.reveal(focus);
   }
@@ -910,7 +990,7 @@ export class GridEngine {
       row: clamp(cell.row, 0, this.totalRows - 1),
       column: clamp(cell.column, 0, this.source.columns.length - 1),
     };
-    this.select({ anchor: target, focus: target, mode: "cells" });
+    this.select(spanning(target, target, "cells"));
     this.reveal(target);
   }
 

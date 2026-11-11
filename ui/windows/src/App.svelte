@@ -7,7 +7,7 @@
   import DataGrid from "./lib/grid/DataGrid.svelte";
   import CellEditor, { type Move } from "./lib/grid/CellEditor.svelte";
   import EditPreview from "./lib/grid/EditPreview.svelte";
-  import { setCompactRows, type Cell, type CellBox, type CellRect, type EditOverlay, type GridCallbacks, type GridSource, type SortKey } from "./lib/grid/engine";
+  import { setCompactRows, type Cell, type CellBox, type EditOverlay, type GridCallbacks, type GridSelection, type GridSource, type SortKey } from "./lib/grid/engine";
   import FilterRow, { type Condition } from "./lib/grid/FilterRow.svelte";
   import Pager, { PAGE_SIZES } from "./lib/grid/Pager.svelte";
   import RowDetail from "./lib/grid/RowDetail.svelte";
@@ -58,6 +58,7 @@
     OpenedConnection,
     ResultFilter,
     ResultWhere,
+    RowSpan,
     RunEvent,
     SavedConnection,
     SavedQuery,
@@ -155,7 +156,7 @@
     filtersOpen: boolean;
     keyView: { name: string; detail: KeyDetail } | null;
     cursor: { result: number; row: number; column: number } | null;
-    selected: CellRect | null;
+    selected: GridSelection | null;
     /** A query page shows its results only once something ran in it. */
     ran: boolean;
     /** What the last run sent from the editor, to frame the statement of the result shown. */
@@ -295,7 +296,9 @@
 
   /** The grid's cell cursor and selection, for the detail pane and the status bar. */
   let cursor: { result: number; row: number; column: number } | null = $state(null);
-  let selected: CellRect | null = $state(null);
+  let selected = $state<GridSelection | null>(null);
+  /** How many rows the selection holds, across every span. */
+  const selectedRows = $derived(selected ? selected.rows.reduce((total, span) => total + span.rowCount, 0) : 0);
   let detailOpen = $state(false);
   let grid: DataGrid | undefined = $state();
   /** A short note in the status bar, such as a copy's outcome. */
@@ -451,22 +454,23 @@
 
   const gridCallbacks: GridCallbacks = {
     fetchWindow: ipc.fetchWindow,
-    copy: (result, rect, withHeaders) => {
+    copy: (result, selection, withHeaders) => {
+      const rows = selection.rows.reduce((total, span) => total + span.rowCount, 0);
       ipc
-        .copyRange(result, rect.firstRow, rect.rowCount, rect.firstColumn, rect.columnCount, withHeaders)
+        .copyRange(result, selection.rows, selection.firstColumn, selection.columnCount, withHeaders)
         .then((text) => navigator.clipboard.writeText(text))
         .then(
-          () => note(`Copied ${numberFormat.format(rect.rowCount * rect.columnCount)} cells${withHeaders ? " with column names" : ""}`),
+          () => note(`Copied ${numberFormat.format(rows * selection.columnCount)} cells${withHeaders ? " with column names" : ""}`),
           (caught: unknown) => note(`Not copied: ${asCoreError(caught).message}`),
         );
     },
-    selectionChanged: (result, focus, rect) => {
+    selectionChanged: (result, focus, selection) => {
       cursor = focus ? { result, row: focus.row, column: focus.column } : null;
-      selected = rect;
+      selected = selection;
     },
     sortRequested: (column, additive) => void sortBy(column, additive),
     editRequested: (cell, typed) => void beginEdit(cell, typed),
-    deleteRequested: (firstRow, rowCount) => markDeleted(firstRow, rowCount),
+    deleteRequested: (rows) => markDeleted(rows),
   };
 
   function anyEdits(): boolean {
@@ -1084,11 +1088,16 @@
   /** Every page row in the selection is marked for delete, so the button unmarks them. */
   const selectionDeletes = $derived.by(() => {
     const set = pageSet;
-    const rect = selected;
-    if (!set || !rect || rect.firstRow >= set.totalRows) return false;
-    const last = Math.min(rect.firstRow + rect.rowCount, set.totalRows);
-    for (let row = rect.firstRow; row < last; row++) if (!edits.deleted.has(row)) return false;
-    return true;
+    if (!set || !selected) return false;
+    let any = false;
+    for (const span of selected.rows) {
+      const last = Math.min(span.firstRow + span.rowCount, set.totalRows);
+      for (let row = span.firstRow; row < last; row++) {
+        if (!edits.deleted.has(row)) return false;
+        any = true;
+      }
+    }
+    return any;
   });
 
   function cannotEdit() {
@@ -1144,11 +1153,12 @@
   }
 
   /** Delete on rows: marks the page's rows (or unmarks them, when all are marked) and drops new ones. */
-  function markDeleted(firstRow: number, rowCount: number) {
+  /** Marks the rows of `spans` for delete, or unmarks them when every one is marked; new rows go at once. */
+  function markDeleted(spans: RowSpan[]) {
     const set = pageSet;
     if (!canEdit || !set) return cannotEdit();
     const base = set.totalRows;
-    const rows = Array.from({ length: rowCount }, (_, offset) => firstRow + offset);
+    const rows = spans.flatMap((span) => Array.from({ length: span.rowCount }, (_, offset) => span.firstRow + offset));
     const existing = rows.filter((row) => row < base);
     const removed = new Set(rows.filter((row) => row >= base));
     const deleted = new Set(edits.deleted);
@@ -1604,7 +1614,7 @@
                 editing={editing !== null}
                 onToggleFilters={() => void toggleFilters()}
                 onAddRow={() => void addRow()}
-                onDeleteRows={() => selected && markDeleted(selected.firstRow, selected.rowCount)}
+                onDeleteRows={() => selected && markDeleted(selected.rows)}
                 onCopySql={copyPageSql}
                 onDiscard={discardEdits}
                 onPreview={() => void openPreview()}
@@ -1769,8 +1779,10 @@
       {/if}
       {#if connection.engine.hasDatabases && database}<span>in {database}</span>{/if}
       {#if !ran && !onTablePage}<span>No result yet</span>{/if}
-      {#if selected && selected.rowCount * selected.columnCount > 1}
-        <span>{numberFormat.format(selected.rowCount)} × {numberFormat.format(selected.columnCount)} selected</span>
+      {#if selected && selected.rows.length > 1}
+        <span>{numberFormat.format(selectedRows)} rows selected</span>
+      {:else if selected && selectedRows * selected.columnCount > 1}
+        <span>{numberFormat.format(selectedRows)} × {numberFormat.format(selected.columnCount)} selected</span>
       {/if}
       {#if activeSet}
         {#if onTablePage && tableTab}
