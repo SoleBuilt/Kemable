@@ -28,6 +28,7 @@
   --warning: #8a5300; --warning-soft: #fff4ce; --success: #0f7b0f; --success-soft: #dff6dd;
   --edit-changed: #f2b70038; --edit-deleted: #c42b1c1f; --edit-added: #0f7b0f1a;
   --tooltip: #171717; --on-tooltip: #fafafa; --scrim: #0000004d;
+  --window-close: #c42b1c; --on-window-close: #ffffff;
   --conn-red: #d13438; --conn-orange: #ca5010; --conn-green: #107c10; --conn-teal: #038387; --conn-blue: #0f6cbd; --conn-purple: #8764b8; --conn-gray: #737373;
   --syntax-keyword: #8a2bd8; --syntax-string: #0b7a3e; --syntax-number: #b35900; --syntax-comment: #8a8a8a; --syntax-type: #0b62a8; --syntax-operator: #525252; --syntax-name: #0a0a0a; --active-line: #00000008;
   --shadow-xs: 0 1px 2px #0000000f;
@@ -46,6 +47,7 @@
   --warning: #f2c14e; --warning-soft: #3a2f12; --success: #6ccb5f; --success-soft: #1d3320;
   --edit-changed: #f2c14e33; --edit-deleted: #ff8a8024; --edit-added: #6ccb5f24;
   --tooltip: #fafafa; --on-tooltip: #171717; --scrim: #00000099;
+  --window-close: #c42b1c; --on-window-close: #ffffff;
   --conn-red: #f1707b; --conn-orange: #f7894a; --conn-green: #54b054; --conn-teal: #4cc2c5; --conn-blue: #4fa3f7; --conn-purple: #b49fdb; --conn-gray: #a1a1a1;
   --syntax-keyword: #c792ea; --syntax-string: #a5d6a7; --syntax-number: #f5b062; --syntax-comment: #6f6f6f; --syntax-type: #82b1ff; --syntax-operator: #b0b0b0; --syntax-name: #fafafa; --active-line: #ffffff0a;
   --shadow-xs: 0 1px 2px #00000066;
@@ -65,6 +67,7 @@
     --warning: #f2c14e; --warning-soft: #3a2f12; --success: #6ccb5f; --success-soft: #1d3320;
     --edit-changed: #f2c14e33; --edit-deleted: #ff8a8024; --edit-added: #6ccb5f24;
     --tooltip: #fafafa; --on-tooltip: #171717; --scrim: #00000099;
+  --window-close: #c42b1c; --on-window-close: #ffffff;
     --conn-red: #f1707b; --conn-orange: #f7894a; --conn-green: #54b054; --conn-teal: #4cc2c5; --conn-blue: #4fa3f7; --conn-purple: #b49fdb; --conn-gray: #a1a1a1;
     --syntax-keyword: #c792ea; --syntax-string: #a5d6a7; --syntax-number: #f5b062; --syntax-comment: #6f6f6f; --syntax-type: #82b1ff; --syntax-operator: #b0b0b0; --syntax-name: #fafafa; --active-line: #ffffff0a;
     --shadow-xs: 0 1px 2px #00000066;

@@ -1,8 +1,15 @@
 <script lang="ts">
-  import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
   import type { CoreError, HistoryEntry } from "../types";
+  import Checkbox from "../ui/Checkbox.svelte";
+  import Button from "../ui/Button.svelte";
+  import Confirm from "../ui/Confirm.svelte";
+  import ErrorNote from "../ui/ErrorNote.svelte";
   import Icon from "../ui/Icon.svelte";
+  import ListItem from "../ui/ListItem.svelte";
+  import Note from "../ui/Note.svelte";
+  import SearchField from "../ui/SearchField.svelte";
+  import Spacer from "../ui/Spacer.svelte";
 
   interface Props {
     /** The connection's title: the list shows its entries, or every entry. */
@@ -78,60 +85,49 @@
   }
 </script>
 
-<div class="pb-search">
-  <Icon name="search" />
-  <input placeholder="Find in history" aria-label="Find in history" spellcheck="false" bind:value={text} oninput={search} />
-</div>
+<SearchField placeholder="Find in history" bind:value={text} oninput={search} />
 <div class="pb-side-tools">
-  <label class="pb-check"><input type="checkbox" bind:checked={onlyThis} /> This connection</label>
-  <span class="pb-spacer"></span>
+  <Checkbox bind:checked={onlyThis}>This connection</Checkbox>
+  <Spacer />
   {#if confirmClear}
-    <span class="pb-meta">Clear it all?</span>
-    <button class="pb-btn pb-btn--ghost pb-btn--sm is-danger" onclick={clearAll}>Clear</button>
-    <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => (confirmClear = false)}>Keep</button>
+    <Confirm question="Clear it all?" action="Clear" onConfirm={clearAll} onCancel={() => (confirmClear = false)} />
   {:else}
-    <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => (confirmClear = true)}>Clear</button>
+    <Button variant="ghost" size="sm" onclick={() => (confirmClear = true)}>Clear</Button>
   {/if}
 </div>
 <div class="pb-side-body">
-  {#if error}
-    <div class="pb-tree-error"><span class="pb-tree-error-title">{errorTitle(error)}</span><span>{error.message}</span></div>
-  {/if}
+  {#if error}<ErrorNote {error} />{/if}
   <div class="pb-list">
     {#each entries as entry (entry.id)}
-      <div class="pb-list-entry">
-        <button class="pb-list-item" data-tip-start="" data-tip="Double-click to put it in the editor" ondblclick={() => onInsert(entry.statement)}>
-          <span class="pb-list-line">
-            {#if entry.outcome === "succeeded"}
-              <Icon name="check-circle" size="sm" class="pb-ok" />
-            {:else if entry.outcome === "failed"}
-              <Icon name="error" size="sm" class="pb-bad" />
-            {:else}
-              <Icon name="stop" size="sm" class="pb-muted" />
-            {/if}
-            <span class="pb-meta pb-num">{time.format(entry.ranAt)}</span>
-          </span>
-          <span class="pb-code-line">{firstLine(entry.statement)}</span>
-          <span class="pb-meta"
-            >{[entry.database, `${number.format(entry.durationMs)} ms`, entry.rows === null ? null : `${number.format(entry.rows)} rows`]
-              .filter(Boolean)
-              .join(" · ")}</span
-          >
-        </button>
-        <span class="pb-list-actions">
-          <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => onInsert(entry.statement)}>Insert</button>
-          <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => onRun(entry)}><Icon name="play" />Run</button>
-          <span class="pb-spacer"></span>
-          <button class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Delete from the history" onclick={() => remove(entry)}
-            ><Icon name="trash" /></button
-          >
+      <ListItem tip="Double-click to put it in the editor" ondblclick={() => onInsert(entry.statement)}>
+        <span class="pb-list-line">
+          {#if entry.outcome === "succeeded"}
+            <Icon name="check-circle" size="sm" class="pb-ok" />
+          {:else if entry.outcome === "failed"}
+            <Icon name="error" size="sm" class="pb-bad" />
+          {:else}
+            <Icon name="stop" size="sm" class="pb-muted" />
+          {/if}
+          <span class="pb-meta pb-num">{time.format(entry.ranAt)}</span>
         </span>
-      </div>
+        <span class="pb-code-line">{firstLine(entry.statement)}</span>
+        <span class="pb-meta"
+          >{[entry.database, `${number.format(entry.durationMs)} ms`, entry.rows === null ? null : `${number.format(entry.rows)} rows`]
+            .filter(Boolean)
+            .join(" · ")}</span
+        >
+        {#snippet actions()}
+          <Button variant="ghost" size="sm" onclick={() => onInsert(entry.statement)}>Insert</Button>
+          <Button variant="ghost" size="sm" icon="play" onclick={() => onRun(entry)}>Run</Button>
+          <Spacer />
+          <Button variant="ghost" size="sm" icon="trash" label="Delete from the history" onclick={() => remove(entry)} />
+        {/snippet}
+      </ListItem>
     {:else}
-      {#if !error}<p class="pb-side-hint">No queries yet. What you run from the editor shows here.</p>{/if}
+      {#if !error}<Note>No queries yet. What you run from the editor shows here.</Note>{/if}
     {/each}
     {#if more}
-      <button class="pb-btn pb-btn--link" style="margin: 8px 12px" onclick={() => load(true)}>Load more</button>
+      <Button variant="link" style="margin: 8px 12px" onclick={() => load(true)}>Load more</Button>
     {/if}
   </div>
 </div>

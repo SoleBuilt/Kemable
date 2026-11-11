@@ -2,6 +2,7 @@
 // its types, so a rename in commands.rs fails `pnpm check` instead of at runtime.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   BrowseQuery,
   BrowseStatements,
@@ -188,6 +189,19 @@ export const ipc = {
   /** A result's filter as a WHERE for the connection's engine, to copy. */
   resultWhere: (conn: number, result: number, filters: ResultFilter[], matchAny: boolean) =>
     invoke<ResultWhere>("result_where", { conn, result, filters, matchAny }),
+};
+
+/**
+ * The app's window. It has no system title bar: the toolbar draws the
+ * minimize, maximize and close buttons (docs/decisions/0014-ui-components.md).
+ */
+export const appWindow = {
+  minimize: () => getCurrentWindow().minimize(),
+  toggleMaximize: () => getCurrentWindow().toggleMaximize(),
+  close: () => getCurrentWindow().close(),
+  isMaximized: () => getCurrentWindow().isMaximized(),
+  /** Calls `handler` after every resize; resolves to the function that stops it. */
+  onResized: (handler: () => void) => getCurrentWindow().onResized(handler),
 };
 
 export function asCoreError(error: unknown): CoreError {

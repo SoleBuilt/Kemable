@@ -9,7 +9,8 @@
 .pb-root ::-webkit-scrollbar { width: 10px; height: 10px; }
 .pb-root ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border: 2px solid transparent; border-radius: 9999px; background-clip: padding-box; }
 .pb-root ::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
-.pb-root :focus-visible, .pb-part :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+:where(.pb-root, .pb-part) :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+:where(.pb-root, .pb-part) :is(input:not([type="checkbox"]), textarea):focus-visible { outline: none; }
 /* :where keeps this at zero specificity, so a class such as .pb-btn--primary sets the colour of an <a> button. */
 :where(.pb-root, .pb-part) a { color: inherit; text-decoration: none; }
 .pb-mono { font-family: var(--font-mono); }
@@ -77,7 +78,7 @@
   transition: border-color .12s var(--ease), box-shadow .12s var(--ease);
 }
 .pb-input::placeholder { color: var(--fg-muted); }
-.pb-input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--focus-halo); }
+input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-input--sm { height: var(--size-control-sm); padding: 0 var(--space-2); font-size: 12px; }
 .pb-select { appearance: none; padding-right: 30px; background-image: linear-gradient(45deg, transparent 50%, var(--fg-muted) 50%), linear-gradient(135deg, var(--fg-muted) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 12px) 50%; background-size: 4px 4px; background-repeat: no-repeat; }
 .pb-hint { font-size: 12px; line-height: 16px; color: var(--fg-muted); }
@@ -440,7 +441,9 @@ span.pb-cond-lead { display: inline-flex; color: var(--fg-muted); font-size: 12p
 .pb-side { min-width: 0; overflow: hidden; }
 .pb-pane-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: auto; }
 .pb-pane-body[hidden] { display: none; }
-.pb-pane.is-main > :not(.pb-pane-head) { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.pb-pane-body { overflow: hidden; }
+.pb-pane-body > * { flex: none; }
+.pb-pane-body > .pb-side-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .pb-side-tools { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); }
 .pb-side-foot { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-top: 1px solid var(--line); color: var(--fg-muted); font-size: 12px; }
 .pb-side-hint { margin: 0; padding: var(--space-2) var(--space-3); color: var(--fg-muted); font-size: 12px; line-height: 16px; }
@@ -492,3 +495,25 @@ span.pb-cond-lead { display: inline-flex; color: var(--fg-muted); font-size: 12p
 .pb-option-action { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: auto; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--fg-muted); opacity: 0; transition: opacity .12s var(--ease), background-color .12s var(--ease); }
 .pb-option:hover .pb-option-action, .pb-option[aria-selected="true"] .pb-option-action, .pb-option-action:focus-visible { opacity: 1; }
 .pb-option-action:hover { background: var(--pressed); color: var(--fg); }
+
+/* Title bar: the window has no system title bar, so the toolbar is one. Its empty parts drag the window. */
+.pb-titlebar { padding-right: 0; user-select: none; -webkit-user-select: none; }
+.pb-titlebar > .pb-tool-right { align-self: stretch; }
+.pb-logo { width: 20px; height: 20px; margin: 0 var(--space-2) 0 var(--space-1); flex: none; }
+.pb-winctl { display: flex; align-self: stretch; margin-left: var(--space-2); }
+.pb-winctl-btn { display: grid; place-items: center; width: 46px; height: 100%; padding: 0; border: 0; background: transparent; color: var(--fg-secondary); transition: background-color .12s var(--ease), color .12s var(--ease); }
+.pb-winctl-btn:hover { background: var(--hover); color: var(--fg); }
+.pb-winctl-btn:active { background: var(--pressed); }
+.pb-winctl-btn.is-close:hover, .pb-winctl-btn.is-close:active { background: var(--window-close); color: var(--on-window-close); }
+.pb-winctl-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; shape-rendering: crispEdges; }
+.pb-winctl-btn:focus-visible { outline-offset: -2px; }
+
+/* Parts of the components in lib/ui */
+.pb-dialog-form { display: contents; }
+.pb-dialog-body.is-scroll { min-height: 0; overflow: auto; }
+.pb-check.is-top { align-items: flex-start; }
+.pb-check.is-top input { margin-top: 2px; }
+.pb-check--indent { padding-left: 24px; }
+.pb-btn--ghost.is-danger { color: var(--danger); }
+.pb-welcome { display: flex; flex-direction: column; min-height: 0; background: var(--canvas); }
+.pb-welcome > .pb-empty { flex: 1 1 auto; }

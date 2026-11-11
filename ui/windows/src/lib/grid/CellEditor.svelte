@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import { onMount } from "svelte";
+  import Button from "../ui/Button.svelte";
   import type { CellBox } from "./engine";
 
   interface Props {
@@ -83,12 +84,14 @@
     spellcheck="false"
     aria-label="Cell value"
   ></textarea>
-  <button
-    type="button"
-    class="pb-btn pb-btn--ghost pb-btn--sm pb-cell-editor-null"
-    data-tip-end=""
-    data-tip="Set NULL  Ctrl+Shift+N"
+  <!-- Pressing it must not blur the box first, which would commit the text instead. -->
+  <Button
+    variant="ghost"
+    size="sm"
+    class="pb-cell-editor-null"
+    tip="Set NULL  Ctrl+Shift+N"
+    tipAt="end"
     onmousedown={(event) => event.preventDefault()}
-    onclick={() => commit(null, "down")}>NULL</button
+    onclick={() => commit(null, "down")}>NULL</Button
   >
 </div>

@@ -18,7 +18,10 @@
 
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import Dot from "./Dot.svelte";
   import Icon from "./Icon.svelte";
+  import Keys from "./Keys.svelte";
+  import SearchField from "./SearchField.svelte";
 
   interface Props {
     commands: Command[];
@@ -83,20 +86,17 @@
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="pb-cmdk-scrim" onclick={onClose}></div>
   <div class="pb-cmdk" role="dialog" aria-label="Search connections and commands">
-    <div class="pb-cmdk-input">
-      <Icon name="search" />
-      <input
-        bind:this={input}
-        placeholder="Type a command or search…"
-        aria-label="Type a command or search"
-        spellcheck="false"
-        autocomplete="off"
-        bind:value={query}
-        oninput={() => (active = 0)}
-        onkeydown={onKeydown}
-      />
-      <kbd class="pb-kbd">Esc</kbd>
-    </div>
+    <SearchField
+      variant="palette"
+      bind:ref={input}
+      bind:value={query}
+      placeholder="Type a command or search…"
+      label="Type a command or search"
+      oninput={() => (active = 0)}
+      onkeydown={onKeydown}
+    >
+      {#snippet end()}<Keys keys={["Esc"]} />{/snippet}
+    </SearchField>
     <div class="pb-cmdk-list" role="listbox" aria-label="Commands" bind:this={list}>
       {#each groups as group, index (group.group)}
         <div class="pb-cmdk-group" role="group" aria-label={group.group}>
@@ -118,7 +118,7 @@
               }}
             >
               {#if command.dot}
-                <span class="pb-dot" style:--conn="var(--conn-{command.dot})"></span>
+                <Dot color={command.dot} />
               {:else if command.icon}
                 <Icon name={command.icon} />
               {/if}
@@ -126,7 +126,7 @@
               {#if command.meta}<span class="pb-cmdk-meta">{command.meta}</span>{/if}
               {#if command.keys}
                 <span class="pb-cmdk-end">
-                  <span class="pb-keys">{#each command.keys as key (key)}<kbd class="pb-kbd">{key}</kbd>{/each}</span>
+                  <Keys keys={command.keys} />
                 </span>
               {/if}
             </button>
@@ -137,9 +137,9 @@
       {/each}
     </div>
     <div class="pb-cmdk-foot">
-      <span><span class="pb-keys"><kbd class="pb-kbd">↑</kbd><kbd class="pb-kbd">↓</kbd></span>to move</span>
-      <span><kbd class="pb-kbd">↵</kbd>to open</span>
-      <span><kbd class="pb-kbd">Esc</kbd>to close</span>
+      <span><Keys keys={["↑", "↓"]} />to move</span>
+      <span><Keys keys={["↵"]} />to open</span>
+      <span><Keys keys={["Esc"]} />to close</span>
     </div>
   </div>
 </div>

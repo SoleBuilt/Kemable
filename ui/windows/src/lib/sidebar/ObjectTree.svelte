@@ -9,10 +9,12 @@
 
 <script lang="ts">
   import { untrack } from "svelte";
-  import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
   import type { CoreError, ObjectKind, OpenedConnection, SchemaInfo } from "../types";
-  import Icon, { type IconName } from "../ui/Icon.svelte";
+  import ErrorNote from "../ui/ErrorNote.svelte";
+  import type { IconName } from "../ui/Icon.svelte";
+  import SearchField from "../ui/SearchField.svelte";
+  import TreeRow from "../ui/TreeRow.svelte";
 
   interface Props {
     connection: OpenedConnection;
@@ -169,96 +171,53 @@
   }
 </script>
 
-<div class="pb-search">
-  <Icon name="search" />
-  <input placeholder="Filter objects" aria-label="Filter objects" spellcheck="false" bind:value={filter} />
-</div>
+<SearchField placeholder="Filter objects" bind:value={filter} />
 
 <div class="pb-side-body">
   <div class="pb-tree" role="tree" aria-label="Objects">
-    {#if topError}
-      <div class="pb-tree-error">
-        <span class="pb-tree-error-title">{errorTitle(topError)}</span>
-        <span>{topError.message}</span>
-      </div>
-    {/if}
+    {#if topError}<ErrorNote error={topError} />{/if}
 
     {#each nodes as node (node.name ?? "")}
       {@const base = node.name === null ? 0 : 1}
       {#if node.name !== null}
         {@const name = node.name}
-        <button
-          class="pb-tree-row"
-          class:is-current={name === database}
-          style:--depth="0"
-          role="treeitem"
-          aria-expanded={node.open}
-          aria-selected={name === database}
-          data-tip-start="" data-tip={name === database ? "The editor runs here" : "Double-click to run the editor here"}
+        <TreeRow
+          depth={0}
+          open={node.open}
+          icon="database"
+          current={name === database}
+          tip={name === database ? "The editor runs here" : "Double-click to run the editor here"}
           onclick={() => toggle(node)}
           ondblclick={() => onUseDatabase(name)}
-          oncontextmenu={(event) => context(event, { kind: "database", name })}
+          oncontextmenu={(event) => context(event, { kind: "database", name })}>{name}</TreeRow
         >
-          <Icon name={node.open ? "chev-down" : "chev-right"} class="pb-twist" />
-          <Icon name="database" class="pb-kind" />{name}
-        </button>
       {/if}
 
       {#if node.open}
         {#if node.loading && node.groups === null}
           <div class="pb-tree-note" style:--depth={base}>Loading…</div>
         {/if}
-        {#if node.error}
-          <div class="pb-tree-error" style:--depth={base}>
-            <span class="pb-tree-error-title">{errorTitle(node.error)}</span>
-            <span>{node.error.message}</span>
-          </div>
-        {/if}
+        {#if node.error}<ErrorNote error={node.error} />{/if}
         {#each node.groups ?? [] as group (group.schema.name)}
-          <button
-            class="pb-tree-row"
-            style:--depth={base}
-            role="treeitem"
-            aria-expanded={group.open}
-            aria-selected="false"
-            onclick={() => (group.open = !group.open)}
-          >
-            <Icon name={group.open ? "chev-down" : "chev-right"} class="pb-twist" />
-            <Icon name="folder" class="pb-kind" />{group.schema.name}
-          </button>
+          <TreeRow depth={base} open={group.open} icon="folder" onclick={() => (group.open = !group.open)}>{group.schema.name}</TreeRow>
           {#if group.open}
             {#each folders(group) as folder (folder.label)}
               {@const shut = group.closed.has(folder.label) && !needle}
-              <button
-                class="pb-tree-row"
-                style:--depth={base + 1}
-                role="treeitem"
-                aria-expanded={!shut}
-                aria-selected="false"
-                onclick={() => toggleFolder(group, folder.label)}
-              >
-                <Icon name={shut ? "chev-right" : "chev-down"} class="pb-twist" />{folder.label}<span class="pb-meta"
-                  >{folder.objects.length}</span
-                >
-              </button>
+              <TreeRow depth={base + 1} open={!shut} meta={folder.objects.length} onclick={() => toggleFolder(group, folder.label)}>{folder.label}</TreeRow>
               {#if !shut}
                 {#each folder.objects as object (key(node, object))}
-                  <button
-                    class="pb-tree-row"
-                    class:is-selected={selected === key(node, object)}
-                    style:--depth={base + 2}
-                    role="treeitem"
-                    aria-selected={selected === key(node, object)}
+                  <TreeRow
+                    depth={base + 2}
+                    icon={folder.icon}
+                    selected={selected === key(node, object)}
                     onclick={() => (selected = key(node, object))}
                     ondblclick={() => onOpen(object, node.name)}
                     onkeydown={(event) => onKeydown(event, node, object)}
                     oncontextmenu={(event) => {
                       selected = key(node, object);
                       context(event, { kind: "object", object, database: node.name });
-                    }}
+                    }}>{object.name}</TreeRow
                   >
-                    <span class="pb-twist"></span><Icon name={folder.icon} class="pb-kind" />{object.name}
-                  </button>
                 {/each}
               {/if}
             {/each}

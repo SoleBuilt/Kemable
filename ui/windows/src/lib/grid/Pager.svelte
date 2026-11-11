@@ -5,7 +5,9 @@
 
 <script lang="ts">
   import Combobox from "../ui/Combobox.svelte";
-  import Icon from "../ui/Icon.svelte";
+  import Button from "../ui/Button.svelte";
+  import Input from "../ui/Input.svelte";
+  import Separator from "../ui/Separator.svelte";
 
   /**
    * A table tab's pager, at the status bar's right end: first, previous, a page box,
@@ -52,19 +54,11 @@
 </script>
 
 <div class="pb-pager" role="navigation" aria-label="Pages">
-  <button class="pb-btn pb-btn--ghost pb-pager-btn" onclick={() => go(1)} disabled={held || page === 1} aria-label="First page" data-tip="First page  Ctrl+Alt+Up"
-    ><Icon name="chevs-left" /></button
-  >
-  <button
-    class="pb-btn pb-btn--ghost pb-pager-btn"
-    onclick={() => go(page - 1)}
-    disabled={held || page === 1}
-    aria-label="Previous page"
-    data-tip="Previous page  Ctrl+["><Icon name="chev-left" /></button
-  >
+  <Button variant="ghost" class="pb-pager-btn" icon="chevs-left" label="First page" tip="First page  Ctrl+Alt+Up" disabled={held || page === 1} onclick={() => go(1)} />
+  <Button variant="ghost" class="pb-pager-btn" icon="chev-left" label="Previous page" tip="Previous page  Ctrl+[" disabled={held || page === 1} onclick={() => go(page - 1)} />
   <span class="pb-pager-label">Page</span>
-  <input
-    class="pb-input pb-pager-input pb-num"
+  <Input
+    class="pb-pager-input pb-num"
     inputmode="numeric"
     aria-label="Page number"
     disabled={held}
@@ -83,18 +77,18 @@
     onblur={() => (draft = null)}
   />
   <span class="pb-pager-label">{pages === null ? "" : `of ${numberFormat.format(pages)}`}</span>
-  <button class="pb-btn pb-btn--ghost pb-pager-btn" onclick={() => go(page + 1)} disabled={held || !hasNext} aria-label="Next page" data-tip="Next page  Ctrl+]"
-    ><Icon name="chev-right" /></button
-  >
-  <button
-    class="pb-btn pb-btn--ghost pb-pager-btn"
-    onclick={() => pages !== null && go(pages)}
+  <Button variant="ghost" class="pb-pager-btn" icon="chev-right" label="Next page" tip="Next page  Ctrl+]" disabled={held || !hasNext} onclick={() => go(page + 1)} />
+  <Button
+    variant="ghost"
+    class="pb-pager-btn"
+    icon="chevs-right"
+    label="Last page"
+    tip="Last page  Ctrl+Alt+Down"
+    tipAt="end"
     disabled={held || pages === null || page >= pages}
-    aria-label="Last page"
-    data-tip-end=""
-    data-tip="Last page  Ctrl+Alt+Down"><Icon name="chevs-right" /></button
-  >
-  <span class="pb-sep"></span>
+    onclick={() => pages !== null && go(pages)}
+  />
+  <Separator />
   <Combobox
     label="Rows per page"
     small

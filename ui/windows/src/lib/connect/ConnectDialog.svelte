@@ -25,7 +25,15 @@
   import { asCoreError, ipc } from "../ipc";
   import type { CoreError, SavedConnection, TlsMode } from "../types";
   import Combobox from "../ui/Combobox.svelte";
-  import Icon from "../ui/Icon.svelte";
+  import Button from "../ui/Button.svelte";
+  import Checkbox from "../ui/Checkbox.svelte";
+  import Confirm from "../ui/Confirm.svelte";
+  import Dialog from "../ui/Dialog.svelte";
+  import Field from "../ui/Field.svelte";
+  import InfoBar from "../ui/InfoBar.svelte";
+  import Input from "../ui/Input.svelte";
+  import Segmented from "../ui/Segmented.svelte";
+  import Spacer from "../ui/Spacer.svelte";
 
   interface Props {
     engine: NetworkEngine;
@@ -298,8 +306,7 @@
     }
   }
 
-  async function submit(event: SubmitEvent) {
-    event.preventDefault();
+  async function submit() {
     if (busy) return;
     const config = buildConfig();
     if (!config) return;
@@ -327,182 +334,117 @@
     busy = false;
   }
 
-  function onKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape" && !busy) onClose();
-  }
+  const LOGINS = [
+    { value: false, label: "SQL Server login" },
+    { value: true, label: "Windows account" },
+  ];
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<Dialog title={saved ? `Edit ${saved.name}` : "New connection"} width={600} {busy} {onClose} onsubmit={() => void submit()}>
+  {#if error}<InfoBar tone="danger" title={errorTitle(error)} message={error.message} />{/if}
 
-<div class="pb-overlay pb-overlay--fixed" role="presentation">
-  <form class="pb-dialog" style="width: 600px" onsubmit={submit} aria-labelledby="connect-title">
-    <div class="pb-dialog-head">
-      <h2 class="pb-dialog-title" id="connect-title">{saved ? `Edit ${saved.name}` : "New connection"}</h2>
-      <button type="button" class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Close" data-tip-end="" data-tip="Close  Esc" onclick={onClose}
-        ><Icon name="x" /></button
-      >
+  <div class="pb-form-2">
+    <Field label="Engine" as="group">
+      <Combobox label="Engine" width={268} options={engineOptions} value={engine} onPick={pickEngine} />
+    </Field>
+    <Field label="Saved connection" as="group">
+      <Combobox
+        label="Saved connection"
+        width={268}
+        listWidth={320}
+        placement="end"
+        searchable={library.length > 6}
+        searchPlaceholder="Find a connection"
+        options={savedOptions}
+        value={savedId ?? NONE}
+        onPick={(id) => fill(library.find((entry) => entry.id === id) ?? null)}
+      />
+    </Field>
+  </div>
+
+  {#if http}
+    <div class="pb-form-2">
+      <Field label="Account ID">
+        <Input mono bind:ref={accountInput} bind:value={account} required placeholder="32 letters and digits, from the dashboard" />
+      </Field>
+      <Field label="Database">
+        <Input mono bind:value={database} placeholder="Optional: every database shows in the tree" />
+      </Field>
     </div>
-    <div class="pb-dialog-body">
-      {#if error}
-        <div class="pb-info pb-info--danger" role="alert">
-          <Icon name="error" />
-          <div class="pb-info-text"><span class="pb-info-title">{errorTitle(error)}</span><span class="pb-info-msg">{error.message}</span></div>
-        </div>
-      {/if}
+    <Field label="API token" hint="Each statement is its own request and its own transaction. Local D1 databases are SQLite files: open them with Open file.">
+      <Input
+        type="password"
+        bind:value={password}
+        placeholder={savedId && saved?.savePassword ? "Kept in Windows Credential Manager" : "A token with D1 Read (and Edit to write)"}
+      />
+    </Field>
+  {:else}
+    <Field label="Connection URL" hint="Paste a URL (Neon, Supabase, PostgreSQL, SQL Server or Redis) to fill the fields below.">
+      <Input mono bind:ref={urlInput} bind:value={url} onchange={fillFromUrl} onpaste={() => setTimeout(fillFromUrl)} placeholder={info.urlHint} />
+    </Field>
+  {/if}
 
+  <Field label="Name"><Input bind:value={name} placeholder={defaultName() || "My database"} /></Field>
+
+  {#if !http}
+    <div class="pb-form-grid">
+      <Field label="Host"><Input bind:value={host} required placeholder={info.hostHint} /></Field>
+      <Field label="Port"><Input class="pb-num" bind:value={port} placeholder={String(info.port)} inputmode="numeric" /></Field>
+    </div>
+    <Field label={engine === "redis" ? "Database number" : "Database"} hint={engine === "redis" ? undefined : "The tree shows every database this login may see."}>
+      <Input
+        bind:value={database}
+        placeholder={engine === "redis" ? "0" : "Optional: pick one after connecting"}
+        inputmode={engine === "redis" ? "numeric" : undefined}
+      />
+    </Field>
+    {#if engine === "mssql"}
+      <Field label="Sign in with" as="group">
+        <Segmented label="Sign in with" fill options={LOGINS} value={windowsLogin} onChange={(windows) => (windowsLogin = windows)} />
+      </Field>
+    {/if}
+    {#if usesLogin}
       <div class="pb-form-2">
-        <div class="pb-field">
-          <span class="pb-label">Engine</span>
-          <Combobox label="Engine" width={268} options={engineOptions} value={engine} onPick={pickEngine} />
-        </div>
-        <div class="pb-field">
-          <span class="pb-label">Saved connection</span>
-          <Combobox
-            label="Saved connection"
-            width={268}
-            listWidth={320}
-            placement="end"
-            searchable={library.length > 6}
-            searchPlaceholder="Find a connection"
-            options={savedOptions}
-            value={savedId ?? NONE}
-            onPick={(id) => fill(library.find((entry) => entry.id === id) ?? null)}
-          />
-        </div>
+        <Field label="User">
+          <Input bind:value={user} placeholder={engine === "postgres" ? "postgres" : engine === "redis" ? "Optional (ACL user)" : "sa"} />
+        </Field>
+        <Field label="Password">
+          <Input type="password" bind:value={password} placeholder={savedId && saved?.savePassword ? "Kept in Windows Credential Manager" : ""} />
+        </Field>
       </div>
+    {/if}
+    <Field label="Encryption" as="group">
+      <Combobox label="Encryption" width={552} options={tlsModes} value={tls} onPick={(mode) => (tls = mode)} />
+    </Field>
+  {/if}
 
-      {#if http}
-        <div class="pb-form-2">
-          <label class="pb-field"
-            ><span class="pb-label">Account ID</span><input
-              class="pb-input pb-mono"
-              bind:this={accountInput}
-              bind:value={account}
-              required
-              spellcheck="false"
-              placeholder="32 letters and digits, from the dashboard"
-            /></label
-          >
-          <label class="pb-field"
-            ><span class="pb-label">Database</span><input
-              class="pb-input pb-mono"
-              bind:value={database}
-              placeholder="Optional: every database shows in the tree"
-              spellcheck="false"
-            /></label
-          >
-        </div>
-        <label class="pb-field"
-          ><span class="pb-label">API token</span><input
-            class="pb-input"
-            bind:value={password}
-            type="password"
-            placeholder={savedId && saved?.savePassword ? "Kept in Windows Credential Manager" : "A token with D1 Read (and Edit to write)"}
-          /><span class="pb-hint">Each statement is its own request and its own transaction. Local D1 databases are SQLite files: open them with Open file.</span></label
-        >
+  <div class="pb-checks">
+    <Checkbox bind:checked={save}>Save this connection</Checkbox>
+    {#if save && usesLogin}
+      <Checkbox class="pb-check--indent" bind:checked={savePassword}>Keep the {http ? "token" : "password"} in Windows Credential Manager</Checkbox>
+    {/if}
+  </div>
+  {#if Object.keys(options).length > 0}
+    <p class="pb-hint">
+      From the URL: {Object.entries(options)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(", ")}
+    </p>
+  {/if}
+
+  {#snippet footer()}
+    {#if savedId}
+      {#if confirmDelete}
+        <Confirm size="md" question={`Delete ${name || "it"}?`} action="Delete" {busy} onConfirm={remove} onCancel={() => (confirmDelete = false)} />
       {:else}
-        <label class="pb-field"
-          ><span class="pb-label">Connection URL</span><input
-            class="pb-input pb-mono"
-            bind:this={urlInput}
-            bind:value={url}
-            onchange={fillFromUrl}
-            onpaste={() => setTimeout(fillFromUrl)}
-            placeholder={info.urlHint}
-            spellcheck="false"
-          /><span class="pb-hint">Paste a URL (Neon, Supabase, PostgreSQL, SQL Server or Redis) to fill the fields below.</span></label
-        >
+        <Button variant="ghost" icon="trash" disabled={busy} tip="Delete this saved connection" tipAt="start" onclick={() => (confirmDelete = true)}>Delete…</Button>
       {/if}
-
-      <label class="pb-field"><span class="pb-label">Name</span><input class="pb-input" bind:value={name} placeholder={defaultName() || "My database"} spellcheck="false" /></label>
-
-      {#if !http}
-        <div class="pb-form-grid">
-          <label class="pb-field"><span class="pb-label">Host</span><input class="pb-input" bind:value={host} required spellcheck="false" placeholder={info.hostHint} /></label>
-          <label class="pb-field"><span class="pb-label">Port</span><input class="pb-input pb-num" bind:value={port} placeholder={String(info.port)} inputmode="numeric" /></label>
-        </div>
-        <label class="pb-field">
-          <span class="pb-label">{engine === "redis" ? "Database number" : "Database"}</span>
-          <input
-            class="pb-input"
-            bind:value={database}
-            placeholder={engine === "redis" ? "0" : "Optional: pick one after connecting"}
-            inputmode={engine === "redis" ? "numeric" : undefined}
-            spellcheck="false"
-          />
-          {#if engine !== "redis"}<span class="pb-hint">The tree shows every database this login may see.</span>{/if}
-        </label>
-        {#if engine === "mssql"}
-          <div class="pb-field">
-            <span class="pb-label">Sign in with</span>
-            <span class="pb-seg pb-seg--fill" role="radiogroup" aria-label="Sign in with">
-              <button type="button" role="radio" aria-checked={!windowsLogin} onclick={() => (windowsLogin = false)}>SQL Server login</button>
-              <button type="button" role="radio" aria-checked={windowsLogin} onclick={() => (windowsLogin = true)}>Windows account</button>
-            </span>
-          </div>
-        {/if}
-        {#if usesLogin}
-          <div class="pb-form-2">
-            <label class="pb-field"
-              ><span class="pb-label">User</span><input
-                class="pb-input"
-                bind:value={user}
-                placeholder={engine === "postgres" ? "postgres" : engine === "redis" ? "Optional (ACL user)" : "sa"}
-                spellcheck="false"
-              /></label
-            >
-            <label class="pb-field"
-              ><span class="pb-label">Password</span><input
-                class="pb-input"
-                bind:value={password}
-                type="password"
-                placeholder={savedId && saved?.savePassword ? "Kept in Windows Credential Manager" : ""}
-              /></label
-            >
-          </div>
-        {/if}
-        <div class="pb-field">
-          <span class="pb-label">Encryption</span>
-          <Combobox label="Encryption" width={552} options={tlsModes} value={tls} onPick={(mode) => (tls = mode)} />
-        </div>
-      {/if}
-
-      <div class="pb-checks">
-        <label class="pb-check"><input type="checkbox" bind:checked={save} /> Save this connection</label>
-        {#if save && usesLogin}
-          <label class="pb-check" style="padding-left: 24px"
-            ><input type="checkbox" bind:checked={savePassword} /> Keep the {http ? "token" : "password"} in Windows Credential Manager</label
-          >
-        {/if}
-      </div>
-      {#if Object.keys(options).length > 0}
-        <p class="pb-hint">
-          From the URL: {Object.entries(options)
-            .map(([key, value]) => `${key}=${value}`)
-            .join(", ")}
-        </p>
-      {/if}
-    </div>
-    <div class="pb-dialog-foot">
-      {#if savedId}
-        {#if confirmDelete}
-          <span class="pb-meta">Delete {name || "it"}?</span>
-          <button type="button" class="pb-btn pb-btn--danger" onclick={remove} disabled={busy}>Delete</button>
-          <button type="button" class="pb-btn pb-btn--ghost" onclick={() => (confirmDelete = false)}>Keep</button>
-        {:else}
-          <button type="button" class="pb-btn pb-btn--ghost" onclick={() => (confirmDelete = true)} disabled={busy} data-tip-start="" data-tip="Delete this saved connection"
-            ><Icon name="trash" />Delete…</button
-          >
-        {/if}
-      {/if}
-      <span class="pb-spacer"></span>
-      <button type="button" class="pb-btn pb-btn--ghost" onclick={onClose} disabled={busy}>Cancel</button>
-      {#if save}
-        <button type="button" class="pb-btn pb-btn--secondary" onclick={saveOnly} disabled={busy || !ready}>Save</button>
-      {/if}
-      <button type="submit" class="pb-btn pb-btn--primary" disabled={busy || !ready} data-tip-end="" data-tip="Connect  Enter">
-        {#if busy}<Icon name="loader" spin />Connecting…{:else}Connect{/if}
-      </button>
-    </div>
-  </form>
-</div>
+    {/if}
+    <Spacer />
+    <Button variant="ghost" disabled={busy} onclick={onClose}>Cancel</Button>
+    {#if save}<Button disabled={busy || !ready} onclick={saveOnly}>Save</Button>{/if}
+    <Button variant="primary" type="submit" icon={busy ? "loader" : undefined} spin={busy} disabled={busy || !ready} tip="Connect  Enter" tipAt="end"
+      >{busy ? "Connecting…" : "Connect"}</Button
+    >
+  {/snippet}
+</Dialog>

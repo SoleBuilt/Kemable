@@ -35,7 +35,9 @@
 <script lang="ts">
   import { tick } from "svelte";
   import Combobox from "../ui/Combobox.svelte";
-  import Icon from "../ui/Icon.svelte";
+  import Button from "../ui/Button.svelte";
+  import Input from "../ui/Input.svelte";
+  import Spacer from "../ui/Spacer.svelte";
 
   interface Props {
     columns: string[];
@@ -117,13 +119,7 @@
         <span class="pb-cond-lead">Where</span>
       {:else}
         <!-- One rule joins every condition, as the core's filters do (all or any): the buttons switch together. -->
-        <button
-          type="button"
-          class="pb-btn pb-btn--secondary pb-btn--sm pb-cond-lead"
-          data-tip-start=""
-          data-tip="AND or OR. Click to switch"
-          onclick={() => (any = !any)}>{any ? "OR" : "AND"}</button
-        >
+        <Button size="sm" class="pb-cond-lead" tip="AND or OR. Click to switch" tipAt="start" onclick={() => (any = !any)}>{any ? "OR" : "AND"}</Button>
       {/if}
       <Combobox
         label="Column"
@@ -137,56 +133,40 @@
         onPick={(column) => pickColumn(condition, column)}
       />
       {#if condition.op === "raw"}
-        <input
+        <Input
           data-value
-          class="pb-input pb-input--sm pb-mono"
+          size="sm"
+          mono
           style="flex: 1; min-width: 200px"
           placeholder="total > 100 and status <> 'void'"
           aria-label="SQL condition"
-          spellcheck="false"
           bind:value={condition.value}
         />
       {:else}
-        <Combobox
-          label="Condition"
-          small
-          width={160}
-          options={operatorOptions}
-          value={condition.op}
-          onPick={(op) => (condition.op = op)}
-        />
+        <Combobox label="Condition" small width={160} options={operatorOptions} value={condition.op} onPick={(op) => (condition.op = op)} />
         {#if needsValue(condition.op)}
-          <input
+          <Input
             data-value
-            class="pb-input pb-input--sm"
+            size="sm"
             style="width: 180px"
             placeholder={condition.op === "between" ? "From" : condition.op === "in" ? "a, b, c" : "Value"}
             aria-label="Value"
-            spellcheck="false"
             bind:value={condition.value}
           />
         {/if}
         {#if condition.op === "between"}
-          <input class="pb-input pb-input--sm" style="width: 140px" placeholder="To" aria-label="Upper value" spellcheck="false" bind:value={condition.second} />
+          <Input size="sm" style="width: 140px" placeholder="To" aria-label="Upper value" bind:value={condition.second} />
         {/if}
       {/if}
       {#if index > 0}
-        <button
-          type="button"
-          class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon"
-          aria-label="Remove the condition"
-          data-tip="Remove"
-          onclick={() => draft.splice(index, 1)}><Icon name="x" /></button
-        >
+        <Button variant="ghost" size="sm" icon="x" label="Remove the condition" tip="Remove" onclick={() => draft.splice(index, 1)} />
       {/if}
     </div>
   {/each}
   <div class="pb-cond">
-    <button type="button" class="pb-btn pb-btn--ghost pb-btn--sm" onclick={add}><Icon name="plus" />Condition</button>
-    <span class="pb-spacer"></span>
-    <button type="button" class="pb-btn pb-btn--ghost pb-btn--sm" onclick={clearAll} disabled={busy}>Clear</button>
-    <button type="button" class="pb-btn pb-btn--primary pb-btn--sm" onclick={apply} disabled={busy} data-tip-end="" data-tip="Apply  Enter"
-      >Apply</button
-    >
+    <Button variant="ghost" size="sm" icon="plus" onclick={add}>Condition</Button>
+    <Spacer />
+    <Button variant="ghost" size="sm" disabled={busy} onclick={clearAll}>Clear</Button>
+    <Button variant="primary" size="sm" disabled={busy} tip="Apply  Enter" tipAt="end" onclick={apply}>Apply</Button>
   </div>
 </div>

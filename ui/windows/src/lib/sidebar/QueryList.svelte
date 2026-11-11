@@ -1,8 +1,15 @@
 <script lang="ts">
-  import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
   import type { CoreError, SavedQuery } from "../types";
+  import Badge from "../ui/Badge.svelte";
+  import Button from "../ui/Button.svelte";
+  import Confirm from "../ui/Confirm.svelte";
+  import ErrorNote from "../ui/ErrorNote.svelte";
   import Icon from "../ui/Icon.svelte";
+  import ListItem from "../ui/ListItem.svelte";
+  import Note from "../ui/Note.svelte";
+  import SearchField from "../ui/SearchField.svelte";
+  import Spacer from "../ui/Spacer.svelte";
 
   interface Props {
     /** The saved connection open now; its queries and the global ones show. */
@@ -56,51 +63,32 @@
   }
 </script>
 
-<div class="pb-search">
-  <Icon name="search" />
-  <input placeholder="Find a saved query" aria-label="Find a saved query" spellcheck="false" bind:value={filter} />
-</div>
+<SearchField placeholder="Find a saved query" bind:value={filter} />
 <div class="pb-side-body">
-  {#if error}
-    <div class="pb-tree-error"><span class="pb-tree-error-title">{errorTitle(error)}</span><span>{error.message}</span></div>
-  {/if}
+  {#if error}<ErrorNote {error} />{/if}
   <div class="pb-list">
     {#each shown as query (query.id)}
-      <div class="pb-list-entry">
-        <button
-          class="pb-list-item"
-          class:is-selected={selected === query.id}
-          data-tip-start="" data-tip="Double-click to put it in the editor"
-          onclick={() => (selected = query.id)}
-          ondblclick={() => onInsert(query.sql)}
+      <ListItem selected={selected === query.id} tip="Double-click to put it in the editor" onclick={() => (selected = query.id)} ondblclick={() => onInsert(query.sql)}>
+        <span class="pb-list-line"
+          ><Icon name="bookmark" class="pb-muted" /><span class="pb-list-name">{query.name}</span>{#if query.connectionId === null}<Badge size="sm" outline
+              >all</Badge
+            >{/if}</span
         >
-          <span class="pb-list-line"
-            ><Icon name="bookmark" class="pb-muted" /><span class="pb-list-name">{query.name}</span>{#if query.connectionId === null}<span
-                class="pb-badge pb-badge--sm pb-badge--outline">all</span
-              >{/if}</span
-          >
-          <span class="pb-code-line">{query.sql.trim().split("\n")[0]}</span>
-        </button>
-        <span class="pb-list-actions">
+        <span class="pb-code-line">{query.sql.trim().split("\n")[0]}</span>
+        {#snippet actions()}
           {#if confirming === query.id}
-            <span class="pb-meta">Delete it?</span>
-            <button class="pb-btn pb-btn--ghost pb-btn--sm is-danger" onclick={() => remove(query)}>Delete</button>
-            <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => (confirming = null)}>Keep</button>
+            <Confirm question="Delete it?" action="Delete" onConfirm={() => remove(query)} onCancel={() => (confirming = null)} />
           {:else}
-            <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => onInsert(query.sql)}>Insert</button>
-            <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => onRun(query)}><Icon name="play" />Run</button>
-            <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={() => onEdit(query)}>Edit</button>
-            <span class="pb-spacer"></span>
-            <button class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Delete {query.name}" onclick={() => (confirming = query.id)}
-              ><Icon name="trash" /></button
-            >
+            <Button variant="ghost" size="sm" onclick={() => onInsert(query.sql)}>Insert</Button>
+            <Button variant="ghost" size="sm" icon="play" onclick={() => onRun(query)}>Run</Button>
+            <Button variant="ghost" size="sm" onclick={() => onEdit(query)}>Edit</Button>
+            <Spacer />
+            <Button variant="ghost" size="sm" icon="trash" label="Delete {query.name}" onclick={() => (confirming = query.id)} />
           {/if}
-        </span>
-      </div>
+        {/snippet}
+      </ListItem>
     {:else}
-      {#if !error}
-        <p class="pb-side-hint">No saved queries. Write one in the editor and press Ctrl+Shift+D to keep it.</p>
-      {/if}
+      {#if !error}<Note>No saved queries. Write one in the editor and press Ctrl+Shift+D to keep it.</Note>{/if}
     {/each}
   </div>
 </div>

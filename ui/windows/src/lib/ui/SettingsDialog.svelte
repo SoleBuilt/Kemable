@@ -47,8 +47,14 @@
 </script>
 
 <script lang="ts">
+  import Badge from "./Badge.svelte";
+  import Button from "./Button.svelte";
+  import Checkbox from "./Checkbox.svelte";
   import Combobox from "./Combobox.svelte";
-  import Icon from "./Icon.svelte";
+  import Dialog from "./Dialog.svelte";
+  import Segmented from "./Segmented.svelte";
+  import Setting from "./Setting.svelte";
+  import Spacer from "./Spacer.svelte";
 
   interface Props {
     settings: Settings;
@@ -75,82 +81,45 @@
     { value: "light", label: "Light" },
     { value: "dark", label: "Dark" },
   ];
+  const STYLES = [
+    { value: "mono", label: "Black and white" },
+    { value: "orange", label: "Orange", disabled: true },
+  ];
+  const ROWS = [
+    { value: false, label: "Default · 28 px" },
+    { value: true, label: "Compact · 24 px" },
+  ];
+  const CAPS = ROW_CAPS.map((cap) => ({ value: cap, label: cap === null ? "No limit" : `${numberFormat.format(cap)} rows` }));
 </script>
 
-<svelte:window
-  onkeydown={(event) => {
-    if (event.key === "Escape") cancel();
-  }}
-/>
+<Dialog title="Settings" width={560} onClose={cancel} onsubmit={() => onSave({ ...draft })} bodyStyle="gap: 16px">
+  <h3 class="pb-section-title">Appearance</h3>
+  <Setting title="Theme" hint="System follows Windows light or dark.">
+    <Segmented label="Theme" options={THEMES} value={draft.theme} onChange={(theme) => (draft.theme = theme)} />
+  </Setting>
+  <Setting title="Style" hint="The orange style of ERP Tinh gọn comes later.">
+    <Segmented label="Style" options={STYLES} value="mono" onChange={() => {}} />
+  </Setting>
+  <Setting title="Mica background" hint="The Windows 11 material behind the toolbar and sidebar.">
+    <Badge>Later</Badge>
+  </Setting>
 
-<div class="pb-overlay pb-overlay--fixed" role="presentation">
-  <form
-    class="pb-dialog"
-    style="width: 560px"
-    aria-labelledby="settings-title"
-    onsubmit={(event) => {
-      event.preventDefault();
-      onSave({ ...draft });
-    }}
-  >
-    <div class="pb-dialog-head">
-      <h2 class="pb-dialog-title" id="settings-title">Settings</h2>
-      <button type="button" class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Close" data-tip-end="" data-tip="Close  Esc" onclick={cancel}
-        ><Icon name="x" /></button
-      >
-    </div>
-    <div class="pb-dialog-body" style="gap: 16px">
-      <h3 class="pb-section-title">Appearance</h3>
-      <div class="pb-setting">
-        <div class="pb-setting-text"><span>Theme</span><span class="pb-hint">System follows Windows light or dark.</span></div>
-        <span class="pb-seg" role="radiogroup" aria-label="Theme">
-          {#each THEMES as theme (theme.value)}
-            <button type="button" role="radio" aria-checked={draft.theme === theme.value} onclick={() => (draft.theme = theme.value)}>{theme.label}</button>
-          {/each}
-        </span>
-      </div>
-      <div class="pb-setting">
-        <div class="pb-setting-text"><span>Style</span><span class="pb-hint">The orange style of ERP Tinh gọn comes later.</span></div>
-        <span class="pb-seg" role="radiogroup" aria-label="Style">
-          <button type="button" role="radio" aria-checked="true">Black and white</button>
-          <button type="button" role="radio" aria-checked="false" disabled>Orange</button>
-        </span>
-      </div>
-      <div class="pb-setting">
-        <div class="pb-setting-text"><span>Mica background</span><span class="pb-hint">The Windows 11 material behind the toolbar and sidebar.</span></div>
-        <span class="pb-badge">Later</span>
-      </div>
+  <h3 class="pb-section-title">Grid</h3>
+  <Setting title="Row height" hint="Compact fits more rows on the screen.">
+    <Segmented label="Row height" options={ROWS} value={draft.compactRows} onChange={(compact) => (draft.compactRows = compact)} />
+  </Setting>
+  <Setting title="Row limit" hint="The most rows a result keeps. Ctrl+Alt+Enter runs with no limit.">
+    <Combobox label="Row limit" width={168} placement="up-end" options={CAPS} value={draft.rowCap} onPick={(cap) => (draft.rowCap = cap)} />
+  </Setting>
 
-      <h3 class="pb-section-title">Grid</h3>
-      <div class="pb-setting">
-        <div class="pb-setting-text"><span>Row height</span><span class="pb-hint">Compact fits more rows on the screen.</span></div>
-        <span class="pb-seg" role="radiogroup" aria-label="Row height">
-          <button type="button" role="radio" aria-checked={!draft.compactRows} onclick={() => (draft.compactRows = false)}>Default · 28 px</button>
-          <button type="button" role="radio" aria-checked={draft.compactRows} onclick={() => (draft.compactRows = true)}>Compact · 24 px</button>
-        </span>
-      </div>
-      <div class="pb-setting">
-        <div class="pb-setting-text"><span>Row limit</span><span class="pb-hint">The most rows a result keeps. Ctrl+Alt+Enter runs with no limit.</span></div>
-        <Combobox
-          label="Row limit"
-          width={168}
-          placement="up-end"
-          options={ROW_CAPS.map((cap) => ({ value: cap, label: cap === null ? "No limit" : `${numberFormat.format(cap)} rows` }))}
-          value={draft.rowCap}
-          onPick={(cap) => (draft.rowCap = cap)}
-        />
-      </div>
+  <h3 class="pb-section-title">Running</h3>
+  <Checkbox top bind:checked={draft.followCreatedDatabase}>
+    <span>After <span class="pb-mono">CREATE DATABASE</span>, run the rest of the script in the new database</span>
+  </Checkbox>
 
-      <h3 class="pb-section-title">Running</h3>
-      <label class="pb-check" style="align-items: flex-start">
-        <input type="checkbox" bind:checked={draft.followCreatedDatabase} style="margin-top: 2px" />
-        <span>After <span class="pb-mono">CREATE DATABASE</span>, run the rest of the script in the new database</span>
-      </label>
-    </div>
-    <div class="pb-dialog-foot">
-      <span class="pb-spacer"></span>
-      <button type="button" class="pb-btn pb-btn--ghost" onclick={cancel}>Cancel</button>
-      <button type="submit" class="pb-btn pb-btn--primary">Save</button>
-    </div>
-  </form>
-</div>
+  {#snippet footer()}
+    <Spacer />
+    <Button variant="ghost" onclick={cancel}>Cancel</Button>
+    <Button variant="primary" type="submit">Save</Button>
+  {/snippet}
+</Dialog>

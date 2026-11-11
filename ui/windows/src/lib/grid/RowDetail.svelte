@@ -1,7 +1,8 @@
 <script lang="ts">
   import { ipc } from "../ipc";
   import type { ColumnMeta } from "../types";
-  import Icon from "../ui/Icon.svelte";
+  import Button from "../ui/Button.svelte";
+  import Spacer from "../ui/Spacer.svelte";
 
   interface Props {
     result: number;
@@ -77,10 +78,8 @@
     <div class="pb-detail-head">
       Row {row + 1}
       <span class="pb-count">{focusedMeta ? `${focusedMeta.name} · ${focusedMeta.typeName || focusedMeta.kind}` : ""}</span>
-      <span class="pb-spacer"></span>
-      <button class="pb-btn pb-btn--ghost pb-btn--sm" onclick={copyFocused} data-tip-end="" data-tip="Copy the field's full value"
-        ><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}</button
-      >
+      <Spacer />
+      <Button variant="ghost" size="sm" icon={copied ? "check" : "copy"} tip="Copy the field's full value" tipAt="end" onclick={copyFocused}>{copied ? "Copied" : "Copy"}</Button>
     </div>
     <div class="pb-detail-value">
       {#if focused === undefined}
@@ -94,7 +93,7 @@
     <div class="pb-detail-body" aria-label="Fields of the row">
       {#each columns as meta, index (index)}
         {@const value = values[index]}
-        <button class="pb-field-row" class:is-selected={index === column} onclick={() => onPickColumn(index)}>
+        <button type="button" class="pb-field-row" class:is-selected={index === column} onclick={() => onPickColumn(index)}>
           <span>{meta.name}</span>
           {#if value === null}
             <span class="pb-null">NULL</span>

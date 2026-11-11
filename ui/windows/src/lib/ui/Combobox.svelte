@@ -18,7 +18,12 @@
 
 <script lang="ts" generics="T">
   import { tick } from "svelte";
+  import { placeBy } from "./place";
+  import Button from "./Button.svelte";
+  import Dot from "./Dot.svelte";
   import Icon from "./Icon.svelte";
+  import SearchField from "./SearchField.svelte";
+  import { tipAttrs } from "./tip";
 
   interface Props {
     options: ComboOption<T>[];
@@ -64,7 +69,9 @@
   let open = $state(false);
   let query = $state("");
   let active = $state(0);
+  let root: HTMLDivElement | undefined = $state();
   let trigger: HTMLButtonElement | undefined = $state();
+  let popStyle = $state("");
   let list: HTMLDivElement | undefined = $state();
 
   const current = $derived(options.find((option) => option.value === value));
@@ -74,23 +81,18 @@
       : options.filter((option) => `${option.label} ${option.meta ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())),
   );
 
-  const popStyle = $derived.by(() => {
-    const size = listWidth ? `width: ${listWidth}px;` : "min-width: 100%;";
-    if (placement === "end") return `left: auto; right: 0; ${size}`;
-    if (placement === "up") return `top: auto; bottom: calc(100% + 6px); right: auto; ${size}`;
-    if (placement === "up-end") return `top: auto; bottom: calc(100% + 6px); left: auto; right: 0; ${size}`;
-    return `right: auto; ${size}`;
-  });
-
   async function show() {
-    if (disabled) return;
+    if (disabled || !root) return;
     onOpen?.();
+    // Fixed to the window, so a bar that clips (the page bar) neither cuts the list off nor scrolls to show it.
+    const box = root.getBoundingClientRect();
+    popStyle = placeBy(box, placement, listWidth ? { width: listWidth } : { minWidth: box.width });
     open = true;
     query = "";
     active = Math.max(0, options.findIndex((option) => option.value === value));
     await tick();
-    if (searchable) list?.querySelector<HTMLInputElement>("input")?.focus();
-    else list?.querySelector<HTMLElement>("[role=option][aria-selected=true], [role=option]")?.focus();
+    if (searchable) list?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+    else list?.querySelector<HTMLElement>("[role=option][aria-selected=true], [role=option]")?.focus({ preventScroll: true });
   }
 
   function close(refocus = true) {
@@ -123,7 +125,13 @@
   }
 </script>
 
-<div class="pb-combo" style:width="{width}px">
+<svelte:window
+  onresize={() => {
+    if (open) close(false);
+  }}
+/>
+
+<div class="pb-combo" style:width="{width}px" bind:this={root}>
   <button
     bind:this={trigger}
     type="button"
@@ -132,7 +140,7 @@
     aria-haspopup="listbox"
     aria-expanded={open}
     aria-label={label}
-    data-tip={tip}
+    {...tipAttrs(tip)}
     {disabled}
     onclick={() => (open ? close() : void show())}
     onkeydown={(event) => {
@@ -142,7 +150,7 @@
       }
     }}
   >
-    {#if current?.dot}<span class="pb-dot" style:--conn="var(--conn-{current.dot})"></span>{/if}
+    {#if current?.dot}<Dot color={current.dot} />{/if}
     {#if current?.icon}<Icon name={current.icon} class="pb-combo-icon" />{/if}
     <span class="pb-combo-text" class:is-empty={!current}>{current?.label ?? placeholder}</span>
   </button>
@@ -153,10 +161,7 @@
     <div class="pb-pop" style={popStyle} bind:this={list} onkeydown={onKeydown}>
       <div class="pb-menu" role="listbox" aria-label={label}>
         {#if searchable}
-          <div class="pb-menu-search">
-            <Icon name="search" />
-            <input placeholder={searchPlaceholder} aria-label={searchPlaceholder} spellcheck="false" bind:value={query} oninput={() => (active = 0)} />
-          </div>
+          <SearchField variant="menu" placeholder={searchPlaceholder} bind:value={query} oninput={() => (active = 0)} />
         {/if}
         {#each shown as option, index (option.value)}
           <div
@@ -170,7 +175,7 @@
             onkeydown={() => {}}
             onmousemove={() => (active = index)}
           >
-            {#if option.dot}<span class="pb-dot" style:--conn="var(--conn-{option.dot})"></span>{/if}
+            {#if option.dot}<Dot color={option.dot} />{/if}
             {#if option.icon}<Icon name={option.icon} class="pb-option-icon" />{/if}
             {#if option.meta}
               <span class="pb-option-text"><span>{option.label}</span><span>{option.meta}</span></span>
@@ -180,18 +185,20 @@
             {#if option.value === value}<Icon name="check" />{/if}
             {#if option.action}
               {@const action = option.action}
-              <button
-                type="button"
-                class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon pb-option-action"
-                aria-label={action.label}
-                data-tip-end=""
-                data-tip={action.label}
+              <Button
+                variant="ghost"
+                size="sm"
+                class="pb-option-action"
+                icon={action.icon}
+                label={action.label}
+                tip={action.label}
+                tipAt="end"
                 onclick={(event) => {
                   event.stopPropagation();
                   close(false);
                   action.run();
-                }}><Icon name={action.icon} /></button
-              >
+                }}
+              />
             {/if}
           </div>
         {:else}

@@ -20,10 +20,27 @@
   import TreeMenu from "./lib/sidebar/TreeMenu.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
   import ConnectDialog, { type ConnectRequest, type NetworkEngine, isNetworkEngine } from "./lib/connect/ConnectDialog.svelte";
-  import Combobox from "./lib/ui/Combobox.svelte";
+  import ConnectionMenu from "./lib/connect/ConnectionMenu.svelte";
+  import PasswordDialog from "./lib/connect/PasswordDialog.svelte";
+  import RunControls from "./lib/editor/RunControls.svelte";
+  import KeyBar from "./lib/grid/KeyBar.svelte";
+  import MessageList, { type Message } from "./lib/grid/MessageList.svelte";
+  import ResultBar, { type ResultTabItem } from "./lib/grid/ResultBar.svelte";
+  import TableTools from "./lib/grid/TableTools.svelte";
+  import WhereStrip from "./lib/grid/WhereStrip.svelte";
+  import PageTabs, { type PageTabItem } from "./lib/shell/PageTabs.svelte";
+  import PaletteTrigger from "./lib/shell/PaletteTrigger.svelte";
+  import SidePane from "./lib/shell/SidePane.svelte";
+  import StatusBar from "./lib/shell/StatusBar.svelte";
+  import TitleBar from "./lib/shell/TitleBar.svelte";
+  import Welcome from "./lib/shell/Welcome.svelte";
+  import Badge from "./lib/ui/Badge.svelte";
+  import Button from "./lib/ui/Button.svelte";
   import CommandPalette, { type Command } from "./lib/ui/CommandPalette.svelte";
   import Icon from "./lib/ui/Icon.svelte";
-  import SettingsDialog, { ROW_CAPS, applyTheme, readSettings, writeSettings, type Settings } from "./lib/ui/SettingsDialog.svelte";
+  import InfoBar from "./lib/ui/InfoBar.svelte";
+  import SettingsDialog, { applyTheme, readSettings, writeSettings, type Settings } from "./lib/ui/SettingsDialog.svelte";
+  import Splitter from "./lib/ui/Splitter.svelte";
   import type {
     ByteRange,
     ColumnMeta,
@@ -106,12 +123,6 @@
     /** The filter as a WHERE to copy, when the engine writes SQL. */
     where: ResultWhere | null;
   }
-
-  type Message =
-    | { kind: "command"; statement: number; rowsAffected: number | null }
-    | { kind: "notice"; statement: number | null; text: string }
-    | { kind: "switched"; statement: number; database: string }
-    | { kind: "error"; statement: number | null; error: CoreError };
 
   /** One empty sort, so the grid's prop does not change on every row count update. */
   const NO_SORT: SortKey[] = [];
@@ -434,11 +445,6 @@
   function pageCount(page: Page): string {
     const tab = page.id === activePage ? tableTab : page.state.tableTab;
     return typeof tab?.count === "number" ? numberFormat.format(tab.count) : "";
-  }
-
-  function tabsWheel(event: WheelEvent) {
-    const element = event.currentTarget as HTMLElement;
-    if (event.deltaY !== 0 && element.scrollWidth > element.clientWidth) element.scrollLeft += event.deltaY;
   }
 
   const gridCallbacks: GridCallbacks = {
@@ -1037,22 +1043,6 @@
     }
   }
 
-  const KEY_UNITS: Record<KeyDetail["kind"], string> = {
-    string: "bytes",
-    hash: "fields",
-    list: "items",
-    set: "members",
-    sortedSet: "members",
-    stream: "entries",
-    other: "",
-  };
-
-  function expiresIn(ms: number | null): string {
-    if (ms === null) return "no expiry";
-    const seconds = Math.ceil(ms / 1000);
-    return seconds < 120 ? `expires in ${seconds} s` : `expires in ${numberFormat.format(Math.round(seconds / 60))} min`;
-  }
-
   // --- Editing a table tab (docs/decisions/0010-editing-rows.md) ---------
 
   /** The page's result set, while a table tab shows it. */
@@ -1365,8 +1355,6 @@
 
   let paletteOpen = $state(false);
   let settingsOpen = $state(false);
-  let connMenuOpen = $state(false);
-  let runMenuOpen = $state(false);
   let treeMenu = $state.raw<{ target: TreeTarget; x: number; y: number } | null>(null);
 
   function openPalette() {
@@ -1471,7 +1459,6 @@
   }
 
   function runFromToolbar(mode: "statement" | "all") {
-    runMenuOpen = false;
     const request = editor?.request(mode);
     if (request) void startRun(request);
   }
@@ -1482,132 +1469,59 @@
     return text.length > 80 ? `${text.slice(0, 80)}…` : text;
   }
 
-  /** The editor's height, dragged on the line above the results. */
-  function dragEditor(event: PointerEvent) {
-    const target = event.currentTarget as HTMLElement;
-    target.setPointerCapture(event.pointerId);
-    const startY = event.clientY;
-    const startHeight = editorHeight;
-    const move = (moveEvent: PointerEvent) => {
-      editorHeight = Math.max(72, Math.min(window.innerHeight - 300, startHeight + moveEvent.clientY - startY));
-    };
-    const up = () => {
-      target.removeEventListener("pointermove", move);
-      target.removeEventListener("pointerup", up);
-    };
-    target.addEventListener("pointermove", move);
-    target.addEventListener("pointerup", up);
-  }
-
-  function dragSidebar(event: PointerEvent) {
-    const target = event.currentTarget as HTMLElement;
-    target.setPointerCapture(event.pointerId);
-    const startX = event.clientX;
-    const startWidth = sidebarWidth;
-    const move = (moveEvent: PointerEvent) => {
-      sidebarWidth = Math.max(180, Math.min(480, startWidth + moveEvent.clientX - startX));
-    };
-    const up = () => {
-      target.removeEventListener("pointermove", move);
-      target.removeEventListener("pointerup", up);
-    };
-    target.addEventListener("pointermove", move);
-    target.addEventListener("pointerup", up);
-  }
-
   const workRows = $derived(
     onTablePage ? "auto auto minmax(0, 1fr)" : ran ? `auto ${editorHeight}px auto minmax(0, 1fr)` : "auto minmax(0, 1fr)",
   );
   const numberFormat = new Intl.NumberFormat();
-  const limitOptions = ROW_CAPS.map((cap) => ({ value: cap, label: cap === null ? "No limit" : `Limit ${numberFormat.format(cap)}` }));
   const tableError = $derived(onTablePage ? messages.find((message) => message.kind === "error") : undefined);
-  const connectionColor = "gray";
+  /** A saved connection's colour; none yet (docs/roadmap.md, connection colours), so no stripe shows. */
+  const connectionColor: string | null = null;
+  /** The saved connection open now, for Edit this connection… */
+  const editableSaved = $derived(connection?.savedId ? (library.find((entry) => entry.id === connection?.savedId) ?? null) : null);
+
+  const pageTabs: PageTabItem[] = $derived(
+    pages.map((page) => ({
+      id: page.id,
+      title: pageTitle(page),
+      icon: page.kind === "table" ? "table" : "file",
+      count: page.kind === "table" ? pageCount(page) || undefined : undefined,
+    })),
+  );
+
+  const resultTabs: ResultTabItem[] = $derived(
+    sets.map((set, index) => ({
+      key: set.result,
+      label: `Result ${index + 1}`,
+      count: numberFormat.format(set.limited ? (set.filter?.held ?? set.totalRows) : set.totalRows),
+      limited: set.limited,
+      tip: ranRanges[set.statement] && ranRequest ? `From statement ${set.statement + 1} of the run` : undefined,
+    })),
+  );
 </script>
 
 <svelte:window onkeydown={onWindowKeydown} />
 
 <div class="pb-app" style:grid-template-rows={connectError ? "auto auto minmax(0, 1fr) auto" : undefined}>
-  <!-- Toolbar: where you are (docs/decisions/0012-design-system.md, D14) -->
-  {#if connection}
-    {@const open = connection}
-    <header class="pb-toolbar pb-toolbar--center has-conn" style:--conn="var(--conn-{connectionColor})">
-      <div class="pb-tool-left">
-        <div class="pb-combo" style="width: 240px">
-          <button
-            type="button"
-            class="pb-input pb-select pb-combo-trigger pb-conn"
-            aria-haspopup="menu"
-            aria-expanded={connMenuOpen}
-            aria-label="Connection {open.title}"
-            data-tip-start=""
-            data-tip="Edit or disconnect. Ctrl+K switches"
-            onclick={() => (connMenuOpen = !connMenuOpen)}
-          >
-            <span class="pb-dot"></span><span class="pb-combo-text"
-              ><span class="pb-name">{open.title}</span>&nbsp; <span class="pb-engine">{open.engine.displayName} {open.serverVersion ?? ""}</span></span
-            >
-          </button>
-          {#if connMenuOpen}
-            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <div class="pb-clickaway" onclick={() => (connMenuOpen = false)}></div>
-            <div class="pb-pop" style="right: auto; width: 280px">
-              <div class="pb-menu" role="menu" aria-label="Connection">
-                <div class="pb-conn-card"><span><span class="pb-dot"></span>{open.title}</span><span>{open.engine.displayName} {open.serverVersion ?? ""}</span></div>
-                <div class="pb-menu-sep"></div>
-                {#if open.savedId}
-                  {@const savedId = open.savedId}
-                  <button
-                    class="pb-menu-item"
-                    role="menuitem"
-                    onclick={() => {
-                      connMenuOpen = false;
-                      const entry = library.find((candidate) => candidate.id === savedId);
-                      if (entry) editSaved(entry);
-                    }}><Icon name="settings" />Edit this connection…</button
-                  >
-                {/if}
-                <button
-                  class="pb-menu-item is-danger"
-                  role="menuitem"
-                  disabled={running}
-                  onclick={() => {
-                    connMenuOpen = false;
-                    disconnect();
-                  }}><Icon name="unplug" />Disconnect</button
-                >
-              </div>
-            </div>
-          {/if}
-        </div>
+  <!-- The title bar says where you are (D14) and holds the window's buttons. -->
+  <!-- The stripe shows only for a connection with a colour of its own. -->
+  <TitleBar conn={connection ? connectionColor : null}>
+    {#snippet left()}
+      {#if connection}
+        {@const open = connection}
+        {@const saved = editableSaved}
+        <ConnectionMenu connection={open} color={connectionColor} {running} onEdit={saved ? () => editSaved(saved) : null} onDisconnect={disconnect} />
         {#if open.engine.hasDatabases}
           <DatabasePicker conn={open.id} {database} onPick={useDatabase} onError={note} />
         {/if}
-      </div>
-      <button type="button" class="pb-cmdk-trigger" style="width: 340px" aria-haspopup="dialog" aria-expanded={paletteOpen} onclick={openPalette}
-        ><Icon name="search" /><span class="pb-cmdk-trigger-text">Search connections and commands…</span><span class="pb-keys"
-          ><kbd class="pb-kbd">Ctrl</kbd><kbd class="pb-kbd">K</kbd></span
-        ></button
-      >
-      <div class="pb-tool-right"></div>
-    </header>
-  {:else}
-    <header class="pb-toolbar pb-toolbar--center">
-      <div class="pb-tool-left"></div>
-      <button type="button" class="pb-cmdk-trigger" style="width: 420px" aria-haspopup="dialog" aria-expanded={paletteOpen} onclick={openPalette}
-        ><Icon name="search" /><span class="pb-cmdk-trigger-text">Search connections and commands…</span><span class="pb-keys"
-          ><kbd class="pb-kbd">Ctrl</kbd><kbd class="pb-kbd">K</kbd></span
-        ></button
-      >
-      <div class="pb-tool-right"></div>
-    </header>
-  {/if}
+      {/if}
+    {/snippet}
+    {#snippet center()}
+      <PaletteTrigger width={connection ? 340 : 420} open={paletteOpen} onclick={openPalette} />
+    {/snippet}
+  </TitleBar>
 
   {#if connectError}
-    <div class="pb-info pb-info--danger pb-info--strip" role="alert">
-      <Icon name="error" />
-      <div class="pb-info-text"><span class="pb-info-title">{errorTitle(connectError)}</span><span class="pb-info-msg">{connectError.message}</span></div>
-      <button class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Dismiss" onclick={() => (connectError = null)}><Icon name="x" /></button>
-    </div>
+    <InfoBar tone="danger" strip title={errorTitle(connectError)} message={connectError.message} onDismiss={() => (connectError = null)} />
   {/if}
 
   {#if connection}
@@ -1615,20 +1529,20 @@
     <div class="pb-mid" style:grid-template-columns="{sidebarWidth}px minmax(0, 1fr)">
       <!-- Sidebar: Objects fills it; Queries and History fold (D19) -->
       <aside class="pb-side" aria-label="Objects, saved queries and history">
-        <section class="pb-pane is-open is-main" aria-label={keyValue ? "Keys" : "Objects"}>
-          <div class="pb-pane-head is-static">
-            {keyValue ? "Keys" : "Objects"}
-            <span class="pb-pane-actions">
-              <button
-                class="pb-btn pb-btn--ghost pb-pane-btn"
-                aria-label={keyValue ? "Scan the keys again" : "Refresh objects"}
-                data-tip-end=""
-                data-tip={keyValue ? "Scan the keys again  Ctrl+R" : "Refresh objects  Ctrl+R"}
-                disabled={treeRefreshing}
-                onclick={() => void refreshObjects()}><Icon name="refresh" spin={treeRefreshing} /></button
-              >
-            </span>
-          </div>
+        <SidePane title={keyValue ? "Keys" : "Objects"} main>
+          {#snippet actions()}
+            <Button
+              variant="ghost"
+              class="pb-pane-btn"
+              icon="refresh"
+              spin={treeRefreshing}
+              label={keyValue ? "Scan the keys again" : "Refresh objects"}
+              tip={keyValue ? "Scan the keys again  Ctrl+R" : "Refresh objects  Ctrl+R"}
+              tipAt="end"
+              disabled={treeRefreshing}
+              onclick={() => void refreshObjects()}
+            />
+          {/snippet}
           {#if keyValue}
             <KeyBrowser
               bind:this={keyBrowser}
@@ -1650,165 +1564,61 @@
               onContext={(target, x, y) => (treeMenu = { target, x, y })}
             />
           {/if}
-        </section>
+        </SidePane>
         {#if !keyValue}
-          <section class="pb-pane" class:is-open={queriesOpen} aria-label="Saved queries">
-            <button class="pb-pane-head" aria-expanded={queriesOpen} onclick={() => (queriesOpen = !queriesOpen)}>
-              <Icon name={queriesOpen ? "chev-down" : "chev-right"} class="pb-twist" />Queries{#if queryCount !== null}<span class="pb-pane-count"
-                  >{queryCount}</span
-                >{/if}
-            </button>
-            <!-- Kept mounted while folded, so the header's count stays right. -->
-            <div class="pb-pane-body" hidden={!queriesOpen}>
-              <QueryList
-                connectionId={open.savedId}
-                refreshKey={queriesKey}
-                onInsert={insertSql}
-                onRun={runSaved}
-                onEdit={(query) => (saving = query)}
-                onCount={(count) => (queryCount = count)}
-              />
-            </div>
-          </section>
+          <SidePane title="Queries" bind:open={queriesOpen} count={queryCount}>
+            <QueryList
+              connectionId={open.savedId}
+              refreshKey={queriesKey}
+              onInsert={insertSql}
+              onRun={runSaved}
+              onEdit={(query) => (saving = query)}
+              onCount={(count) => (queryCount = count)}
+            />
+          </SidePane>
         {/if}
-        <section class="pb-pane" class:is-open={historyOpen} aria-label="History">
-          <button class="pb-pane-head" aria-expanded={historyOpen} onclick={() => (historyOpen = !historyOpen)}>
-            <Icon name={historyOpen ? "chev-down" : "chev-right"} class="pb-twist" />History{#if historyCount !== null}<span class="pb-pane-count"
-                >{historyCount}{historyCount === 100 ? "+" : ""}</span
-              >{/if}
-          </button>
-          <div class="pb-pane-body" hidden={!historyOpen}>
-            <HistoryList connection={open.title} refreshKey={historyKey} onInsert={insertSql} onRun={runEntry} onCount={(count) => (historyCount = count)} />
-          </div>
-        </section>
+        <SidePane title="History" bind:open={historyOpen} count={historyCount === null ? null : `${historyCount}${historyCount === 100 ? "+" : ""}`}>
+          <HistoryList connection={open.title} refreshKey={historyKey} onInsert={insertSql} onRun={runEntry} onCount={(count) => (historyCount = count)} />
+        </SidePane>
       </aside>
-      <div class="pb-vsplit" style:left="{sidebarWidth - 3}px" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" onpointerdown={dragSidebar}></div>
+      <Splitter orientation="vertical" bind:value={sidebarWidth} min={180} max={480} reset={260} label="Resize the sidebar" style="left: {sidebarWidth - 3}px" />
 
       <main class="pb-work" style:grid-template-rows={workRows}>
         <!-- Pages: tabs on the left, the open page's tools on the right (D15) -->
-        <div class="pb-doctabs">
-          <div class="pb-doctabs-left">
-            <div class="pb-doctabs-tabs" role="tablist" aria-label="Open pages" onwheel={tabsWheel}>
-              {#each pages as page (page.id)}
-                <span
-                  class="pb-doctab is-link"
-                  class:is-active={page.id === activePage}
-                  role="tab"
-                  tabindex="0"
-                  aria-selected={page.id === activePage}
-                  onclick={() => switchTo(page.id)}
-                  onkeydown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      switchTo(page.id);
-                    }
-                  }}
-                >
-                  <Icon name={page.kind === "table" ? "table" : "file"} />{pageTitle(page)}
-                  {#if page.kind === "table" && pageCount(page)}<span class="pb-count">{pageCount(page)}</span>{/if}
-                  <button
-                    type="button"
-                    class="pb-doctab-x"
-                    aria-label="Close {pageTitle(page)}"
-                    onclick={(event) => {
-                      event.stopPropagation();
-                      closePage(page.id);
-                    }}><Icon name="x" /></button
-                  >
-                </span>
-              {/each}
-            </div>
-            <button type="button" class="pb-doctab-new" aria-label="New query tab" data-tip="New query  Ctrl+T" onclick={newQueryPage}><Icon name="plus" /></button>
-          </div>
-          <div class="pb-doctabs-tools">
+        <PageTabs tabs={pageTabs} active={activePage} onSelect={switchTo} onClose={closePage} onNew={newQueryPage}>
+          {#snippet tools()}
             {#if onTablePage && tableTab}
-              {@const tab = tableTab}
-              {#if !hasEdits}
-                {#if tab.key.length === 0}
-                  <span class="pb-badge pb-badge--warning" data-tip="No primary key, so a row cannot be named for an edit"><Icon name="lock" size="sm" />Read-only</span>
-                {/if}
-                <button class="pb-btn pb-btn--ghost pb-btn--sm" class:is-open={filtersOpen} aria-pressed={filtersOpen} data-tip="Filter  Ctrl+F" onclick={() => void toggleFilters()}
-                  ><Icon name="filter" />Filter{#if tab.filters.length > 0}<span class="pb-badge pb-badge--sm">{tab.filters.length}</span>{/if}</button
-                >
-                {#if tab.key.length > 0}
-                  <button class="pb-btn pb-btn--ghost pb-btn--sm" disabled={!canEdit} data-tip="Add a row  Alt+Insert" onclick={() => void addRow()}><Icon name="plus" />Row</button>
-                  <button
-                    class="pb-btn pb-btn--ghost pb-btn--sm"
-                    disabled={!canEdit || !selected}
-                    data-tip="Mark the selected rows for delete  Delete"
-                    onclick={() => selected && markDeleted(selected.firstRow, selected.rowCount)}><Icon name="trash" />Delete rows</button
-                  >
-                {/if}
-                <span class="pb-sep"></span>
-                <button class="pb-btn pb-btn--ghost pb-btn--sm" data-tip-end="" data-tip="Copy the SELECT this page ran, to edit and run it yourself" onclick={copyPageSql}
-                  ><Icon name="copy" />Copy SQL</button
-                >
-              {:else}
-                <button
-                  class="pb-btn pb-btn--ghost pb-btn--sm"
-                  disabled={!canEdit || !selected}
-                  data-tip={selectionDeletes ? "Unmark the selected rows  Delete" : "Mark the selected rows for delete  Delete"}
-                  onclick={() => selected && markDeleted(selected.firstRow, selected.rowCount)}
-                  ><Icon name="trash" />{selectionDeletes ? "Keep rows" : "Delete rows"}</button
-                >
-                <span class="pb-badge"><span class="pb-badge-dot"></span>{editSummary}</span>
-                <button class="pb-btn pb-btn--secondary pb-btn--sm" disabled={running} onclick={discardEdits}>Discard</button>
-                <button
-                  class="pb-btn pb-btn--primary pb-btn--sm"
-                  disabled={running || editing !== null}
-                  data-tip-end=""
-                  data-tip="See the statements, then save  Ctrl+S"
-                  onclick={() => void openPreview()}>Preview &amp; save</button
-                >
-              {/if}
+              <TableTools
+                editable={tableTab.key.length > 0}
+                {canEdit}
+                hasSelection={selected !== null}
+                selectionDeleted={selectionDeletes}
+                {filtersOpen}
+                filterCount={tableTab.filters.length}
+                editSummary={hasEdits ? editSummary || "Unsaved changes" : ""}
+                {running}
+                editing={editing !== null}
+                onToggleFilters={() => void toggleFilters()}
+                onAddRow={() => void addRow()}
+                onDeleteRows={() => selected && markDeleted(selected.firstRow, selected.rowCount)}
+                onCopySql={copyPageSql}
+                onDiscard={discardEdits}
+                onPreview={() => void openPreview()}
+              />
             {:else}
-              <div class="pb-runbar pb-runbar--inline" role="toolbar" aria-label="Run">
-                {#if running}
-                  <button class="pb-btn pb-btn--primary pb-btn--sm" data-tip-start="" data-tip="Stop  Esc" onclick={stopRun}><Icon name="stop" />Stop</button>
-                  <span class="pb-runbar-status"><Icon name="loader" spin />Running…</span>
-                {:else}
-                  <div class="pb-anchor">
-                    <span class="pb-split">
-                      <button class="pb-btn pb-btn--primary pb-btn--sm" data-tip="Run statement  Ctrl+Enter" onclick={() => runFromToolbar("statement")}
-                        ><Icon name="play" />Run</button
-                      >
-                      <button
-                        class="pb-btn pb-btn--primary pb-btn--sm"
-                        aria-label="Run options"
-                        aria-haspopup="menu"
-                        aria-expanded={runMenuOpen}
-                        onclick={() => (runMenuOpen = !runMenuOpen)}><Icon name="chev-down" class="pb-chev" /></button
-                      >
-                    </span>
-                    {#if runMenuOpen}
-                      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                      <div class="pb-clickaway" onclick={() => (runMenuOpen = false)}></div>
-                      <div class="pb-pop pb-pop--end">
-                        <div class="pb-menu" role="menu" style="min-width: 280px">
-                          <button class="pb-menu-item" role="menuitem" onclick={() => runFromToolbar("statement")}
-                            ><Icon name="play" />Run statement<span class="pb-keys"><kbd class="pb-kbd">Ctrl</kbd><kbd class="pb-kbd">↵</kbd></span></button
-                          >
-                          <button class="pb-menu-item" role="menuitem" onclick={() => runFromToolbar("all")}
-                            ><Icon name="play" />Run all<span class="pb-keys"
-                              ><kbd class="pb-kbd">Ctrl</kbd><kbd class="pb-kbd">Shift</kbd><kbd class="pb-kbd">↵</kbd></span
-                            ></button
-                          >
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                {/if}
-                {#if !keyValue}
-                  <Combobox label="Row limit" small width={132} placement="end" listWidth={180} options={limitOptions} value={settings.rowCap} onPick={setRowCap} tip="Rows to fetch before stopping" />
-                  <span class="pb-sep"></span>
-                  <button class="pb-btn pb-btn--ghost pb-btn--sm" disabled={saving !== null} data-tip-end="" data-tip="Save this query  Ctrl+Shift+D" onclick={saveFromEditor}
-                    ><Icon name="save" />Save query</button
-                  >
-                {/if}
-              </div>
+              <RunControls
+                {running}
+                onRun={runFromToolbar}
+                onStop={stopRun}
+                rowCap={settings.rowCap}
+                onRowCap={setRowCap}
+                {keyValue}
+                saveDisabled={saving !== null}
+                onSave={saveFromEditor}
+              />
             {/if}
-          </div>
-        </div>
+          {/snippet}
+        </PageTabs>
 
         <!-- One editor for every query page; a table page hides it (D17). -->
         <section class="pb-editor-host" hidden={onTablePage} aria-label="Editor">
@@ -1838,96 +1648,44 @@
               {/key}
             {/if}
             {#if tableError && tableError.kind === "error"}
-              <div class="pb-info pb-info--danger pb-info--strip" role="alert">
-                <Icon name="error" />
-                <div class="pb-info-text"><span class="pb-info-title">{errorTitle(tableError.error)}</span><span class="pb-info-msg">{tableError.error.message}</span></div>
-              </div>
+              <InfoBar tone="danger" strip title={errorTitle(tableError.error)} message={tableError.error.message} />
             {/if}
           </div>
         {:else if ran}
           <div style="position: relative">
-            <!-- Drag to share the height between the editor and the results; double-click puts it back. -->
-            <!-- A separator that can be focused is a widget: the arrow keys move it. -->
-            <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-            <div
-              class="pb-splitter"
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label="Resize the editor and the results"
-              aria-valuenow={editorHeight}
-              tabindex="0"
-              onpointerdown={dragEditor}
-              ondblclick={() => (editorHeight = 188)}
-              onkeydown={(event) => {
-                if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-                  event.preventDefault();
-                  editorHeight = Math.max(72, Math.min(window.innerHeight - 300, editorHeight + (event.key === "ArrowDown" ? 16 : -16)));
-                }
-              }}
-            ></div>
+            <Splitter orientation="horizontal" bind:value={editorHeight} min={72} max={() => window.innerHeight - 300} reset={188} label="Resize the editor and the results" />
             {#if keyView}
               {@const view = keyView}
-              <div class="pb-bar pb-keybar">
-                <span class="pb-mono pb-key-name">{view.name}</span>
-                <span class="pb-badge pb-badge--sm pb-badge--outline">{view.detail.kind === "sortedSet" ? "zset" : view.detail.kind}</span>
-                {#if KEY_UNITS[view.detail.kind]}<span class="pb-count">{numberFormat.format(view.detail.length)} {KEY_UNITS[view.detail.kind]}</span>{/if}
-                <span class="pb-count">{expiresIn(view.detail.ttlMs)}</span>
-                <span class="pb-spacer"></span>
-                <button class="pb-btn pb-btn--ghost pb-btn--sm" disabled={running} data-tip="Read the key again" onclick={() => void openKey(view.name)}
-                  ><Icon name="refresh" />Reload</button
-                >
-                <button class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Copy the key name" data-tip-end="" data-tip="Copy the key name" onclick={() => copyText(view.name, "the key name")}
-                  ><Icon name="copy" /></button
-                >
-              </div>
+              <KeyBar name={view.name} detail={view.detail} busy={running} onReload={() => void openKey(view.name)} onCopy={() => copyText(view.name, "the key name")} />
             {/if}
-            <div class="pb-bar">
-              <div class="pb-tabs" role="tablist">
-                {#each sets as set, index (set.result)}
-                  {@const range = ranRanges[set.statement]}
-                  <button
-                    class="pb-tab"
-                    role="tab"
-                    aria-selected={activeTab === index}
-                    data-tip-start=""
-                    data-tip={range && ranRequest ? `From statement ${set.statement + 1} of the run` : undefined}
-                    onclick={() => (activeTab = index)}
+            <ResultBar tabs={resultTabs} active={activeTab} {errorCount} onSelect={(tab) => (activeTab = tab)}>
+              {#snippet actions()}
+                {#if activeSet && !keyValue}
+                  {@const filtered = activeSet.filter}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="filter"
+                    open={filtersOpen}
+                    aria-pressed={filtersOpen}
+                    disabled={running}
+                    tip="Filter the rows held  Ctrl+F"
+                    onclick={() => void toggleFilters()}>Filter{#if filtered}<Badge size="sm">{filtered.conditions.length}</Badge>{/if}</Button
                   >
-                    Result {index + 1}
-                    {#if set.limited}
-                      <span class="pb-badge pb-badge--sm pb-badge--warning">{numberFormat.format(set.filter?.held ?? set.totalRows)}+</span>
-                    {:else}
-                      <span class="pb-count">{numberFormat.format(set.totalRows)}</span>
-                    {/if}
-                  </button>
-                {/each}
-                <button class="pb-tab" role="tab" aria-selected={activeTab === "messages"} onclick={() => (activeTab = "messages")}>
-                  Messages{#if errorCount > 0}<span class="pb-count-badge">{errorCount}</span>{/if}
-                </button>
-              </div>
-              <span class="pb-spacer"></span>
-              {#if activeSet && !keyValue}
-                {@const filtered = activeSet.filter}
-                <button
-                  class="pb-btn pb-btn--ghost pb-btn--sm"
-                  class:is-open={filtersOpen}
-                  aria-pressed={filtersOpen}
-                  disabled={running}
-                  data-tip="Filter the rows held  Ctrl+F"
-                  onclick={() => void toggleFilters()}
-                  ><Icon name="filter" />Filter{#if filtered}<span class="pb-badge pb-badge--sm">{filtered.conditions.length}</span>{/if}</button
-                >
-              {/if}
-              <button
-                class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon"
-                class:is-open={detailOpen}
-                aria-label="Row detail"
-                aria-pressed={detailOpen}
-                data-tip-end=""
-                data-tip="Row detail  Ctrl+Alt+I"
-                onclick={() => (detailOpen = !detailOpen)}><Icon name="pane" /></button
-              >
-            </div>
+                {/if}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="pane"
+                  label="Row detail"
+                  open={detailOpen}
+                  aria-pressed={detailOpen}
+                  tip="Row detail  Ctrl+Alt+I"
+                  tipAt="end"
+                  onclick={() => (detailOpen = !detailOpen)}
+                />
+              {/snippet}
+            </ResultBar>
             {#if filtersOpen && activeSet && !keyValue}
               {@const set = activeSet}
               {#key set.result}
@@ -1941,17 +1699,7 @@
                 />
               {/key}
               {#if set.filter?.where?.sql}
-                {@const where = set.filter.where}
-                <div class="pb-where">
-                  <span class="pb-where-label" data-tip-start="" data-tip="For your own SQL; Paboable filters the rows held and never runs it">To filter on the server</span>
-                  <span class="pb-where-sql">{where.sql}</span>
-                  {#if where.leftOut.length > 0}
-                    <span class="pb-badge pb-badge--sm pb-badge--warning" data-tip-end="" data-tip="A column whose name is empty or shared cannot be named in SQL"
-                      >{where.leftOut.length} left out</span
-                    >
-                  {/if}
-                  <button class="pb-btn pb-btn--ghost pb-btn--sm" data-tip-end="" data-tip="Copy the WHERE" onclick={copyWhere}><Icon name="copy" />Copy WHERE</button>
-                </div>
+                <WhereStrip where={set.filter.where} onCopy={copyWhere} />
               {/if}
             {/if}
           </div>
@@ -1960,35 +1708,7 @@
         {#if onTablePage || ran}
           <div class="pb-results">
             {#if activeTab === "messages" && !onTablePage}
-              <div class="pb-messages" role="log">
-                {#each messages as message, index (index)}
-                  <div class="pb-msg" class:is-error={message.kind === "error"}>
-                    {#if message.kind === "error"}
-                      <Icon name="error" class="pb-bad" />
-                    {:else if message.kind === "switched"}
-                      <Icon name="info" />
-                    {:else if message.kind === "command"}
-                      <Icon name="check-circle" class="pb-ok" />
-                    {:else}
-                      <Icon name="info" />
-                    {/if}
-                    <div class="pb-msg-text">
-                      {#if message.kind === "error"}
-                        <span><span class="pb-msg-title">{errorTitle(message.error)}</span> <span class="pb-msg-detail">{message.error.message}</span></span>
-                      {:else if message.kind === "command"}
-                        <span>{message.rowsAffected === null ? "Done" : `${numberFormat.format(message.rowsAffected)} rows affected`}</span>
-                      {:else if message.kind === "switched"}
-                        <span>Switched to {message.database}; the statements after this run there.</span>
-                      {:else}
-                        <span>{message.text}</span>
-                      {/if}
-                      {#if message.statement !== null}<span class="pb-msg-stmt">{statementLabel(message.statement)}</span>{/if}
-                    </div>
-                  </div>
-                {:else}
-                  <p class="pb-side-hint">No messages.</p>
-                {/each}
-              </div>
+              <MessageList {messages} statement={statementLabel} />
             {:else}
               <div class="pb-results-grid">
                 <DataGrid
@@ -2024,32 +1744,13 @@
       </main>
     </div>
   {:else}
-    <!-- Welcome: no sidebar; the palette holds the saved connections (D25) -->
-    <main class="pb-empty">
-      <div class="pb-empty-mark"><Icon name="database" /></div>
-      <div class="pb-empty-words">
-        <h1 class="pb-empty-title">No connection open</h1>
-        <p class="pb-empty-text">Search for a saved connection, make a new one, or open a SQLite file.</p>
-      </div>
-      <div class="pb-row">
-        <button class="pb-btn pb-btn--primary" disabled={connecting} onclick={newConnection}><Icon name="plus" />New connection…</button>
-        <button class="pb-btn pb-btn--secondary" disabled={connecting} onclick={() => void openFile()}><Icon name="file" />Open file…</button>
-        <button class="pb-btn pb-btn--ghost" disabled={connecting} onclick={() => void connectTo(":memory:")}>Open an in-memory database</button>
-      </div>
-      <div class="pb-empty-keys">
-        <span><span class="pb-keys"><kbd class="pb-kbd">Ctrl</kbd><kbd class="pb-kbd">K</kbd></span>Search</span>
-        <span><span class="pb-keys"><kbd class="pb-kbd">Ctrl</kbd><kbd class="pb-kbd">N</kbd></span>New connection</span>
-        <span><span class="pb-keys"><kbd class="pb-kbd">Ctrl</kbd><kbd class="pb-kbd">O</kbd></span>Open file</span>
-      </div>
-    </main>
+    <Welcome busy={connecting} onNew={newConnection} onOpenFile={() => void openFile()} onMemory={() => void connectTo(":memory:")} />
   {/if}
 
   <!-- Status bar: what the result is; the pager for a table page (D18) -->
-  <footer class="pb-status">
+  <StatusBar>
     {#if !connection}
       <span>{connecting ? "Connecting…" : "No connection"}</span>
-      <span class="pb-spacer"></span>
-      <span>Paboable</span>
     {:else}
       {#if running}
         <span class="is-live"><Icon name="loader" size="sm" spin />Running…</span>
@@ -2071,10 +1772,9 @@
       {#if activeSet}
         {#if onTablePage && tableTab}
           <span
-            >{numberFormat.format(activeSet.totalRows)} rows{#if typeof tableTab.count === "number"}&nbsp;of {numberFormat.format(tableTab.count)}{:else if tableTab.count === "counting"}&nbsp;of …{:else}&nbsp;<button
-                class="pb-btn pb-btn--link"
-                disabled={running}
-                onclick={() => void countTable()}>Count</button
+            >{numberFormat.format(activeSet.totalRows)} rows{#if typeof tableTab.count === "number"}&nbsp;of {numberFormat.format(
+                tableTab.count,
+              )}{:else if tableTab.count === "counting"}&nbsp;of …{:else}&nbsp;<Button variant="link" disabled={running} onclick={() => void countTable()}>Count</Button
               >{/if}</span
           >
         {:else}
@@ -2084,18 +1784,21 @@
             <span>{numberFormat.format(activeSet.totalRows)} rows{activeSet.finished ? "" : " so far"}</span>
           {/if}
           {#if activeSet.limited}
-            <span class="pb-badge pb-badge--warning"><span class="pb-badge-dot"></span>Stopped at {numberFormat.format(activeSet.filter?.held ?? activeSet.totalRows)} rows</span>
+            <Badge tone="warning" dot>Stopped at {numberFormat.format(activeSet.filter?.held ?? activeSet.totalRows)} rows</Badge>
             {#if activeSet.filter}<span>the filter covers only the rows loaded</span>{/if}
-            <button class="pb-btn pb-btn--link" disabled={running} onclick={fetchAll}>Fetch all</button>
+            <Button variant="link" disabled={running} onclick={fetchAll}>Fetch all</Button>
           {/if}
           {#if activeSet.sortedBy === "server"}<span>sorted by the server</span>{/if}
           {#if activeSet.sortedBy === "core"}<span>sorted in Paboable</span>{/if}
         {/if}
       {/if}
-      {#if hasEdits}<span class="pb-badge"><span class="pb-badge-dot"></span>Unsaved changes</span>{/if}
+      {#if hasEdits}<Badge dot>Unsaved changes</Badge>{/if}
       {#if statusNote}<span class="is-note">{statusNote}</span>{/if}
-      <span class="pb-spacer"></span>
-      {#if onTablePage && tableTab}
+    {/if}
+    {#snippet end()}
+      {#if !connection}
+        <span>Paboable</span>
+      {:else if onTablePage && tableTab}
         <Pager
           bind:this={pager}
           offset={tableTab.offset}
@@ -2107,8 +1810,8 @@
           onLimit={setPageSize}
         />
       {/if}
-    {/if}
-  </footer>
+    {/snippet}
+  </StatusBar>
 </div>
 
 {#if paletteOpen}
@@ -2122,6 +1825,7 @@
     y={treeMenu.y}
     onClose={() => (treeMenu = null)}
     onOpen={(target) => void openObject(target.object, target.database)}
+    onOpenNew={(target) => void openObject(target.object, target.database, true)}
     onUseDatabase={useDatabase}
     onCopy={copyText}
     onRefresh={() => void refreshObjects()}
@@ -2172,42 +1876,5 @@
 
 {#if askPassword}
   {@const target = askPassword}
-  <div class="pb-overlay pb-overlay--fixed" role="presentation">
-    <form
-      class="pb-dialog"
-      style="width: 420px"
-      aria-labelledby="password-title"
-      onsubmit={(event) => {
-        event.preventDefault();
-        const field = event.currentTarget.elements.namedItem("password");
-        void openSaved(target, field instanceof HTMLInputElement ? field.value : "");
-      }}
-    >
-      <div class="pb-dialog-head">
-        <h2 class="pb-dialog-title" id="password-title">Password for {target.name}</h2>
-        <button type="button" class="pb-btn pb-btn--ghost pb-btn--sm pb-btn--icon" aria-label="Close" onclick={() => (askPassword = null)}><Icon name="x" /></button>
-      </div>
-      <div class="pb-dialog-body">
-        <p class="pb-dialog-text">This connection does not keep its {target.config.target.kind === "http" ? "API token" : "password"}.</p>
-        <label class="pb-field">
-          <span class="pb-label">{target.config.target.kind === "http" ? "API token" : "Password"}</span>
-          <!-- svelte-ignore a11y_autofocus -->
-          <input
-            class="pb-input"
-            name="password"
-            type="password"
-            autofocus
-            onkeydown={(event) => {
-              if (event.key === "Escape") askPassword = null;
-            }}
-          />
-        </label>
-      </div>
-      <div class="pb-dialog-foot">
-        <span class="pb-spacer"></span>
-        <button type="button" class="pb-btn pb-btn--ghost" onclick={() => (askPassword = null)}>Cancel</button>
-        <button type="submit" class="pb-btn pb-btn--primary" data-tip-end="" data-tip="Connect  Enter">Connect</button>
-      </div>
-    </form>
-  </div>
+  <PasswordDialog saved={target} onSubmit={(password) => void openSaved(target, password)} onClose={() => (askPassword = null)} />
 {/if}

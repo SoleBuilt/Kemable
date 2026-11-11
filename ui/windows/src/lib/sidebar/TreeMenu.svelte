@@ -1,6 +1,10 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
-  import Icon, { type IconName } from "../ui/Icon.svelte";
+  import ContextMenu from "../ui/ContextMenu.svelte";
+  import type { IconName } from "../ui/Icon.svelte";
+  import Menu from "../ui/Menu.svelte";
+  import MenuItem from "../ui/MenuItem.svelte";
+  import MenuLabel from "../ui/MenuLabel.svelte";
+  import MenuSeparator from "../ui/MenuSeparator.svelte";
   import type { TreeTarget } from "./ObjectTree.svelte";
 
   /**
@@ -14,12 +18,14 @@
     y: number;
     onClose: () => void;
     onOpen: (target: TreeTarget & { kind: "object" }) => void;
+    /** Opens it on another page, even when it is open already. */
+    onOpenNew: (target: TreeTarget & { kind: "object" }) => void;
     onUseDatabase: (name: string) => void;
     onCopy: (text: string, what: string) => void;
     onRefresh: () => void;
   }
 
-  let { target, x, y, onClose, onOpen, onUseDatabase, onCopy, onRefresh }: Props = $props();
+  let { target, x, y, onClose, onOpen, onOpenNew, onUseDatabase, onCopy, onRefresh }: Props = $props();
 
   interface Item {
     label: string;
@@ -57,7 +63,7 @@
       ...(opens
         ? [
             { label: "Open", icon: table ? "table" : "view", keys: ["Enter"], run: () => onOpen(open) } satisfies Item,
-            { label: "Open in New Tab", icon: "plus", keys: ["Ctrl", "Enter"], run: () => onOpen(open) } satisfies Item,
+            { label: "Open in New Tab", icon: "plus", keys: ["Ctrl", "Enter"], run: () => onOpenNew(open) } satisfies Item,
           ]
         : []),
       { label: "Show Structure", icon: "pane", run: null },
@@ -97,77 +103,24 @@
       : `${target.object.kind === "table" ? "Table" : target.object.kind === "view" ? "View" : target.object.kind} ${target.object.name}`,
   );
 
-  let menu: HTMLDivElement | undefined = $state();
-  let left = $state(0);
-  let top = $state(0);
-
-  // Placed at the pointer, then moved in so the whole menu stays in the window.
-  onMount(() => {
-    left = x;
-    top = y;
-    void tick().then(() => {
-      const box = menu?.getBoundingClientRect();
-      if (box) {
-        left = Math.max(8, Math.min(x, window.innerWidth - box.width - 8));
-        top = Math.max(8, Math.min(y, window.innerHeight - box.height - 8));
-      }
-      menu?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
-    });
-  });
-
   function choose(item: Item) {
     if (!item.run) return;
     onClose();
     item.run();
   }
-
-  function onKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-      return;
-    }
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    event.preventDefault();
-    const buttons = [...(menu?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
-    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    buttons[(at + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
-  }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div
-  class="pb-clickaway"
-  onclick={onClose}
-  oncontextmenu={(event) => {
-    event.preventDefault();
-    onClose();
-  }}
-></div>
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="pb-ctx" style:left="{left}px" style:top="{top}px" bind:this={menu} onkeydown={onKeydown}>
-  <div class="pb-menu" role="menu" aria-label={title} style="min-width: 252px">
-    <div class="pb-menu-label">{title}</div>
+<ContextMenu {x} {y} {onClose}>
+  <Menu label={title} minWidth={252}>
+    <MenuLabel>{title}</MenuLabel>
     {#each items as item, index (index)}
       {#if item === "-"}
-        <div class="pb-menu-sep"></div>
+        <MenuSeparator />
       {:else}
-        <button
-          type="button"
-          class="pb-menu-item"
-          class:is-danger={item.danger}
-          role="menuitem"
-          disabled={item.run === null}
-          onclick={() => choose(item)}
+        <MenuItem icon={item.icon} keys={item.keys} end={item.run === null ? "Later" : undefined} danger={item.danger} disabled={item.run === null} onclick={() => choose(item)}
+          >{item.label}</MenuItem
         >
-          <Icon name={item.icon} />{item.label}
-          {#if item.run === null}
-            <span class="pb-end">Later</span>
-          {:else if item.keys}
-            <span class="pb-keys">{#each item.keys as key (key)}<kbd class="pb-kbd">{key}</kbd>{/each}</span>
-          {/if}
-        </button>
       {/if}
     {/each}
-  </div>
-</div>
+  </Menu>
+</ContextMenu>

@@ -1,10 +1,15 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
   import type { CoreError, KeyInfo, KeyKind } from "../types";
   import Combobox from "../ui/Combobox.svelte";
-  import Icon from "../ui/Icon.svelte";
+  import Badge from "../ui/Badge.svelte";
+  import Button from "../ui/Button.svelte";
+  import ErrorNote from "../ui/ErrorNote.svelte";
+  import ListItem from "../ui/ListItem.svelte";
+  import Note from "../ui/Note.svelte";
+  import SearchField from "../ui/SearchField.svelte";
+  import Spacer from "../ui/Spacer.svelte";
 
   interface Props {
     conn: number;
@@ -120,39 +125,32 @@
   const numberFormat = new Intl.NumberFormat();
 </script>
 
-<div class="pb-search">
-  <Icon name="search" />
-  <input
-    class="pb-mono"
-    placeholder="Text, or a glob like user:*"
-    aria-label="Key pattern"
-    spellcheck="false"
-    bind:value={pattern}
-    onkeydown={(event) => {
-      if (event.key === "Enter") void scan(true);
-    }}
-  />
-  {#if database !== null}<span class="pb-badge pb-badge--sm pb-badge--outline">db {database}</span>{/if}
-</div>
+<SearchField
+  mono
+  placeholder="Text, or a glob like user:*"
+  label="Key pattern"
+  bind:value={pattern}
+  onkeydown={(event) => {
+    if (event.key === "Enter") void scan(true);
+  }}
+>
+  {#snippet end()}{#if database !== null}<Badge size="sm" outline>db {database}</Badge>{/if}{/snippet}
+</SearchField>
 <div class="pb-side-tools">
   <Combobox label="Key type" small width={128} options={KINDS} value={kind} onPick={(value) => (kind = value)} />
 </div>
 <div class="pb-side-body">
-  {#if error}
-    <div class="pb-tree-error"><span class="pb-tree-error-title">{errorTitle(error)}</span><span>{error.message}</span></div>
-  {/if}
+  {#if error}<ErrorNote {error} />{/if}
   <div class="pb-list">
     {#each keys as key (key.name)}
-      <button class="pb-list-item" class:is-selected={openKey === key.name} onclick={() => onOpen(key)}>
+      <ListItem selected={openKey === key.name} onclick={() => onOpen(key)}>
         <span class="pb-list-line"
-          ><span class="pb-badge pb-badge--sm pb-badge--outline pb-key-kind">{BADGES[key.kind]}</span><span class="pb-list-name pb-mono"
-            >{key.name}</span
-          ></span
+          ><Badge size="sm" outline class="pb-key-kind">{BADGES[key.kind]}</Badge><span class="pb-list-name pb-mono">{key.name}</span></span
         >
         <span class="pb-meta pb-key-meta">{ttl(key.ttlMs)}</span>
-      </button>
+      </ListItem>
     {:else}
-      {#if !loading && !error}<p class="pb-side-hint">No keys match.</p>{/if}
+      {#if !loading && !error}<Note>No keys match.</Note>{/if}
     {/each}
   </div>
 </div>
@@ -161,7 +159,7 @@
     <span>Scanning…</span>
   {:else}
     <span>{numberFormat.format(keys.length)}{done ? "" : "+"} keys</span>
-    <span class="pb-spacer"></span>
-    {#if !done}<button class="pb-btn pb-btn--link" onclick={() => scan(false)}>Scan more</button>{/if}
+    <Spacer />
+    {#if !done}<Button variant="link" onclick={() => scan(false)}>Scan more</Button>{/if}
   {/if}
 </div>
