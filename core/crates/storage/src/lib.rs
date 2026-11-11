@@ -9,8 +9,12 @@
 //! a temporary file and a rename, so a crash leaves the old file or the new
 //! one, never half of one. A file that cannot be read is never written over:
 //! the change fails instead, so a damaged library is not lost to a save.
+//!
+//! A connection may sign in with a credential profile instead of its own
+//! user and password ([`profiles`]); `resolve` fills them in from it.
 
 pub mod history;
+pub mod profiles;
 pub mod queries;
 
 use std::path::{Path, PathBuf};
@@ -19,6 +23,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use paboable_core::config::{ConnectionConfig, Secret, Target};
 use paboable_core::{DriverError, ErrorCode, Result};
 use serde::{Deserialize, Serialize};
+
+use crate::profiles::CredentialProfiles;
 
 /// Where secrets live. The app implements it with the platform's store.
 pub trait SecretVault: Send + Sync {
@@ -43,6 +49,10 @@ pub struct SavedConnection {
     /// When it was last opened, in milliseconds since the Unix epoch.
     #[serde(default)]
     pub last_used: Option<i64>,
+    /// The credential profile it signs in with. Its user is copied into the
+    /// config for display; its password is the profile's, never the connection's.
+    #[serde(default)]
+    pub profile_id: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -55,6 +65,7 @@ const FILE_VERSION: u32 = 1;
 
 pub struct ConnectionLibrary {
     path: PathBuf,
+    profiles: CredentialProfiles,
 }
 
 pub fn password_key(id: &str) -> String {
@@ -93,11 +104,17 @@ impl ConnectionLibrary {
     pub fn in_folder(folder: &Path) -> Self {
         Self {
             path: folder.join("connections.json"),
+            profiles: CredentialProfiles::in_folder(folder),
         }
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// The credential profiles kept beside the connections.
+    pub fn profiles(&self) -> &CredentialProfiles {
+        &self.profiles
     }
 
     fn read(&self) -> Result<LibraryFile> {
@@ -147,9 +164,20 @@ impl ConnectionLibrary {
         if connection.name.trim().is_empty() {
             return Err(DriverError::config("a saved connection needs a name"));
         }
-        let mut file = self.read()?;
+        let file = self.read()?;
         if connection.id.is_empty() {
             connection.id = uuid::Uuid::new_v4().to_string();
+        }
+        if let Some(profile_id) = &connection.profile_id {
+            // The profile holds the login: the connection keeps no secret of its own.
+            let profile = self.profiles.get(profile_id)?;
+            if let Target::Network { user, .. } = &mut connection.config.target {
+                *user = Some(profile.user);
+            }
+            connection.save_password = false;
+            vault.delete(&password_key(&connection.id))?;
+            set_secret(&mut connection.config, Secret::default());
+            return self.put(file, connection);
         }
         let secret = secret
             .or_else(|| secret_of(&connection.config).cloned())
@@ -161,7 +189,11 @@ impl ConnectionLibrary {
             vault.delete(&key)?;
         }
         set_secret(&mut connection.config, Secret::default());
+        self.put(file, connection)
+    }
 
+    /// Writes `connection` into `file` in its place, or at the end.
+    fn put(&self, mut file: LibraryFile, connection: SavedConnection) -> Result<SavedConnection> {
         match file.connections.iter_mut().find(|saved| saved.id == connection.id) {
             Some(saved) => *saved = connection.clone(),
             None => file.connections.push(connection.clone()),
@@ -169,6 +201,25 @@ impl ConnectionLibrary {
         file.version = FILE_VERSION;
         self.write(&file)?;
         Ok(connection)
+    }
+
+    /// Deletes a credential profile and its password. The connections that
+    /// signed in with it keep its user and ask for a password from now on.
+    /// Returns how many there were.
+    pub fn delete_profile(&self, id: &str, vault: &dyn SecretVault) -> Result<usize> {
+        let mut file = self.read()?;
+        let mut used = 0;
+        for connection in &mut file.connections {
+            if connection.profile_id.as_deref() == Some(id) {
+                connection.profile_id = None;
+                used += 1;
+            }
+        }
+        if used > 0 {
+            self.write(&file)?;
+        }
+        self.profiles.remove(id, vault)?;
+        Ok(used)
     }
 
     pub fn delete(&self, id: &str, vault: &dyn SecretVault) -> Result<()> {
@@ -179,7 +230,7 @@ impl ConnectionLibrary {
     }
 
     /// The saved connection and its config with the secret filled in from the
-    /// vault, when one is kept.
+    /// vault, when one is kept, or with the login of its credential profile.
     pub fn resolve(&self, id: &str, vault: &dyn SecretVault) -> Result<(SavedConnection, ConnectionConfig)> {
         let saved = self
             .read()?
@@ -188,7 +239,9 @@ impl ConnectionLibrary {
             .find(|saved| saved.id == id)
             .ok_or_else(|| DriverError::not_found("saved connection"))?;
         let mut config = saved.config.clone();
-        if saved.save_password
+        if let Some(profile_id) = &saved.profile_id {
+            self.profiles.apply(profile_id, vault, &mut config)?;
+        } else if saved.save_password
             && let Some(secret) = vault.get(&password_key(id))?
         {
             set_secret(&mut config, secret);

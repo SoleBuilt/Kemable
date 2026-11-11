@@ -247,6 +247,17 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-codebox .k { color: var(--syntax-keyword); } .pb-codebox .s { color: var(--syntax-string); } .pb-codebox .n { color: var(--syntax-number); }
 .pb-setting { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .pb-setting-text { display: flex; flex-direction: column; gap: 2px; }
+/* A dialog with a list on the left and the entry picked on the right (Credential profiles) */
+.pb-split-list { display: flex; flex-direction: column; width: 240px; flex: none; border-right: 1px solid var(--line); background: var(--canvas); }
+.pb-split-scroll { flex: 1; min-height: 0; overflow: auto; }
+.pb-split-list .pb-empty { flex: 1; height: auto; gap: var(--space-2); padding: var(--space-5); }
+.pb-split-meta { padding-left: 24px; }
+.pb-split-foot { display: flex; gap: var(--space-1); padding: var(--space-2); border-top: 1px solid var(--line); }
+.pb-split-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); }
+.pb-split-blank { flex: 1; display: flex; align-items: center; justify-content: center; }
+.pb-used { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--canvas); }
+.pb-used-row { display: flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-3); }
+.pb-used-row .pb-hint { margin-left: auto; white-space: nowrap; }
 
 /* Empty state */
 .pb-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); height: 100%; padding: var(--space-6); text-align: center; background: var(--canvas); }
@@ -478,6 +489,7 @@ span.pb-cond-lead { display: inline-flex; color: var(--fg-muted); font-size: 12p
 .ic.pb-bad { color: var(--danger); }
 .pb-empty-words { display: flex; flex-direction: column; gap: var(--space-1); align-items: center; }
 .pb-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-2); }
+.pb-row--start { justify-content: flex-start; }
 .pb-overlay--fixed { position: fixed; }
 .pb-checks { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
 .pb-textarea { height: auto; min-height: 120px; padding-top: var(--space-2); padding-bottom: var(--space-2); line-height: 20px; resize: vertical; }

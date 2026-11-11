@@ -20,6 +20,7 @@
   import SaveQueryDialog from "./lib/sidebar/SaveQueryDialog.svelte";
   import TreeMenu from "./lib/sidebar/TreeMenu.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
+  import ProfilesDialog from "./lib/connect/ProfilesDialog.svelte";
   import ConnectDialog, { type ConnectRequest, type NetworkEngine, isNetworkEngine } from "./lib/connect/ConnectDialog.svelte";
   import ConnectionMenu from "./lib/connect/ConnectionMenu.svelte";
   import PasswordDialog from "./lib/connect/PasswordDialog.svelte";
@@ -580,6 +581,10 @@
 
   /** The connect dialog: the engine it is for, and the saved connection it edits. */
   let connectDialog: { engine: NetworkEngine; saved: SavedConnection | null } | null = $state(null);
+  /** Credential profiles, from the palette or over the connect form; `initial` is the profile shown first. */
+  let profilesDialog: { initial: string | null } | null = $state(null);
+  /** Goes up when profiles change, so the connect form reads them again. */
+  let profilesKey = $state(0);
   let savedKey = $state(0);
   let library: SavedConnection[] = $state.raw([]);
 
@@ -600,7 +605,7 @@
       // A saved connection opens by id: a password left blank is the kept one.
       const opened = request.savedId
         ? await ipc.connectSaved(request.savedId, request.password)
-        : await ipc.connect(request.config);
+        : await ipc.connect(request.config, request.profileId);
       return { ...opened, title: request.title };
     });
     if (!error) connectDialog = null;
@@ -612,7 +617,7 @@
 
   function needsPassword(saved: SavedConnection): boolean {
     const target = saved.config.target;
-    if (saved.savePassword) return false;
+    if (saved.savePassword || saved.profileId) return false;
     if (target.kind === "http") return true;
     return target.kind === "network" && !(saved.config.engine === "mssql" && !target.user);
   }
@@ -1467,7 +1472,14 @@
       run: () => void openSaved(entry),
     })),
     { id: "settings", group: "Settings", label: "Settings…", icon: "settings", keys: ["Ctrl", ","], run: () => (settingsOpen = true) },
-    { id: "profile", group: "Settings", label: "Profile…", meta: "Later", icon: "key", disabled: true, run: () => {} },
+    {
+      id: "profiles",
+      group: "Settings",
+      label: "Credential profiles…",
+      meta: "A user and password for many connections",
+      icon: "key",
+      run: () => (profilesDialog = { initial: null }),
+    },
   ]);
 
   // App-wide keys. WebView2 reloads the page on F5 and Ctrl+R, which would
@@ -1923,6 +1935,19 @@
     onSaved={() => savedKey++}
     onClose={() => (connectDialog = null)}
     onOpenSaved={(saved) => void openSaved(saved)}
+    onManageProfiles={(initial) => (profilesDialog = { initial })}
+    {profilesKey}
+  />
+{/if}
+
+{#if profilesDialog}
+  <ProfilesDialog
+    initial={profilesDialog.initial}
+    onChanged={() => {
+      profilesKey++;
+      savedKey++;
+    }}
+    onClose={() => (profilesDialog = null)}
   />
 {/if}
 

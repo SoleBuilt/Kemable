@@ -65,6 +65,7 @@ fn postgres(password: &str) -> SavedConnection {
         },
         save_password: true,
         last_used: None,
+        profile_id: None,
     }
 }
 
@@ -182,6 +183,150 @@ fn touching_records_when_it_was_opened() {
     let saved = library.save(postgres("pw"), None, &MemoryVault::default()).unwrap();
     library.touch(&saved.id).unwrap();
     assert!(library.list().unwrap()[0].last_used.is_some_and(|millis| millis > 0));
+}
+
+// --- credential profiles ---------------------------------------------------------
+
+use crate::profiles::{CredentialProfile, profile_password_key};
+
+fn profile(name: &str, user: &str) -> CredentialProfile {
+    CredentialProfile {
+        id: String::new(),
+        name: name.into(),
+        user: user.into(),
+    }
+}
+
+fn user_of(config: &ConnectionConfig) -> Option<&str> {
+    match &config.target {
+        Target::Network { user, .. } => user.as_deref(),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_connection_with_a_profile_signs_in_with_the_profiles_user_and_password() {
+    let folder = Folder::new("profile-sign-in");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let vault = MemoryVault::default();
+    let reader = library
+        .profiles()
+        .save(
+            profile("app-reader", "app_reader"),
+            Some(Secret::new("đọc-only")),
+            &vault,
+        )
+        .unwrap();
+
+    // Whatever the form typed, the connection keeps no login of its own.
+    let saved = library
+        .save(
+            SavedConnection {
+                profile_id: Some(reader.id.clone()),
+                ..postgres("typed-and-ignored")
+            },
+            None,
+            &vault,
+        )
+        .unwrap();
+    assert!(!saved.save_password);
+    assert_eq!(user_of(&saved.config), Some("app_reader"));
+    assert!(vault.get(&password_key(&saved.id)).unwrap().is_none());
+    let file = std::fs::read_to_string(library.profiles().path()).unwrap();
+    assert!(!file.contains("đọc-only"), "{file}");
+
+    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(user_of(&config), Some("app_reader"));
+    assert_eq!(password_of(&config), "đọc-only");
+
+    // A new password in the profile reaches every connection that uses it.
+    library
+        .profiles()
+        .save(
+            CredentialProfile {
+                user: "app_reader_2".into(),
+                ..reader.clone()
+            },
+            Some(Secret::new("rotated")),
+            &vault,
+        )
+        .unwrap();
+    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(user_of(&config), Some("app_reader_2"));
+    assert_eq!(password_of(&config), "rotated");
+
+    // Saving the profile without a password keeps the kept one.
+    library.profiles().save(reader, None, &vault).unwrap();
+    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(password_of(&config), "rotated");
+}
+
+#[test]
+fn profile_names_are_required_and_unique_ignoring_case() {
+    let folder = Folder::new("profile-names");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let vault = MemoryVault::default();
+    let profiles = library.profiles();
+    let first = profiles.save(profile("dba", "postgres"), None, &vault).unwrap();
+
+    for wrong in [profile("  ", "postgres"), profile("other", " "), profile("DBA", "sa")] {
+        assert_eq!(
+            profiles.save(wrong, None, &vault).unwrap_err().code,
+            ErrorCode::ConfigInvalid
+        );
+    }
+    // Saving the same profile under its own name is not a clash.
+    profiles.save(first, None, &vault).unwrap();
+    profiles
+        .save(profile("app-reader", "app_reader"), None, &vault)
+        .unwrap();
+    let names: Vec<_> = profiles.list().unwrap().into_iter().map(|p| p.name).collect();
+    assert_eq!(names, ["app-reader", "dba"]);
+}
+
+#[test]
+fn deleting_a_profile_leaves_its_connections_asking_for_a_password() {
+    let folder = Folder::new("profile-delete");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let vault = MemoryVault::default();
+    let reader = library
+        .profiles()
+        .save(profile("app-reader", "app_reader"), Some(Secret::new("pw")), &vault)
+        .unwrap();
+    let with = SavedConnection {
+        profile_id: Some(reader.id.clone()),
+        ..postgres("")
+    };
+    let first = library.save(with.clone(), None, &vault).unwrap();
+    library.save(with, None, &vault).unwrap();
+    library.save(postgres("own"), None, &vault).unwrap();
+
+    assert_eq!(library.delete_profile(&reader.id, &vault).unwrap(), 2);
+    assert!(library.profiles().list().unwrap().is_empty());
+    assert!(vault.get(&profile_password_key(&reader.id)).unwrap().is_none());
+    let (saved, config) = library.resolve(&first.id, &vault).unwrap();
+    assert_eq!(saved.profile_id, None);
+    assert!(!saved.save_password);
+    assert_eq!(user_of(&config), Some("app_reader"));
+    assert_eq!(password_of(&config), "");
+}
+
+#[test]
+fn a_connection_cannot_name_a_profile_that_is_not_there() {
+    let folder = Folder::new("profile-missing");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let error = library
+        .save(
+            SavedConnection {
+                profile_id: Some("gone".into()),
+                ..postgres("")
+            },
+            None,
+            &MemoryVault::default(),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::NotFound);
+    assert!(library.list().unwrap().is_empty());
 }
 
 // --- query history ------------------------------------------------------------

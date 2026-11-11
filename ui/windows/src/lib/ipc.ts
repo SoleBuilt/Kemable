@@ -4,6 +4,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
+  CredentialProfile,
   BrowseQuery,
   BrowseStatements,
   ColumnInfo,
@@ -39,11 +40,12 @@ export const ipc = {
   /** A pasted connection URL as a config for the connect form. */
   parseConnectionUrl: (url: string) => invoke<ConnectionConfig>("parse_connection_url", { url }),
 
-  connect: (config: ConnectionConfig) => invoke<OpenedConnection>("connect", { config }),
+  /** Opens a connection as typed; `profileId` signs it in with a credential profile instead. */
+  connect: (config: ConnectionConfig, profileId: string | null = null) => invoke<OpenedConnection>("connect", { config, profileId }),
 
   /** Connects, reads the version and the databases, and closes. `savedId` lends a kept password to a blank field. */
-  testConnection: (config: ConnectionConfig, savedId: string | null) =>
-    invoke<TestedConnection>("test_connection", { config, savedId }),
+  testConnection: (config: ConnectionConfig, savedId: string | null, profileId: string | null = null) =>
+    invoke<TestedConnection>("test_connection", { config, savedId, profileId }),
 
   /** The saved connections, in the order they were added. */
   listSaved: () => invoke<SavedConnection[]>("list_saved"),
@@ -53,6 +55,14 @@ export const ipc = {
     invoke<SavedConnection>("save_connection", { connection, password }),
 
   deleteSaved: (id: string) => invoke<void>("delete_saved", { id }),
+
+  /** The credential profiles, by name; their passwords stay in Windows Credential Manager. */
+  listProfiles: () => invoke<CredentialProfile[]>("list_profiles"),
+  /** Saves a profile; `password`, when given, replaces the kept one. */
+  saveProfile: (profile: CredentialProfile, password: string | null) =>
+    invoke<CredentialProfile>("save_profile", { profile, password }),
+  /** Deletes a profile; resolves to how many saved connections used it. */
+  deleteProfile: (id: string) => invoke<number>("delete_profile", { id }),
 
   /** Opens a saved connection; `password` is for one saved without it. */
   connectSaved: (id: string, password: string | null) =>

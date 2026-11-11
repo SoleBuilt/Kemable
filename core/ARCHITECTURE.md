@@ -7,7 +7,7 @@ Cargo.toml                      the workspace, at the root, with rust-toolchain.
 core/crates/
 ├── core/                       paboable-core: domain types, the driver contract, SQL splitting. No I/O.
 ├── store/                      paboable-store: columnar result sets and the packed windows a grid reads
-├── storage/                    paboable-storage: saved connections in connections.json; secrets through SecretVault
+├── storage/                    paboable-storage: saved connections in connections.json, credential profiles in profiles.json; secrets through SecretVault
 └── drivers/
     ├── d1/                     paboable-driver-d1: Cloudflare D1 through its REST API, reqwest with rustls
     ├── mssql/                  paboable-driver-mssql: tiberius; SQL Server, Windows or SQL Server login

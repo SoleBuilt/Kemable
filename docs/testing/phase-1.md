@@ -72,6 +72,30 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Làm lại với SQL Server (Windows account) và Redis.
   **Đúng:** **Connected** với phiên bản; Redis không có số database.
 
+### 1.6 Credential profiles
+- [ ] Ctrl+K, gõ `profile`, chọn **Credential profiles…**.
+  **Đúng:** hộp thoại rộng, bên trái danh sách (lần đầu: "No profiles yet"), bên phải trống "Make a profile to fill this in."
+- [ ] Bấm **New profile**, đặt Name `app-reader`, User và Password của một login PostgreSQL thật, bấm **Save** (hoặc Enter).
+  **Đúng:** khung xanh **Saved**; danh sách ghi "app_reader · not used". Mở Windows Credential Manager › Windows Credentials: có `profile/<id>/password.Paboable`. Mở `%APPDATA%\dev.paboable.app\profiles.json`: có tên và user, không có mật khẩu.
+- [ ] Tạo thêm profile tên `APP-READER` rồi Save.
+  **Đúng:** khung đỏ báo tên đã có (không phân biệt hoa thường), không lưu.
+- [ ] **New connection…**, PostgreSQL, điền Host, ở **Credentials** chọn **From a profile**, chọn `app-reader`, bấm **Test**, rồi **Connect** với **Save this connection** bật.
+  **Đúng:** ô User/Password biến mất, dòng gợi ý "Signs in as …"; ô "Keep the password…" ẩn; Test ra **Connected**; Connect mở được.
+- [ ] Mở lại **Credential profiles…**, chọn `app-reader`.
+  **Đúng:** phần **Used by** có connection vừa lưu; danh sách ghi "used by 1".
+- [ ] Đổi Password của profile thành mật khẩu sai, Save, rồi mở connection đã lưu từ Ctrl+K.
+  **Đúng:** báo sai đăng nhập (connection dùng mật khẩu mới của profile). Đổi lại mật khẩu đúng, Save: mở được, không hỏi mật khẩu.
+- [ ] Trong connect form, chọn **Type them here**, gõ User và Password, bấm **Save these as a profile…**.
+  **Đúng:** form chuyển sang **From a profile** với profile mới tên theo user (thêm `-2` nếu trùng), khung xanh "Saved as the profile …".
+- [ ] Trong ô chọn Profile, chọn **Manage profiles…**.
+  **Đúng:** Credential profiles mở đè lên connect form. Esc chỉ đóng Credential profiles, connect form vẫn còn; profile vừa sửa hiện đúng trong ô chọn.
+- [ ] Trong Credential profiles, chọn `app-reader`, bấm **Delete** (hoặc phím Delete trong danh sách).
+  **Đúng:** khung vàng "Delete app-reader? 1 connection uses it…" với Delete và Keep. Bấm Delete: profile biến mất, mục trong Credential Manager bị xoá; mở connection đã lưu thì hỏi mật khẩu.
+- [ ] Bấm **Duplicate** trên một profile.
+  **Đúng:** thêm `<tên>-copy` cùng user, chưa lưu ("not saved"); phải gõ mật khẩu rồi Save.
+- [ ] Kiểm tra cả hai hộp thoại ở theme sáng và tối.
+  **Đúng:** chữ đọc rõ, danh sách bên trái có nền canvas, đường kẻ giữa hai cột.
+
 ---
 
 ## 2. Chạy query
