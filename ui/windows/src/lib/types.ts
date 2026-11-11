@@ -66,6 +66,13 @@ export interface OpenedConnection {
   title: string;
 }
 
+/** What Test in the connect form learned; nothing stays open after it. */
+export interface TestedConnection {
+  serverVersion: string | null;
+  /** How many databases the login may see, for an engine with databases. */
+  databases: number | null;
+}
+
 export interface DatabaseInfo {
   name: string;
   isCurrent: boolean;

@@ -326,6 +326,31 @@
     busy = false;
   }
 
+  /** The fields a test depends on: a result shows only while they are as tested. */
+  const testedFields = $derived(JSON.stringify([engine, host, port, database, user, password, windowsLogin, tls, account, options]));
+  let testing = $state(false);
+  let tested: { fields: string; title: string; message: string } | null = $state(null);
+
+  /** Connects and closes again, to show the login works before anything is saved or opened. */
+  async function test() {
+    if (busy || testing) return;
+    const config = buildConfig();
+    if (!config) return;
+    const fields = testedFields;
+    testing = true;
+    error = null;
+    tested = null;
+    try {
+      const reply = await ipc.testConnection(config, savedId);
+      const version = `${info.title} ${reply.serverVersion ?? ""}`.trim();
+      const count = reply.databases === null ? "" : ` · this login sees ${reply.databases} ${reply.databases === 1 ? "database" : "databases"}`;
+      tested = { fields, title: "Connected", message: version + count };
+    } catch (caught) {
+      error = asCoreError(caught);
+    }
+    testing = false;
+  }
+
   async function saveOnly() {
     const config = buildConfig();
     if (!config || busy) return;
@@ -342,6 +367,7 @@
 
 <Dialog title={saved ? `Edit ${saved.name}` : "New connection"} width={600} {busy} {onClose} onsubmit={() => void submit()}>
   {#if error}<InfoBar tone="danger" title={errorTitle(error)} message={error.message} />{/if}
+  {#if tested && tested.fields === testedFields && !error}<InfoBar tone="success" title={tested.title} message={tested.message} />{/if}
 
   <div class="pb-form-2">
     <Field label="Engine" as="group">
@@ -439,6 +465,16 @@
       {:else}
         <Button variant="ghost" icon="trash" disabled={busy} tip="Delete this saved connection" tipAt="start" onclick={() => (confirmDelete = true)}>Delete…</Button>
       {/if}
+    {/if}
+    {#if !confirmDelete}
+      <Button
+        icon={testing ? "loader" : undefined}
+        spin={testing}
+        disabled={busy || testing || !ready}
+        tip="Connect and close again, to check the login"
+        tipAt="start"
+        onclick={() => void test()}>{testing ? "Testing…" : "Test"}</Button
+      >
     {/if}
     <Spacer />
     <Button variant="ghost" disabled={busy} onclick={onClose}>Cancel</Button>

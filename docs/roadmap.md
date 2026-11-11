@@ -32,7 +32,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 - [x] **A Mica theme.** A theme of its own, picked in Settings: Windows 11 Mica behind the toolbar and sidebar. It needs a transparent WebView2 window, so measure the grid's frame times before it ships. Decided 2026-11-10 (design system decision D10, backlog B1). Built 2026-11-11 as Settings › Mica background; the frame times are a manual check in `docs/testing/phase-1.md` 8.7.
 - [ ] **Connection colours.** A colour kept with each saved connection, picked in the connect form, shown as the toolbar's 3 px stripe and as a dot in the palette (design system D8). The tokens exist; the library does not store a colour yet.
 - [ ] **The tree menu's other items.** DDL, structure, export and import, transfer, generate rows, rename, maintenance, truncate and drop (with a confirmation). They show disabled, marked "Later" (ADR 0013).
-- [ ] **Test connection** in the connect form, and a **Profile** in the palette.
+- [ ] **Test connection** in the connect form, and a **Profile** in the palette. Test connection is built (2026-11-11): connect, read the version and the databases, close. Profile means credential profiles; its screens are in the prototype (Dialog · credential profiles, New connection · credentials from a profile), waiting for approval.
 - [ ] **Ctrl+click picks rows one by one** in the grid (design system D21). Shift picks a range today; the core's copy takes one rectangle, so it needs a selection of several ranges.
 - [ ] **Open and save `.sql` files**, beside saved queries. Asked 2026-11-11, not decided.
 - [ ] **Pages across launches.** Query tabs and their text come back when the app opens again.

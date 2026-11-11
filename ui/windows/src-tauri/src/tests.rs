@@ -682,3 +682,58 @@ async fn edits_save_on_sql_server() {
     edit_checks(&state, &server, SqlGrammar::SqlServer).await;
     server.close().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_test_connection_reports_the_server_and_keeps_nothing_open() {
+    use paboable_core::config::{ConnectionConfig, Target};
+    use paboable_driver_sqlite::SqliteDriver;
+    let state = AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver)));
+    let config = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: ":memory:".into(),
+            read_only: false,
+        },
+        options: Default::default(),
+    };
+    let tested = crate::commands::try_connection(&state.registry, &config).await.unwrap();
+    let json = serde_json::to_value(&tested).unwrap();
+    assert!(
+        json["serverVersion"]
+            .as_str()
+            .is_some_and(|version| !version.is_empty())
+    );
+    // SQLite has no databases to count.
+    assert!(json["databases"].is_null());
+    assert!(state.server(1).is_err(), "a test registers no server");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_test_connection_fails_with_the_drivers_code() {
+    use paboable_core::ErrorCode;
+    use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+    let state = AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver)));
+    let mut config = ConnectionConfig {
+        engine: "postgres".into(),
+        // Port 1 on this machine refuses at once.
+        target: Target::Network {
+            host: "127.0.0.1".into(),
+            port: Some(1),
+            user: Some("nobody".into()),
+            password: Secret::new("x"),
+            database: None,
+            tls: TlsMode::Disable,
+        },
+        options: Default::default(),
+    };
+    let refused = crate::commands::try_connection(&state.registry, &config)
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::Connect);
+
+    config.engine = "nosuch".into();
+    let unknown = crate::commands::try_connection(&state.registry, &config)
+        .await
+        .unwrap_err();
+    assert_eq!(unknown.code, ErrorCode::Unsupported);
+}

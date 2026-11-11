@@ -58,6 +58,20 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Trong **New connection…**, combobox **Saved connection** chọn một connection, bấm **Delete…**, rồi xác nhận.
   **Đúng:** connection biến mất khỏi danh sách và khỏi Ctrl+K.
 
+### 1.5 Test connection
+- [ ] **New connection…**, PostgreSQL, điền host, user, mật khẩu đúng, bấm **Test**.
+  **Đúng:** nút đổi thành "Testing…", rồi hiện khung xanh **Connected** với phiên bản server và "this login sees N databases". Không có kết nối nào mở (toolbar vẫn như cũ), không có gì được lưu.
+- [ ] Sửa một chữ trong Host.
+  **Đúng:** khung xanh biến mất (kết quả cũ không còn đúng).
+- [ ] Đổi mật khẩu sai, bấm **Test**.
+  **Đúng:** khung đỏ báo sai đăng nhập, kèm thông báo của server.
+- [ ] Đổi Port thành `1`, bấm **Test**.
+  **Đúng:** khung đỏ báo không kết nối được, trong vài giây.
+- [ ] Chọn một Saved connection có giữ mật khẩu, để trống ô Password, bấm **Test**.
+  **Đúng:** **Connected**: Test dùng mật khẩu trong Windows Credential Manager như Connect.
+- [ ] Làm lại với SQL Server (Windows account) và Redis.
+  **Đúng:** **Connected** với phiên bản; Redis không có số database.
+
 ---
 
 ## 2. Chạy query
