@@ -26,7 +26,7 @@
   import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
   import type { CoreError, CredentialProfile, SavedConnection, TlsMode } from "../types";
-  import Combobox from "../ui/Combobox.svelte";
+  import Combobox, { type ComboOption } from "../ui/Combobox.svelte";
   import Button from "../ui/Button.svelte";
   import Checkbox from "../ui/Checkbox.svelte";
   import Confirm from "../ui/Confirm.svelte";
@@ -425,6 +425,45 @@
     busy = false;
   }
 
+  // --- The Database picker: what this login may see, read as the list opens ---
+
+  /** The login the list is read with; it is read again when one of these changes. */
+  const loginFields = $derived(
+    JSON.stringify([engine, host, port, user, password, windowsLogin, tls, options, withProfile, profileId, savedId]),
+  );
+  let listed: { fields: string; names: string[] | null; error: CoreError | null } | null = $state(null);
+  let listing = $state(false);
+
+  /** Connects as Test does, without a database, and keeps the names the login may see. */
+  async function listDatabases() {
+    if (listing || host.trim() === "" || listed?.fields === loginFields) return;
+    const built = buildConfig();
+    if (!built) return;
+    const config: ConnectionConfig = built.target.kind === "network" ? { ...built, target: { ...built.target, database: null } } : built;
+    const fields = loginFields;
+    listing = true;
+    try {
+      listed = { fields, names: await ipc.listFormDatabases(config, savedId, withProfile ? profileId : null), error: null };
+    } catch (caught) {
+      listed = { fields, names: null, error: asCoreError(caught) };
+    }
+    listing = false;
+  }
+
+  /** Values no database can have: the rows that only say what the list is doing. */
+  const NOTE = "\u0000note";
+  const databaseOptions = $derived.by(() => {
+    const items: ComboOption<string>[] = [{ value: "", label: "Default", meta: "The database the login opens on" }];
+    const current = listed?.fields === loginFields ? listed : null;
+    if (host.trim() === "") items.push({ value: NOTE, label: "Fill in the host to list the databases", disabled: true });
+    else if (listing) items.push({ value: NOTE, label: "Reading the databases…", icon: "loader", disabled: true });
+    else if (current?.error) items.push({ value: NOTE, label: errorTitle(current.error), meta: current.error.message, disabled: true });
+    for (const name of current?.names ?? []) items.push({ value: name, label: name });
+    const typed = database.trim();
+    if (typed && !items.some((item) => item.value === typed)) items.push({ value: typed, label: typed });
+    return items;
+  });
+
   /** The fields a test depends on: a result shows only while they are as tested. */
   const testedFields = $derived(JSON.stringify([engine, host, port, database, user, password, windowsLogin, tls, account, options, withProfile, profileId]));
   let testing = $state(false);
@@ -524,13 +563,9 @@
       <Field label="Host"><Input bind:value={host} required placeholder={info.hostHint} /></Field>
       <Field label="Port"><Input class="pb-num" bind:value={port} placeholder={String(info.port)} inputmode="numeric" /></Field>
     </div>
-    <Field label={engine === "redis" ? "Database number" : "Database"} hint={engine === "redis" ? undefined : "The tree shows every database this login may see."}>
-      <Input
-        bind:value={database}
-        placeholder={engine === "redis" ? "0" : "Optional: pick one after connecting"}
-        inputmode={engine === "redis" ? "numeric" : undefined}
-      />
-    </Field>
+    {#if engine === "redis"}
+      <Field label="Database number"><Input bind:value={database} placeholder="0" inputmode="numeric" /></Field>
+    {/if}
     {#if engine === "mssql"}
       <Field label="Sign in with" as="group">
         <Segmented label="Sign in with" fill options={LOGINS} value={windowsLogin} onChange={(windows) => (windowsLogin = windows)} />
@@ -589,6 +624,23 @@
     <Field label="Encryption" as="group">
       <Combobox label="Encryption" width={552} options={tlsModes} value={tls} onPick={(mode) => (tls = mode)} />
     </Field>
+    {#if engine !== "redis"}
+      <!-- After the login: the list is what that login may see. -->
+      <Field label="Database" as="group" hint="Optional. The tree shows every database this login may see.">
+        <Combobox
+          label="Database"
+          width={552}
+          searchable
+          searchPlaceholder="Find, or type a name"
+          options={databaseOptions}
+          value={database.trim()}
+          placeholder="Default"
+          onOpen={() => void listDatabases()}
+          onPick={(name) => (database = name)}
+          custom={(text) => ({ value: text, label: `Use “${text}”`, meta: "A database not in the list" })}
+        />
+      </Field>
+    {/if}
   {/if}
 
   <div class="pb-checks">

@@ -35,6 +35,12 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** 6 bảng `categories, customers, order_items, orders, payments, products` cùng các sequence.
 - [ ] Thử sai mật khẩu.
   **Đúng:** hộp thoại báo "Access denied" và dòng lỗi của Postgres, không treo.
+- [ ] Điền Host, User, Password (hoặc chọn profile), bấm ô **Database** (ở dưới Encryption).
+  **Đúng:** dòng "Reading the databases…" rồi hiện **Default** và các database login được thấy. Chọn một cái: ô hiện tên đó. Mở lại ô mà không đổi gì: không đọc lại.
+- [ ] Trong ô tìm của **Database**, gõ một tên không có trong danh sách, Enter.
+  **Đúng:** dòng đầu là `Use "<tên>"`; chọn xong ô hiện tên đó. Đổi Password sai rồi mở lại ô: hiện dòng lỗi đăng nhập, vẫn gõ tên được.
+- [ ] Thu nhỏ cửa sổ cho form chạm mép dưới, mở ô **Database**.
+  **Đúng:** danh sách mở lên trên (hoặc cuộn được bên trong), không bị cắt ở mép cửa sổ.
 
 ### 1.3 SQL Server
 - [ ] **New connection…**, Engine **SQL Server**, Host `localhost`, Sign in with **Windows account**, Name `Local MSSQL`, bấm **Connect**.

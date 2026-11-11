@@ -47,6 +47,11 @@
     tip?: string;
     /** Called as the list opens, to read fresh options. */
     onOpen?: () => void;
+    /**
+     * With `searchable`, what the typed text picks when no option is named
+     * so: a value not in the list, such as a database typed by hand.
+     */
+    custom?: (text: string) => ComboOption<T>;
   }
 
   let {
@@ -64,6 +69,7 @@
     placeholder = "",
     tip,
     onOpen,
+    custom,
   }: Props = $props();
 
   let open = $state(false);
@@ -75,11 +81,17 @@
   let list: HTMLDivElement | undefined = $state();
 
   const current = $derived(options.find((option) => option.value === value));
-  const shown = $derived(
+  const matching = $derived(
     query.trim() === ""
       ? options
       : options.filter((option) => `${option.label} ${option.meta ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())),
   );
+  const typed = $derived.by(() => {
+    const text = query.trim();
+    if (!custom || text === "" || options.some((option) => option.label.toLowerCase() === text.toLowerCase())) return null;
+    return custom(text);
+  });
+  const shown = $derived(typed ? [typed, ...matching] : matching);
 
   async function show() {
     if (disabled || !root) return;

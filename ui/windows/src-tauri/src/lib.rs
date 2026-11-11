@@ -60,6 +60,7 @@ pub fn run() {
             commands::connect_saved,
             commands::connect,
             commands::test_connection,
+            commands::list_form_databases,
             commands::disconnect,
             commands::list_databases,
             commands::list_schemas,

@@ -737,3 +737,47 @@ async fn a_test_connection_fails_with_the_drivers_code() {
         .unwrap_err();
     assert_eq!(unknown.code, ErrorCode::Unsupported);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_forms_database_list_says_why_it_has_none() {
+    use paboable_core::ErrorCode;
+    use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+    use paboable_driver_sqlite::SqliteDriver;
+    let state = AppState::new(
+        DriverRegistry::new()
+            .with(Arc::new(PostgresDriver))
+            .with(Arc::new(SqliteDriver)),
+    );
+    // A server that refuses: the picker shows the driver's code, not an empty list.
+    let refused = ConnectionConfig {
+        engine: "postgres".into(),
+        target: Target::Network {
+            host: "127.0.0.1".into(),
+            port: Some(1),
+            user: Some("nobody".into()),
+            password: Secret::new("x"),
+            database: None,
+            tls: TlsMode::Disable,
+        },
+        options: Default::default(),
+    };
+    let error = crate::commands::form_databases(&state.registry, &refused)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Connect);
+
+    // An engine without databases connects, says so, and keeps nothing open.
+    let file = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: ":memory:".into(),
+            read_only: false,
+        },
+        options: Default::default(),
+    };
+    let error = crate::commands::form_databases(&state.registry, &file)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Unsupported);
+    assert!(state.server(1).is_err(), "listing registers no server");
+}
