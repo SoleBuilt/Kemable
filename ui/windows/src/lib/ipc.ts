@@ -202,6 +202,8 @@ export const appWindow = {
   isMaximized: () => getCurrentWindow().isMaximized(),
   /** Calls `handler` after every resize; resolves to the function that stops it. */
   onResized: (handler: () => void) => getCurrentWindow().onResized(handler),
+  /** Puts Mica behind the window or takes it away; resolves to whether Mica is on (never on Windows 10). */
+  setMica: (on: boolean, dark: boolean) => invoke<boolean>("set_mica", { on, dark }),
 };
 
 export function asCoreError(error: unknown): CoreError {

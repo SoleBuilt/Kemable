@@ -40,7 +40,7 @@ The first screens used Segoe UI, Tailwind classes written in each component and 
 
 ## Consequences
 
-- The Mica theme (D10, backlog B1) is planned in `docs/roadmap.md`.
+- Mica (D10, backlog B1) is Settings › Mica background. The window is always transparent (`tauri.conf.json`); `set_mica` applies Mica through `window-vibrancy` and says whether it took, since Tauri's `set_effects` hides a refusal. Only then does `data-mica` on `<html>` make the toolbar and the sidebar see-through; the editor, the grid, the bars and the dialogs stay solid. On Windows 10 Mica never takes and Settings says so.
 - The orange accent style (B2) is Settings › Style. It sets `data-style="orange"` on `<html>` and swaps only `accent`, `accent-hover`, `on-accent`, `focus` and `focus-halo`: `#c2410c` with white text in light (5.2:1), `#fb923c` with `#171717` text in dark (7.9:1).
 - Connection colours (D8) have their tokens (`conn-*`), but a saved connection does not store a colour yet. Until it does, the toolbar shows no stripe: a grey one for every connection told the user nothing.
 - The canvas grid and CodeMirror read the same tokens: `readTheme()` in `engine.ts`, and `var(--…)` in the editor's theme.

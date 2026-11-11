@@ -929,3 +929,32 @@ pub async fn apply_edits(
 
 /// How long saving edits may take: each statement names one row by its key.
 const EDIT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Puts Mica behind the window (Settings › Mica background, ADR 0012), or takes it away, and says whether Mica is on.
+///
+/// The window is transparent, so the UI makes its chrome see-through only
+/// when this returns `true`: on Windows 10 Mica cannot be applied, and a
+/// see-through chrome would show the desktop. Tauri's own `set_effects`
+/// drops that error, which is why the app calls `window-vibrancy` itself.
+/// `dark` tints the backdrop to match the theme the UI shows.
+#[tauri::command]
+pub async fn set_mica(window: tauri::WebviewWindow, on: bool, dark: bool) -> CommandResult<bool> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let target = window.clone();
+    // DWM attributes belong to the thread that owns the window.
+    window
+        .run_on_main_thread(move || {
+            let applied = if on {
+                window_vibrancy::apply_mica(&target, Some(dark)).is_ok()
+            } else {
+                // Clearing what is not there is not an error worth showing.
+                let _ = window_vibrancy::clear_mica(&target);
+                false
+            };
+            let _ = sender.send(applied);
+        })
+        .map_err(|error| DriverError::internal(format!("the window did not answer: {error}")))?;
+    receiver
+        .await
+        .map_err(|_| DriverError::internal("the window closed before Mica was set"))
+}

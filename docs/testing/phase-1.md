@@ -275,6 +275,16 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** nút Save, gạch dưới tab đang mở, checkbox đã tick, viền con trỏ ô trong grid và con trỏ gõ trong editor đổi sang cam ngay; nền, chữ, đường kẻ không đổi. **Cancel** trả lại đen trắng.
 - [ ] Chọn Orange, Save, đổi Theme Light rồi Dark.
   **Đúng:** Light: nút cam đậm chữ trắng. Dark: nút cam sáng chữ đen. Chữ trên nút đọc rõ ở cả hai. Mở lại app vẫn nhớ Orange.
+- [ ] Trên Windows 11, bật **Mica background: On**, chưa Save.
+  **Đúng:** toolbar và sidebar thấy màu nền desktop mờ phía sau (kéo cửa sổ qua hình nền có màu để thấy rõ); editor, grid, thanh tab, status bar và dialog vẫn đặc. **Cancel** trả lại nền đặc.
+- [ ] Bật Mica, Save, đổi Theme Light / Dark / System, rồi đổi Windows sang Dark khi Theme là System.
+  **Đúng:** lớp Mica sáng hoặc tối theo theme đang hiện; chữ trên toolbar và sidebar đọc rõ.
+- [ ] Bật Mica, kéo đổi kích thước, maximize rồi restore cửa sổ.
+  **Đúng:** không có chỗ nào trong editor hay grid lộ desktop; mở lại app vẫn nhớ Mica.
+- [ ] Trên Windows 10 (nếu có), bật Mica.
+  **Đúng:** dòng gợi ý đổi thành "This Windows cannot show Mica. It needs Windows 11."; app vẫn đặc, không lộ desktop.
+- [ ] **Đo tốc độ** (cửa sổ giờ luôn trong suốt): chạy câu lệnh 2,000,000 dòng ở `.claude/rules/data-grid.md` trên SQLite in-memory, cuộn bằng chuột, thanh cuộn và bàn phím, một lần với Mica Off và một lần với Mica On.
+  **Đúng:** DevTools › Performance (chuột phải › Inspect, bản dev) cho frame dưới 8 ms ở cả hai lần. Ghi số đo vào mô tả của merge.
 
 ---
 

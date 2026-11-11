@@ -1,4 +1,6 @@
 <script lang="ts" module>
+  import { appWindow } from "../ipc";
+
   export type ThemeChoice = "system" | "light" | "dark";
   /** The accent: black and white, or the orange of ERP Tinh gọn. Only the accent tokens differ. */
   export type StyleChoice = "mono" | "orange";
@@ -7,6 +9,8 @@
   export interface Settings {
     theme: ThemeChoice;
     style: StyleChoice;
+    /** Windows 11 Mica behind the toolbar and sidebar. */
+    mica: boolean;
     compactRows: boolean;
     /** The row cap a run stops at; null keeps every row. */
     rowCap: number | null;
@@ -18,7 +22,7 @@
   export const ROW_CAPS: (number | null)[] = [1_000, 10_000, 100_000, 500_000, 1_000_000, null];
 
   const KEY = "paboable.settings";
-  const DEFAULTS: Settings = { theme: "system", style: "mono", compactRows: false, rowCap: 1_000, followCreatedDatabase: true };
+  const DEFAULTS: Settings = { theme: "system", style: "mono", mica: false, compactRows: false, rowCap: 1_000, followCreatedDatabase: true };
 
   export function readSettings(): Settings {
     try {
@@ -26,6 +30,7 @@
       return {
         theme: saved.theme === "light" || saved.theme === "dark" ? saved.theme : "system",
         style: saved.style === "orange" ? "orange" : "mono",
+        mica: saved.mica === true,
         compactRows: saved.compactRows === true,
         rowCap: saved.rowCap === null || ROW_CAPS.includes(saved.rowCap ?? -1) ? (saved.rowCap ?? null) : DEFAULTS.rowCap,
         followCreatedDatabase: saved.followCreatedDatabase !== false,
@@ -54,10 +59,43 @@
     if (style === "mono") delete document.documentElement.dataset.style;
     else document.documentElement.dataset.style = style;
   }
+
+  const darkScheme = window.matchMedia("(prefers-color-scheme: dark)");
+  let micaWanted: { on: boolean; theme: ThemeChoice } = { on: false, theme: "system" };
+  let micaCall = 0;
+
+  /**
+   * Puts Mica behind the window, or takes it away, and resolves to whether it
+   * is on. The window is transparent, so the chrome turns see-through
+   * (data-mica on <html>) only once Windows says Mica took: on Windows 10 it
+   * never does, and the app stays as it was. Turning Mica off makes the
+   * chrome solid first, so the desktop never shows.
+   */
+  export async function applyMica(on: boolean, theme: ThemeChoice): Promise<boolean> {
+    micaWanted = { on, theme };
+    const call = ++micaCall;
+    const dark = theme === "dark" || (theme === "system" && darkScheme.matches);
+    if (!on) delete document.documentElement.dataset.mica;
+    let applied = false;
+    try {
+      applied = await appWindow.setMica(on, dark);
+    } catch {
+      applied = false;
+    }
+    // A later call has the last word.
+    if (call !== micaCall) return applied;
+    if (applied) document.documentElement.dataset.mica = "";
+    else delete document.documentElement.dataset.mica;
+    return applied;
+  }
+
+  // The backdrop's tint follows Windows' light or dark when the theme does.
+  darkScheme.addEventListener("change", () => {
+    if (micaWanted.on && micaWanted.theme === "system") void applyMica(true, "system");
+  });
 </script>
 
 <script lang="ts">
-  import Badge from "./Badge.svelte";
   import Button from "./Button.svelte";
   import Checkbox from "./Checkbox.svelte";
   import Combobox from "./Combobox.svelte";
@@ -78,13 +116,22 @@
   let draft: Settings = $state({ ...settings });
   const numberFormat = new Intl.NumberFormat();
 
-  // The theme and style show at once, so the choice can be judged; Cancel puts the old ones back.
+  // The theme, style and Mica show at once, so the choice can be judged; Cancel puts the old ones back.
   $effect(() => applyTheme(draft.theme));
   $effect(() => applyStyle(draft.style));
+  /** False once Windows has refused Mica: Windows 10 has none. */
+  let micaWorks = $state(true);
+  $effect(() => {
+    const on = draft.mica;
+    void applyMica(on, draft.theme).then((applied) => {
+      if (on) micaWorks = applied;
+    });
+  });
 
   function cancel() {
     applyTheme(settings.theme);
     applyStyle(settings.style);
+    void applyMica(settings.mica, settings.theme);
     onClose();
   }
 
@@ -96,6 +143,10 @@
   const STYLES: { value: StyleChoice; label: string }[] = [
     { value: "mono", label: "Black and white" },
     { value: "orange", label: "Orange" },
+  ];
+  const MICA = [
+    { value: false, label: "Off" },
+    { value: true, label: "On" },
   ];
   const ROWS = [
     { value: false, label: "Default · 28 px" },
@@ -112,8 +163,11 @@
   <Setting title="Style" hint="The accent of buttons, tabs and the cell cursor.">
     <Segmented label="Style" options={STYLES} value={draft.style} onChange={(style) => (draft.style = style)} />
   </Setting>
-  <Setting title="Mica background" hint="The Windows 11 material behind the toolbar and sidebar.">
-    <Badge>Later</Badge>
+  <Setting
+    title="Mica background"
+    hint={micaWorks ? "The Windows 11 material behind the toolbar and sidebar." : "This Windows cannot show Mica. It needs Windows 11."}
+  >
+    <Segmented label="Mica background" options={MICA} value={draft.mica} onChange={(mica) => (draft.mica = mica)} />
   </Setting>
 
   <h3 class="pb-section-title">Grid</h3>
