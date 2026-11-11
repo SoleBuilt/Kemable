@@ -517,3 +517,14 @@ span.pb-cond-lead { display: inline-flex; color: var(--fg-muted); font-size: 12p
 .pb-btn--ghost.is-danger { color: var(--danger); }
 .pb-welcome { display: flex; flex-direction: column; min-height: 0; background: var(--canvas); }
 .pb-welcome > .pb-empty { flex: 1 1 auto; }
+
+/*
+ * Mica (Settings › Mica background, data-mica on <html>): the window is
+ * transparent, so the toolbar and sidebar let the Windows backdrop through.
+ * data-mica is set only once Windows has applied Mica. The editor, the grid,
+ * the bars and every dialog keep their solid backgrounds.
+ */
+:root[data-mica] body,
+:root[data-mica] .pb-app,
+:root[data-mica] .pb-toolbar,
+:root[data-mica] .pb-side { background: transparent; }

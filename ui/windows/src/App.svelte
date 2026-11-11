@@ -39,7 +39,7 @@
   import CommandPalette, { type Command } from "./lib/ui/CommandPalette.svelte";
   import Icon from "./lib/ui/Icon.svelte";
   import InfoBar from "./lib/ui/InfoBar.svelte";
-  import SettingsDialog, { applyStyle, applyTheme, readSettings, writeSettings, type Settings } from "./lib/ui/SettingsDialog.svelte";
+  import SettingsDialog, { applyMica, applyStyle, applyTheme, readSettings, writeSettings, type Settings } from "./lib/ui/SettingsDialog.svelte";
   import Splitter from "./lib/ui/Splitter.svelte";
   import type {
     ByteRange,
@@ -206,6 +206,7 @@
   let settings: Settings = $state(startSettings);
   applyTheme(startSettings.theme);
   applyStyle(startSettings.style);
+  if (startSettings.mica) void applyMica(true, startSettings.theme);
   setCompactRows(startSettings.compactRows);
 
   let connection = $state.raw<OpenedConnection | null>(null);
@@ -596,6 +597,7 @@
     writeSettings(next);
     applyTheme(next.theme);
     applyStyle(next.style);
+    void applyMica(next.mica, next.theme);
     setCompactRows(next.compactRows);
     settingsOpen = false;
     if (density) grid?.reload();

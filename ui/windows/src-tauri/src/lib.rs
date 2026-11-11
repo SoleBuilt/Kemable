@@ -85,6 +85,7 @@ pub fn run() {
             commands::read_key,
             commands::edit_preview,
             commands::apply_edits,
+            commands::set_mica,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {
