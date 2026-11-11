@@ -237,6 +237,8 @@
   let nextPageId = 2;
   let pages: Page[] = $state.raw([{ id: 1, kind: "query", number: 1, editor: null, state: emptyState(), file: null }]);
   let activePage = $state(1);
+  /** Query pages are open with no connection: written first, run once one opens (ADR 0016). */
+  let drafting = $state(false);
   const currentPage = $derived(pages.find((page) => page.id === activePage));
   const onTablePage = $derived(currentPage?.kind === "table");
 
@@ -464,7 +466,10 @@
     releaseState(state);
     const index = pages.findIndex((candidate) => candidate.id === id);
     let rest = (shown ? pages : keepCurrent()).filter((candidate) => candidate.id !== id);
-    if (!rest.some((candidate) => candidate.kind === "query")) {
+    const emptied = !rest.some((candidate) => candidate.kind === "query");
+    // With no connection, closing the last page goes back to the Welcome screen.
+    if (emptied && !connection) drafting = false;
+    if (emptied) {
       rest = [
         ...rest,
         { id: nextPageId++, kind: "query", number: page.kind === "query" ? page.number + 1 : 1, editor: null, state: emptyState(), file: null },
@@ -536,9 +541,14 @@
         return { id: nextPageId++, kind: "query", number: page.number, editor: view.stateWith(text, page.cursor), state: emptyState(), file };
       }),
     );
-    // A carried file already kept for this connection is not opened twice.
-    const all = [...restored, ...carried.filter((page) => !restored.some((other) => other.file?.path === page.file?.path))];
-    const shown = carried.length > 0 ? all[all.length - 1] : (all[kept?.active ?? 0] ?? all[0]);
+    // A carried file already kept for this connection is not opened twice; a carried query
+    // takes the numbers after the connection's own, so two pages are never both "Query 1".
+    let number = Math.max(0, ...restored.map((page) => page.number));
+    const brought = carried
+      .filter((page) => !page.file || !restored.some((other) => other.file?.path === page.file?.path))
+      .map((page) => (page.file ? page : { ...page, number: ++number }));
+    const all = [...restored, ...brought];
+    const shown = brought.length > 0 ? all[all.length - 1] : (all[kept?.active ?? 0] ?? all[0]);
     if (!shown) return;
     pages = all;
     activePage = shown.id;
@@ -547,14 +557,11 @@
     keepPagesSoon();
   }
 
-  // Files opened with no connection come back at launch (ADR 0016): a page
-  // stands for them until the work area's editor mounts and reads them.
+  // Files opened and queries written with no connection come back at launch
+  // (ADR 0016), once the work area's editor mounts to read them.
   const keptWithout = readPages(NO_CONNECTION);
-  const keptFile = keptWithout?.pages.find((page) => page.file)?.file;
-  if (keptFile) {
-    const standIn: Page = { id: nextPageId++, kind: "query", number: 1, editor: null, state: emptyState(), file: { ...keptFile, saved: "" } };
-    pages = [standIn];
-    activePage = standIn.id;
+  if (keptWithout?.pages.some((page) => page.file || page.text.trim() !== "")) {
+    drafting = true;
     void tick().then(() => restorePages(NO_CONNECTION));
   }
 
@@ -618,8 +625,9 @@
     try {
       const opened = await opening();
       if (connection) void ipc.disconnect(connection.id);
-      // Files opened with no connection go to the one that opens now (ADR 0016).
-      const carried = connection ? [] : keepCurrent().filter((page) => page.file);
+      // Files opened and queries written with no connection go to the one that opens now (ADR 0016).
+      const carried = connection ? [] : keepCurrent().filter((page) => page.kind === "query" && (page.file || pageText(page).trim() !== ""));
+      drafting = false;
       keepPages();
       if (carried.length > 0) writePages(NO_CONNECTION, { pages: [], active: 0, at: Date.now() });
       pagesKey = null;
@@ -651,6 +659,7 @@
     void ipc.disconnect(connection.id);
     keepPages();
     pagesKey = null;
+    drafting = false;
     resetPages();
     connection = null;
     database = null;
@@ -740,6 +749,18 @@
   // --- .sql files (docs/decisions/0016-sql-files.md) --------------------------
 
   let recentFiles: string[] = $state(readRecentFiles());
+
+  /** Ctrl+T and New query on the Welcome screen: an empty query page, with or without a connection. */
+  async function startQuery() {
+    if (workspace) {
+      newQueryPage();
+      return;
+    }
+    drafting = true;
+    pagesKey ??= NO_CONNECTION;
+    await tick();
+    editor?.focus();
+  }
   /** Goes up as the editor's text changes, so the tabs read whether a file is saved. */
   let editTick = $state(0);
   /** A file's page asked to close while unsaved. */
@@ -1832,9 +1853,9 @@
     } else if (ctrl && key === ",") {
       event.preventDefault();
       settingsOpen = true;
-    } else if (ctrl && key === "t" && workspace) {
+    } else if (ctrl && key === "t" && !event.shiftKey) {
       event.preventDefault();
-      newQueryPage();
+      void startQuery();
     } else if (ctrl && key === "w" && workspace) {
       event.preventDefault();
       closePage(activePage);
@@ -1911,8 +1932,8 @@
       tip: page.file?.path,
     }));
   });
-  /** Pages to show: a connection's, or `.sql` files opened with none (ADR 0016). */
-  const workspace = $derived(connection !== null || pages.some((page) => page.file !== null));
+  /** Pages to show: a connection's, a query started with none, or `.sql` files opened with none (ADR 0016). */
+  const workspace = $derived(connection !== null || drafting || pages.some((page) => page.file !== null));
 
   const resultTabs: ResultTabItem[] = $derived(
     sets.map((set, index) => ({
@@ -2201,7 +2222,13 @@
       </main>
     </div>
   {:else}
-    <Welcome busy={connecting} onNew={newConnection} onOpenFile={() => void openFile()} onMemory={() => void connectTo(":memory:")} />
+    <Welcome
+      busy={connecting}
+      onNew={newConnection}
+      onNewQuery={() => void startQuery()}
+      onOpenFile={() => void openFile()}
+      onMemory={() => void connectTo(":memory:")}
+    />
   {/if}
 
   <!-- Status bar: what the result is; the pager for a table page (D18) -->
