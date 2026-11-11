@@ -17,7 +17,7 @@ The first screens used Segoe UI, Tailwind classes written in each component and 
 - **Lucide icons**, as SVG paths inside `ui/windows/src/lib/ui/Icon.svelte`. There is no icon package at runtime.
 - **Density:** body text 13 px. Grid rows are 28 px, or 24 px with Compact rows in Settings. Buttons are 32 px, or 28 px for the small size. Bars are 40 px and the toolbar is 48 px. Motion lasts 120 ms and is turned off under `prefers-reduced-motion`.
 - **The grid** has vertical and horizontal lines in `grid-line` and no stripes. NULL is drawn in italics in `fg-muted`.
-- **Light and dark** follow the system, or the choice in Settings (`data-theme` on `<html>`).
+- **Light and dark** follow the system, or the choice in Settings (`data-theme` on `<html>`). The accent is black and white, or orange (`data-style` on `<html>`).
 
 ### Where it lives
 
@@ -40,7 +40,8 @@ The first screens used Segoe UI, Tailwind classes written in each component and 
 
 ## Consequences
 
-- The Mica theme (D10, backlog B1) and an orange accent style (B2) are planned in `docs/roadmap.md`. The orange style only swaps the accent tokens.
+- The Mica theme (D10, backlog B1) is planned in `docs/roadmap.md`.
+- The orange accent style (B2) is Settings › Style. It sets `data-style="orange"` on `<html>` and swaps only `accent`, `accent-hover`, `on-accent`, `focus` and `focus-halo`: `#c2410c` with white text in light (5.2:1), `#fb923c` with `#171717` text in dark (7.9:1).
 - Connection colours (D8) have their tokens (`conn-*`), but a saved connection does not store a colour yet. Until it does, the toolbar shows no stripe: a grey one for every connection told the user nothing.
 - The canvas grid and CodeMirror read the same tokens: `readTheme()` in `engine.ts`, and `var(--…)` in the editor's theme.
 

@@ -39,7 +39,7 @@
   import CommandPalette, { type Command } from "./lib/ui/CommandPalette.svelte";
   import Icon from "./lib/ui/Icon.svelte";
   import InfoBar from "./lib/ui/InfoBar.svelte";
-  import SettingsDialog, { applyTheme, readSettings, writeSettings, type Settings } from "./lib/ui/SettingsDialog.svelte";
+  import SettingsDialog, { applyStyle, applyTheme, readSettings, writeSettings, type Settings } from "./lib/ui/SettingsDialog.svelte";
   import Splitter from "./lib/ui/Splitter.svelte";
   import type {
     ByteRange,
@@ -205,6 +205,7 @@
   const startSettings = readSettings();
   let settings: Settings = $state(startSettings);
   applyTheme(startSettings.theme);
+  applyStyle(startSettings.style);
   setCompactRows(startSettings.compactRows);
 
   let connection = $state.raw<OpenedConnection | null>(null);
@@ -594,6 +595,7 @@
     settings = next;
     writeSettings(next);
     applyTheme(next.theme);
+    applyStyle(next.style);
     setCompactRows(next.compactRows);
     settingsOpen = false;
     if (density) grid?.reload();

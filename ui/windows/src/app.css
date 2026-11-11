@@ -76,6 +76,27 @@
   }
 }
 
+/*
+ * The orange style (Settings › Style, data-style on <html>) swaps only the
+ * accent tokens; every other colour and every shape stays. These blocks come
+ * after the themes so the light one wins over [data-theme="light"], and the
+ * dark ones carry one more attribute so they win over the light one.
+ * White on #c2410c is 5.2:1; #171717 on #fb923c is 7.9:1.
+ */
+:root[data-style="orange"] {
+  --accent: #c2410c; --accent-hover: #9a3412; --on-accent: #ffffff; --focus: #c2410c; --focus-halo: #c2410c2e;
+}
+
+:root[data-style="orange"][data-theme="dark"] {
+  --accent: #fb923c; --accent-hover: #fdba74; --on-accent: #171717; --focus: #fb923c; --focus-halo: #fb923c33;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-style="orange"]:not([data-theme="light"]) {
+    --accent: #fb923c; --accent-hover: #fdba74; --on-accent: #171717; --focus: #fb923c; --focus-halo: #fb923c33;
+  }
+}
+
 @theme inline {
   --font-sans: "Geist Variable", Geist, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", "Geist Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;

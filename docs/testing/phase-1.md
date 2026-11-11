@@ -271,6 +271,10 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** dòng grid thấp hơn; mở lại app vẫn nhớ.
 - [ ] Bỏ tick "After CREATE DATABASE…", chạy lại script ở 3.1.
   **Đúng:** không chuyển database.
+- [ ] Chọn Style **Orange**, chưa Save.
+  **Đúng:** nút Save, gạch dưới tab đang mở, checkbox đã tick, viền con trỏ ô trong grid và con trỏ gõ trong editor đổi sang cam ngay; nền, chữ, đường kẻ không đổi. **Cancel** trả lại đen trắng.
+- [ ] Chọn Orange, Save, đổi Theme Light rồi Dark.
+  **Đúng:** Light: nút cam đậm chữ trắng. Dark: nút cam sáng chữ đen. Chữ trên nút đọc rõ ở cả hai. Mở lại app vẫn nhớ Orange.
 
 ---
 
