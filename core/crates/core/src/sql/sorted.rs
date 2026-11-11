@@ -1,7 +1,8 @@
 //! Writing a statement again with an `ORDER BY`, for sorting a result on the
 //! server (`docs/decisions/0005-sorting-a-result.md`).
 //!
-//! Only one plain `SELECT` (or `WITH ... SELECT`) is written again; anything
+//! Only one plain `SELECT` (or `WITH ... SELECT`) is written again (in SQL
+//! Server, one statement of the batch, `batch.rs`, since T-SQL needs no `;`); anything
 //! that might change data, take locks, or not run again the same way gives
 //! `None`, and the caller sorts the rows it holds instead. A sort key names
 //! its column when the name is unique in the result and its select item is
@@ -32,6 +33,10 @@ pub fn sorted_statement(
     keys: &[SortColumn],
 ) -> Option<String> {
     if keys.is_empty() || keys.iter().any(|key| key.column >= columns.len()) {
+        return None;
+    }
+    // A SQL Server batch holds statements without a `;` between them: two `SELECT`s are two statements.
+    if grammar == SqlGrammar::SqlServer && super::batch_statement_count(statement)? > 1 {
         return None;
     }
     let mut tokens = lex_strict(statement, grammar)?;
@@ -388,6 +393,18 @@ mod tests {
         assert_eq!(
             sorted_statement("select x from t", SqlGrammar::Postgres, &columns, &by(3)),
             None
+        );
+    }
+
+    #[test]
+    fn a_sql_server_batch_of_two_selects_is_never_sorted_by_running_it_again() {
+        // Appending ORDER BY would sort only the last SELECT and run both again.
+        let columns = names(&["No_"]);
+        let batch = "select * from dbo.[Customer$ext]\n\nselect * from dbo.[Customer]";
+        assert_eq!(sorted_statement(batch, SqlGrammar::SqlServer, &columns, &by(0)), None);
+        assert_eq!(
+            sorted_statement("select * from dbo.[Customer]", SqlGrammar::SqlServer, &columns, &by(0)).as_deref(),
+            Some("select * from dbo.[Customer]\nORDER BY [No_]")
         );
     }
 

@@ -139,7 +139,16 @@ export interface CoreError {
 
 export type RunEvent =
   | { type: "statementStarted"; index: number; text: string }
-  | { type: "setStarted"; result: number; statement: number; columns: ColumnMeta[] }
+  | {
+      type: "setStarted";
+      result: number;
+      statement: number;
+      columns: ColumnMeta[];
+      /** The statement inside a SQL Server batch that made the set, as UTF-8 byte offsets into the statement's text. */
+      part: ByteRange | null;
+    }
+  /** The sets of `statement` did not match how its batch was read: drop their parts. */
+  | { type: "partsDropped"; statement: number }
   | { type: "rows"; result: number; total: number }
   | { type: "setFinished"; result: number; total: number; limited: boolean }
   | { type: "commandDone"; statement: number; rowsAffected: number | null }

@@ -32,7 +32,7 @@ The first window had one editor and one row of result tabs. A table opened from 
 
 - A new query page is all editor. After the first run, the results appear under a splitter. Drag it, use the arrow keys, or double-click it to go back to 188 px.
 - The result bar holds the result tabs (each with its row count, or a cap badge), Messages, Filter (ADR 0011) and Row detail.
-- With two results or more, the editor frames the statement behind the result shown.
+- With two results or more, the editor frames the statement behind the result shown. In SQL Server (amended 2026-11-11), everything between two `GO` lines is one batch, sent as one request as SSMS does, so two `SELECT`s without a `GO` between them come back as two results of one statement. The core reads the batch (`paboable_core::sql::batch_queries`: where each T-SQL statement starts, and which ones send a set) and each result carries the part of the batch that made it, so the frame shows that `SELECT`. A batch it cannot read (`EXEC`, `IF`, `BEGIN ... END`, `OUTPUT`, `MERGE`, ...), or whose results did not match its reading (a statement failed), frames nothing rather than the wrong text. The tint is see-through, so a selection inside the frame still shows.
 
 ### The sidebar is panes
 

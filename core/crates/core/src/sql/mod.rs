@@ -1,5 +1,6 @@
 //! Reading SQL scripts the way each engine's own client does.
 
+mod batch;
 mod browse;
 mod completion;
 mod database_change;
@@ -10,6 +11,7 @@ mod result_filter;
 mod sorted;
 mod split;
 
+pub use batch::{batch_queries, batch_statement_count};
 pub use browse::{BrowseQuery, BrowseSort, Filter, FilterOp, count_statement, page_statement};
 pub use completion::{
     CatalogView, Clause, CompletionContext, CompletionItem, ItemKind, Lookups, TableReference, completion_context,

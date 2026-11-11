@@ -40,7 +40,7 @@ Paging, filters and the count are in `docs/decisions/0006-table-browsing.md`: th
 
 `paboable_core::sql::sorted_statement(statement, grammar, columns, key)` returns the statement to run again, or `None`:
 
-1. **Only a statement that can run again**: one statement, a plain `SELECT` or `WITH ... SELECT`. Not `SELECT ... INTO`, not a directive, not `EXEC`, `SHOW`, `EXPLAIN`, DML with `RETURNING`/`OUTPUT`, nor anything in a script of several statements.
+1. **Only a statement that can run again**: one statement, a plain `SELECT` or `WITH ... SELECT`. Not `SELECT ... INTO`, not a directive, not `EXEC`, `SHOW`, `EXPLAIN`, DML with `RETURNING`/`OUTPUT`, nor anything in a script of several statements. A SQL Server batch needs no `;` between statements, so one holding two `SELECT`s is several statements too (`batch_statement_count`, added 2026-11-11): appending `ORDER BY` to it would sort only its last `SELECT`. Its results are sorted in the core.
 2. **Name the column** when its name is unique among the result's columns (case folded) and its select item is an unqualified column, an alias, or part of a bare `*`.
 3. **Else give its position**, on PostgreSQL, SQLite (and D1, PGlite) and SQL Server.
 4. **Else `None`.**

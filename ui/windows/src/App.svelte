@@ -104,6 +104,8 @@
   interface ResultSetView {
     result: number;
     statement: number;
+    /** Where in its statement (a SQL Server batch) the set came from: UTF-8 bytes into the statement. */
+    part: ByteRange | null;
     columns: ColumnMeta[];
     totalRows: number;
     finished: boolean;
@@ -833,18 +835,21 @@
           if (tab.columns.length === 0) tableTab = { ...tab, columns: event.columns.map((meta) => meta.name) };
           pendingSort = sort.length > 0 ? { keys: sort, original: null } : null;
         }
+        // A sort that ran a statement again makes one set: only that one takes the sort.
+        const sorted = sets.length === 0 ? pendingSort : null;
         sets = [
           ...sets,
           {
             result: event.result,
             statement: event.statement,
+            part: event.part,
             columns: event.columns,
             totalRows: 0,
             finished: false,
             limited: false,
-            sort: pendingSort?.keys ?? [],
-            sortedBy: pendingSort ? "server" : null,
-            original: pendingSort?.original ?? null,
+            sort: sorted?.keys ?? [],
+            sortedBy: sorted ? "server" : null,
+            original: sorted?.original ?? null,
             filter: null,
           },
         ];
@@ -861,6 +866,9 @@
         } else {
           updateSet(event.result, { totalRows: event.total, finished: true, limited: event.limited });
         }
+        break;
+      case "partsDropped":
+        sets = sets.map((set) => (set.statement === event.statement ? { ...set, part: null } : set));
         break;
       case "commandDone":
         messages.push({ kind: "command", statement: event.statement, rowsAffected: event.rowsAffected });
@@ -898,14 +906,23 @@
     if (runId !== null) void ipc.cancelRun(runId);
   }
 
-  // With two results or more, the statement behind the result shown is framed in the editor (D23).
+  /** The text a set came from: its statement, or the part of a SQL Server batch that made it. */
+  function framedRange(set: ResultSetView, ranges: ByteRange[]): ByteRange | undefined {
+    const range = ranges[set.statement];
+    if (!range || !set.part) return range;
+    return { start: range.start + set.part.start, end: range.start + set.part.end };
+  }
+
+  // With two results or more, the text behind the result shown is framed in the editor (D23),
+  // when the results came from different text: a batch the core could not read frames nothing.
   $effect(() => {
     const set = activeSet;
     const request = ranRequest;
     const ranges = ranRanges;
-    const many = sets.length > 1;
+    const all = sets;
     untrack(() => {
-      const range = set && many && !onTablePage ? ranges[set.statement] : undefined;
+      const many = new Set(all.map((other) => JSON.stringify(framedRange(other, ranges) ?? null))).size > 1;
+      const range = set && many && !onTablePage ? framedRange(set, ranges) : undefined;
       editor?.frame(range ? request : null, range ?? null);
     });
   });
@@ -1099,6 +1116,7 @@
           {
             result: read.result,
             statement: 0,
+            part: null,
             columns: read.columns,
             totalRows: read.totalRows,
             finished: true,
@@ -1648,8 +1666,9 @@
               connection={open}
               {database}
               {refreshKey}
-              onOpen={(object, inDatabase) => void openObject(object, inDatabase)}
+              onOpen={(object, inDatabase, newTab) => void openObject(object, inDatabase, newTab)}
               onUseDatabase={useDatabase}
+              onCopy={copyText}
               onContext={(target, x, y) => (treeMenu = { target, x, y })}
             />
           {/if}

@@ -10,6 +10,9 @@
 //! would start is a psql meta-command (`\c demo`): it runs to the end of its
 //! line and comes back as a [`StatementKind::Directive`].
 //!
+//! A SQL Server batch is sent whole; `batch.rs` reads the T-SQL statements
+//! inside it, to tell which one made each result.
+//!
 //! A statement holding only whitespace and comments is dropped. Ranges are
 //! byte offsets into the text and start at the first token, so a comment
 //! before a statement is not sent with it.

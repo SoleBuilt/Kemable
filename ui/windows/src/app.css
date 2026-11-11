@@ -30,7 +30,7 @@
   --tooltip: #171717; --on-tooltip: #fafafa; --scrim: #0000004d;
   --window-close: #c42b1c; --on-window-close: #ffffff;
   --conn-red: #d13438; --conn-orange: #ca5010; --conn-green: #107c10; --conn-teal: #038387; --conn-blue: #0f6cbd; --conn-purple: #8764b8; --conn-gray: #737373;
-  --syntax-keyword: #8a2bd8; --syntax-string: #0b7a3e; --syntax-number: #b35900; --syntax-comment: #8a8a8a; --syntax-type: #0b62a8; --syntax-operator: #525252; --syntax-name: #0a0a0a; --active-line: #00000008;
+  --syntax-keyword: #8a2bd8; --syntax-string: #0b7a3e; --syntax-number: #b35900; --syntax-comment: #8a8a8a; --syntax-type: #0b62a8; --syntax-operator: #525252; --syntax-name: #0a0a0a; --active-line: #00000008; --statement: #0000000a;
   --shadow-xs: 0 1px 2px #0000000f;
   --shadow-popover: 0 10px 30px -8px #00000029, 0 0 0 1px #0000000d;
   --shadow-dialog: 0 24px 48px -12px #00000040, 0 0 0 1px #0000000d;
@@ -49,7 +49,7 @@
   --tooltip: #fafafa; --on-tooltip: #171717; --scrim: #00000099;
   --window-close: #c42b1c; --on-window-close: #ffffff;
   --conn-red: #f1707b; --conn-orange: #f7894a; --conn-green: #54b054; --conn-teal: #4cc2c5; --conn-blue: #4fa3f7; --conn-purple: #b49fdb; --conn-gray: #a1a1a1;
-  --syntax-keyword: #c792ea; --syntax-string: #a5d6a7; --syntax-number: #f5b062; --syntax-comment: #6f6f6f; --syntax-type: #82b1ff; --syntax-operator: #b0b0b0; --syntax-name: #fafafa; --active-line: #ffffff0a;
+  --syntax-keyword: #c792ea; --syntax-string: #a5d6a7; --syntax-number: #f5b062; --syntax-comment: #6f6f6f; --syntax-type: #82b1ff; --syntax-operator: #b0b0b0; --syntax-name: #fafafa; --active-line: #ffffff0a; --statement: #ffffff0d;
   --shadow-xs: 0 1px 2px #00000066;
   --shadow-popover: 0 10px 30px -8px #00000099, 0 0 0 1px #ffffff14;
   --shadow-dialog: 0 24px 48px -12px #000000b3, 0 0 0 1px #ffffff1a;
@@ -69,7 +69,7 @@
     --tooltip: #fafafa; --on-tooltip: #171717; --scrim: #00000099;
   --window-close: #c42b1c; --on-window-close: #ffffff;
     --conn-red: #f1707b; --conn-orange: #f7894a; --conn-green: #54b054; --conn-teal: #4cc2c5; --conn-blue: #4fa3f7; --conn-purple: #b49fdb; --conn-gray: #a1a1a1;
-    --syntax-keyword: #c792ea; --syntax-string: #a5d6a7; --syntax-number: #f5b062; --syntax-comment: #6f6f6f; --syntax-type: #82b1ff; --syntax-operator: #b0b0b0; --syntax-name: #fafafa; --active-line: #ffffff0a;
+    --syntax-keyword: #c792ea; --syntax-string: #a5d6a7; --syntax-number: #f5b062; --syntax-comment: #6f6f6f; --syntax-type: #82b1ff; --syntax-operator: #b0b0b0; --syntax-name: #fafafa; --active-line: #ffffff0a; --statement: #ffffff0d;
     --shadow-xs: 0 1px 2px #00000066;
     --shadow-popover: 0 10px 30px -8px #00000099, 0 0 0 1px #ffffff14;
     --shadow-dialog: 0 24px 48px -12px #000000b3, 0 0 0 1px #ffffff1a;

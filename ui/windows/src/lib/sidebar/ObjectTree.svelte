@@ -22,14 +22,17 @@
     database: string | null;
     /** Bumped by the parent after a run that may have changed the schema. */
     refreshKey: number;
-    onOpen: (object: ObjectInfo, database: string | null) => void;
+    /** Opens a table or view; `newTab` opens it on another page even when it is open (Ctrl+Enter). */
+    onOpen: (object: ObjectInfo, database: string | null, newTab?: boolean) => void;
     /** Double-clicking a database makes the editor run in it. */
     onUseDatabase: (database: string) => void;
     /** A right-click: the owner shows the menu for `target` at the pointer. */
     onContext: (target: TreeTarget, x: number, y: number) => void;
+    /** Ctrl+C on a row: copies `text`, which is `what`. */
+    onCopy: (text: string, what: string) => void;
   }
 
-  let { connection, database, refreshKey, onOpen, onUseDatabase, onContext }: Props = $props();
+  let { connection, database, refreshKey, onOpen, onUseDatabase, onContext, onCopy }: Props = $props();
 
   /** The kinds of a schema, in the order the tree lists them, each a folder. */
   const KINDS: { kinds: ObjectKind[]; label: string; icon: IconName }[] = [
@@ -158,11 +161,20 @@
     onContext(target, event.clientX, event.clientY);
   }
 
-  /** Enter opens the selected table, as a double-click does. */
+  /** Ctrl+C copies a row's name, the shortcut its menu shows. */
+  function copyKey(event: KeyboardEvent, name: string): boolean {
+    if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "c") return false;
+    event.preventDefault();
+    onCopy(name, "the name");
+    return true;
+  }
+
+  /** Enter opens the selected table, as a double-click does, and Ctrl+Enter opens it on a new page. */
   function onKeydown(event: KeyboardEvent, node: DatabaseNode, object: ObjectInfo) {
+    if (copyKey(event, object.name)) return;
     if (event.key === "Enter") {
       event.preventDefault();
-      onOpen(object, node.name);
+      onOpen(object, node.name, event.ctrlKey || event.metaKey);
     } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       event.preventDefault();
       const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -189,6 +201,7 @@
           tip={name === database ? "The editor runs here" : "Double-click to run the editor here"}
           onclick={() => toggle(node)}
           ondblclick={() => onUseDatabase(name)}
+          onkeydown={(event) => copyKey(event, name)}
           oncontextmenu={(event) => context(event, { kind: "database", name })}>{name}</TreeRow
         >
       {/if}

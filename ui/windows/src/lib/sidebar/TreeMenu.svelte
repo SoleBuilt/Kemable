@@ -49,7 +49,7 @@
         { label: "New Table…", icon: "plus", run: null },
         { label: "New View…", icon: "plus", run: null },
         "-",
-        { label: "Copy Name", icon: "copy", run: () => onCopy(name, "the name") },
+        { label: "Copy Name", icon: "copy", keys: ["Ctrl", "C"], run: () => onCopy(name, "the name") },
         { label: "Refresh", icon: "refresh", keys: ["Ctrl", "R"], run: onRefresh },
       ];
     }
