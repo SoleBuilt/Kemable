@@ -261,6 +261,13 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-codebox .k { color: var(--syntax-keyword); } .pb-codebox .s { color: var(--syntax-string); } .pb-codebox .n { color: var(--syntax-number); }
 .pb-setting { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .pb-setting-text { display: flex; flex-direction: column; gap: 2px; }
+/* Show Structure: a table's columns, one per row */
+.pb-columns { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--canvas); overflow: auto; }
+.pb-columns-row { display: grid; grid-template-columns: 36px minmax(120px, 1.4fr) minmax(100px, 1fr) 44px minmax(80px, 1fr) 48px; gap: var(--space-2); align-items: center; min-height: var(--size-row); padding: 0 var(--space-3); border-bottom: 1px solid var(--grid-line); }
+.pb-columns-row:last-child { border-bottom: 0; }
+.pb-columns-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-columns-row.is-head { position: sticky; top: 0; background: var(--grid-header); color: var(--fg-muted); font-size: 12px; font-weight: 550; }
+.pb-columns-name { font-weight: 500; }
 /* A dialog with a list on the left and the entry picked on the right (Credential profiles) */
 .pb-split-list { display: flex; flex-direction: column; width: 240px; flex: none; border-right: 1px solid var(--line); background: var(--canvas); }
 .pb-split-scroll { flex: 1; min-height: 0; overflow: auto; }

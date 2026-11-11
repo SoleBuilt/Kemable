@@ -5,6 +5,7 @@
   import MenuItem from "../ui/MenuItem.svelte";
   import MenuLabel from "../ui/MenuLabel.svelte";
   import MenuSeparator from "../ui/MenuSeparator.svelte";
+  import type { ActionKind } from "./ObjectActionDialog.svelte";
   import type { TreeTarget } from "./ObjectTree.svelte";
 
   /**
@@ -23,9 +24,33 @@
     onUseDatabase: (name: string) => void;
     onCopy: (text: string, what: string) => void;
     onRefresh: () => void;
+    /** The engine's id: what it can do decides which items work. */
+    engine: string;
+    onStructure: (target: TreeTarget & { kind: "object" }) => void;
+    /** Opens the DDL on a query page. */
+    onShowDdl: (target: TreeTarget & { kind: "object" }) => void;
+    onCopyDdl: (target: TreeTarget & { kind: "object" }) => void;
+    onEditView: (target: TreeTarget & { kind: "object" }) => void;
+    onAction: (target: TreeTarget & { kind: "object" }, action: ActionKind) => void;
   }
 
-  let { target, x, y, onClose, onOpen, onOpenNew, onUseDatabase, onCopy, onRefresh }: Props = $props();
+  let {
+    target,
+    x,
+    y,
+    onClose,
+    onOpen,
+    onOpenNew,
+    onUseDatabase,
+    onCopy,
+    onRefresh,
+    engine,
+    onStructure,
+    onShowDdl,
+    onCopyDdl,
+    onEditView,
+    onAction,
+  }: Props = $props();
 
   interface Item {
     label: string;
@@ -59,6 +84,11 @@
     const table = object.kind === "table";
     const view = object.kind === "view" || object.kind === "materializedView";
     const opens = table || view;
+    const sqlite = engine === "sqlite" || engine === "d1";
+    // What each engine has a statement for (core/crates/core/src/sql/object_action.rs).
+    const renames = table || (view && !sqlite);
+    const comments = (table || view) && !sqlite;
+    const act = (action: ActionKind) => () => onAction(open, action);
     return [
       ...(opens
         ? [
@@ -66,10 +96,10 @@
             { label: "Open in New Tab", icon: "plus", keys: ["Ctrl", "Enter"], run: () => onOpenNew(open) } satisfies Item,
           ]
         : []),
-      { label: "Show Structure", icon: "pane", run: null },
-      { label: "Show DDL", icon: "file", run: null },
-      { label: "Copy DDL", icon: "copy", run: null },
-      ...(view ? [{ label: "Edit View Definition", icon: "settings", run: null } satisfies Item] : []),
+      { label: "Show Structure", icon: "pane", run: () => onStructure(open) },
+      { label: "Show DDL", icon: "file", run: () => onShowDdl(open) },
+      { label: "Copy DDL", icon: "copy", run: () => onCopyDdl(open) },
+      ...(view && object.kind === "view" ? [{ label: "Edit View Definition", icon: "settings", run: () => onEditView(open) } satisfies Item] : []),
       "-",
       { label: "Copy Name", icon: "copy", keys: ["Ctrl", "C"], run: () => onCopy(object.name, "the name") },
       { label: "Copy Qualified Name", icon: "copy", run: () => onCopy(qualified, "the qualified name") },
@@ -84,16 +114,12 @@
           ]
         : []),
       "-",
-      { label: "Rename…", icon: "settings", keys: ["F2"], run: null },
-      ...(table
-        ? [
-            { label: "Edit Comment…", icon: "settings", run: null } satisfies Item,
-            { label: "Maintenance…", icon: "refresh", run: null } satisfies Item,
-          ]
-        : []),
+      ...(renames ? [{ label: "Rename…", icon: "settings", keys: ["F2"], run: act("rename") } satisfies Item] : []),
+      ...(comments ? [{ label: "Edit Comment…", icon: "settings", run: act("comment") } satisfies Item] : []),
+      ...(table ? [{ label: "Maintenance…", icon: "refresh", run: act("maintain") } satisfies Item] : []),
       "-",
-      ...(table ? [{ label: "Truncate…", icon: "trash", keys: ["Alt", "Del"], danger: true, run: null } satisfies Item] : []),
-      ...(opens ? [{ label: "Drop…", icon: "trash", keys: ["Del"], danger: true, run: null } satisfies Item] : []),
+      ...(table ? [{ label: "Truncate…", icon: "trash", keys: ["Alt", "Del"], danger: true, run: act("truncate") } satisfies Item] : []),
+      ...(opens ? [{ label: "Drop…", icon: "trash", keys: ["Del"], danger: true, run: act("drop") } satisfies Item] : []),
     ];
   });
 

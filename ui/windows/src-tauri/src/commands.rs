@@ -16,9 +16,9 @@ use paboable_core::keys::{KeyDetail, KeyPage, KeyScan};
 use paboable_core::registry::DriverRegistry;
 use paboable_core::sink::ResultSink;
 use paboable_core::sql::{
-    BrowseQuery, Clause, CompletionItem, NewValue, ResultFilter, ResultSource, ResultWhere, RowEdit, SortColumn,
-    SqlGrammar, completion_context, completions, count_statement, edit_statement, page_statement, sorted_statement,
-    split, statement_at,
+    BrowseQuery, Clause, CompletionItem, Maintenance, NewValue, ObjectAction, ResultFilter, ResultSource, ResultWhere,
+    RowEdit, SortColumn, SqlGrammar, action_statements, completion_context, completions, count_statement,
+    edit_statement, maintenance_tasks, page_statement, sorted_statement, split, statement_at, view_definition,
 };
 use paboable_core::text_file::{self, LineEnding, TextEncoding, TextFile};
 use paboable_core::value::Value;
@@ -575,6 +575,121 @@ pub async fn sort_result(
     Ok(SortOutcome::Sorted {
         limited: store.state().limited,
     })
+}
+
+// --- The object tree's menu (docs/decisions/0017-tree-actions.md) ---------------
+
+/// The statement that makes `object` as the server holds it now (Show DDL, Copy DDL).
+#[tauri::command]
+pub async fn object_ddl(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    object: ObjectInfo,
+) -> CommandResult<String> {
+    let session = state.server(conn)?.session(database.as_deref()).await?;
+    session.object_ddl(&object, metadata_options()).await
+}
+
+/// The comment on `object`, for Edit Comment.
+#[tauri::command]
+pub async fn object_comment(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    object: ObjectInfo,
+) -> CommandResult<Option<String>> {
+    let session = state.server(conn)?.session(database.as_deref()).await?;
+    session.object_comment(&object, metadata_options()).await
+}
+
+/// A view's definition as the statement that replaces it, to edit on a query page.
+#[tauri::command]
+pub async fn view_definition_of(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    object: ObjectInfo,
+) -> CommandResult<String> {
+    let server = state.server(conn)?;
+    let grammar = grammar_of(&server)?;
+    let ddl = server
+        .session(database.as_deref())
+        .await?
+        .object_ddl(&object, metadata_options())
+        .await?;
+    Ok(view_definition(grammar, &object, &ddl))
+}
+
+/// The maintenance tasks the connection's engine offers, in the menu's order.
+#[tauri::command]
+pub async fn maintenance_tasks_of(state: State<'_, Arc<AppState>>, conn: u64) -> CommandResult<Vec<Maintenance>> {
+    let server = state.server(conn)?;
+    Ok(maintenance_tasks(grammar_of(&server)?).to_vec())
+}
+
+/// The statements `action` would run on `object`, to show before they run.
+#[tauri::command]
+pub async fn object_action(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    object: ObjectInfo,
+    action: ObjectAction,
+) -> CommandResult<Vec<String>> {
+    let server = state.server(conn)?;
+    action_statements(grammar_of(&server)?, &object, &action)
+}
+
+/// Runs the statements an object action showed, in order, each on its own
+/// (VACUUM may not run inside a transaction); the first failure stops the
+/// rest. What completion read of the catalog is forgotten, since it changed.
+#[tauri::command]
+pub async fn run_statements(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    statements: Vec<String>,
+) -> CommandResult<()> {
+    let session = state.server(conn)?.session(database.as_deref()).await?;
+    let sink: Arc<dyn ResultSink> = Arc::new(Discard);
+    let outcome = async {
+        for statement in &statements {
+            session
+                .execute(
+                    statement,
+                    Arc::clone(&sink),
+                    CallOptions::default().with_timeout(ACTION_TIMEOUT),
+                )
+                .await?;
+        }
+        Ok(())
+    }
+    .await;
+    state.catalog.forget(conn);
+    outcome
+}
+
+/// A maintenance task on a big table takes a while; past this it is stopped.
+const ACTION_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+fn grammar_of(server: &OpenServer) -> CommandResult<SqlGrammar> {
+    server
+        .engine
+        .sql_grammar
+        .ok_or_else(|| DriverError::unsupported("this engine has no SQL"))
+}
+
+/// A sink for statements whose rows nobody reads (DBCC's report, say).
+struct Discard;
+
+impl ResultSink for Discard {
+    fn begin_set(&self, _columns: Vec<ColumnMeta>) {}
+    fn push_rows(&self, _values: &[Value]) -> bool {
+        false
+    }
+    fn end_set(&self) {}
+    fn command_done(&self, _rows_affected: Option<u64>) {}
+    fn notice(&self, _text: &str) {}
 }
 
 /// The one table result `result` comes from, for "Open <table> to edit"

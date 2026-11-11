@@ -254,3 +254,59 @@ async fn edits_are_saved_together_or_not_at_all() {
         [vec![Some("2".to_owned())]]
     );
 }
+
+#[tokio::test]
+async fn a_tables_ddl_is_its_create_statement_with_its_indexes_and_triggers() {
+    use paboable_core::catalog::{ObjectInfo, ObjectKind};
+    let connection = memory().await;
+    for statement in [
+        "create table \"khách hàng\" (id integer primary key, tên text not null)",
+        "create index ix_ten on \"khách hàng\" (tên)",
+        "create trigger tr_ten after insert on \"khách hàng\" begin select 1; end",
+        "create view v_ten as select tên from \"khách hàng\"",
+    ] {
+        run(&connection, statement).await.1.unwrap();
+    }
+    let table = ObjectInfo {
+        schema: Some("main".into()),
+        name: "khách hàng".into(),
+        kind: ObjectKind::Table,
+    };
+    let ddl = connection.object_ddl(&table, CallOptions::default()).await.unwrap();
+    let parts: Vec<&str> = ddl
+        .split(
+            "
+
+",
+        )
+        .collect();
+    assert_eq!(parts.len(), 3, "{ddl}");
+    assert!(
+        parts[0].starts_with("CREATE TABLE \"khách hàng\"") && parts[0].ends_with(';'),
+        "{ddl}"
+    );
+    assert!(parts[1].starts_with("CREATE INDEX ix_ten"), "{ddl}");
+    assert!(parts[2].starts_with("CREATE TRIGGER tr_ten"), "{ddl}");
+
+    let view = ObjectInfo {
+        name: "v_ten".into(),
+        kind: ObjectKind::View,
+        ..table.clone()
+    };
+    assert_eq!(
+        connection.object_ddl(&view, CallOptions::default()).await.unwrap(),
+        "CREATE VIEW v_ten as select tên from \"khách hàng\";"
+    );
+    let gone = ObjectInfo {
+        name: "gone".into(),
+        ..table
+    };
+    assert_eq!(
+        connection
+            .object_ddl(&gone, CallOptions::default())
+            .await
+            .unwrap_err()
+            .code,
+        paboable_core::ErrorCode::NotFound
+    );
+}

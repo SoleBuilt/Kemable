@@ -11,6 +11,7 @@
 //! `host\INSTANCE` reaches a named instance through the SQL Server Browser.
 
 mod connection;
+mod ddl;
 mod decode;
 mod errors;
 

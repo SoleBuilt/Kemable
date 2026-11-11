@@ -35,9 +35,11 @@
     onContext: (target: TreeTarget, x: number, y: number) => void;
     /** Ctrl+C on a row: copies `text`, which is `what`. */
     onCopy: (text: string, what: string) => void;
+    /** F2, Del and Alt+Del on a row: rename, drop, empty (docs/decisions/0017-tree-actions.md). */
+    onAction: (target: TreeTarget & { kind: "object" }, action: "rename" | "drop" | "truncate") => void;
   }
 
-  let { connection, database, refreshKey, scope = "all", onOpen, onUseDatabase, onContext, onCopy }: Props = $props();
+  let { connection, database, refreshKey, scope = "all", onOpen, onUseDatabase, onContext, onCopy, onAction }: Props = $props();
 
   interface Folder {
     kinds: ObjectKind[];
@@ -310,7 +312,18 @@
   /** Enter opens the selected table, as a double-click does, and Ctrl+Enter opens it on a new page. */
   function onKeydown(event: KeyboardEvent, node: DatabaseNode, object: ObjectInfo) {
     if (copyKey(event, object.name)) return;
-    if (event.key === "Enter") {
+    const target = { kind: "object" as const, object, database: node.name };
+    const opens = object.kind === "table" || object.kind === "view" || object.kind === "materializedView";
+    if (event.key === "F2") {
+      event.preventDefault();
+      onAction(target, "rename");
+    } else if (event.key === "Delete" && event.altKey && object.kind === "table") {
+      event.preventDefault();
+      onAction(target, "truncate");
+    } else if (event.key === "Delete" && !event.altKey && opens) {
+      event.preventDefault();
+      onAction(target, "drop");
+    } else if (event.key === "Enter") {
       event.preventDefault();
       onOpen(object, node.name, event.ctrlKey || event.metaKey);
     } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {

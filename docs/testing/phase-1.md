@@ -160,6 +160,22 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Chuột phải vào chỗ trống của sidebar, vào editor, vào status bar.
   **Đúng:** không hiện menu của trình duyệt (Back, Print, Inspect, Emoji…). Chuột phải vào bảng hoặc database trên cây vẫn hiện menu của app.
 
+### 3.0b Menu chuột phải trên bảng (ADR 0017)
+- [ ] Chuột phải một bảng › **Show Structure**.
+  **Đúng:** hộp thoại có danh sách cột (tên, kiểu, null, default, khoá) và nút **DDL**; Copy DDL và Open in editor dùng được.
+- [ ] **Show DDL** và **Copy DDL** trên một bảng có khoá chính, khoá ngoại, index, default, cột identity; trên một view; với SQL Server thêm procedure và function.
+  **Đúng:** tab query mới có câu CREATE đầy đủ (SQL Server có các dòng `GO`). Chạy DDL đó dưới tên khác ở một database thử thì tạo được bảng giống hệt.
+- [ ] Chuột phải một view › **Edit View Definition**.
+  **Đúng:** tab query có `CREATE OR REPLACE VIEW` (PostgreSQL) / `CREATE OR ALTER VIEW` (SQL Server) / `DROP VIEW … ; CREATE VIEW …` (SQLite); sửa rồi chạy được.
+- [ ] Chọn một bảng thử, nhấn **F2** (hoặc **Rename…**), gõ tên mới.
+  **Đúng:** hộp thoại hiện câu lệnh sẽ chạy (SQL Server là `EXEC sp_rename …`), bấm Rename: cây làm mới với tên mới, status bar báo.
+- [ ] **Edit Comment…** trên bảng (PostgreSQL, SQL Server).
+  **Đúng:** ô đã có comment hiện tại; lưu xong Show DDL thấy comment. SQLite không có mục này.
+- [ ] **Maintenance…** trên bảng.
+  **Đúng:** danh sách việc đúng của engine (PostgreSQL: Vacuum, Analyze, Reindex…; SQL Server: Update statistics, Rebuild…; SQLite: Analyze, Reindex, Vacuum); câu lệnh hiện trước, Run chạy xong báo ở status bar.
+- [ ] Bảng thử: **Alt+Del** (Truncate), rồi **Del** (Drop).
+  **Đúng:** cả hai hỏi bằng hộp thoại có câu lệnh và nút đỏ; Cancel không làm gì. PostgreSQL có ô CASCADE. SQLite Truncate là `DELETE FROM`.
+
 ### 3.1 Script tạo database
 - [ ] Postgres, Run all:
   ```sql

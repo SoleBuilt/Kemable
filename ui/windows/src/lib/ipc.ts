@@ -6,6 +6,8 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   CredentialProfile,
+  Maintenance,
+  ObjectAction,
   ResultSource,
   LineEnding,
   TextEncoding,
@@ -64,6 +66,21 @@ export const ipc = {
 
   deleteSaved: (id: string) => invoke<void>("delete_saved", { id }),
 
+  /** The statement that makes `object` as the server holds it now (docs/decisions/0017-tree-actions.md). */
+  objectDdl: (conn: number, database: string | null, object: ObjectInfo) => invoke<string>("object_ddl", { conn, database, object }),
+  /** The comment on `object`, or null. */
+  objectComment: (conn: number, database: string | null, object: ObjectInfo) =>
+    invoke<string | null>("object_comment", { conn, database, object }),
+  /** A view's definition as the statement that replaces it, to edit on a query page. */
+  viewDefinition: (conn: number, database: string | null, object: ObjectInfo) =>
+    invoke<string>("view_definition_of", { conn, database, object }),
+  /** The maintenance tasks the connection's engine offers. */
+  maintenanceTasks: (conn: number) => invoke<Maintenance[]>("maintenance_tasks_of", { conn }),
+  /** The statements `action` would run on `object`, to show before they run. */
+  objectAction: (conn: number, object: ObjectInfo, action: ObjectAction) => invoke<string[]>("object_action", { conn, object, action }),
+  /** Runs statements an object action showed, in order; the first failure stops the rest. */
+  runStatements: (conn: number, database: string | null, statements: string[]) =>
+    invoke<void>("run_statements", { conn, database, statements }),
   /** The one table result `result` comes from, with its WHERE as filters; null when it is not one table's rows. */
   resultSource: (result: number) => invoke<ResultSource | null>("result_source", { result }),
   /** A `.sql` file's text, encoding and line endings (docs/decisions/0016-sql-files.md). */

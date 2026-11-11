@@ -410,3 +410,509 @@ fn objects_fall_in_ssms_folders_procedures_table_valued_and_scalar_functions() {
         assert_eq!(object_kind(code), kind, "{code}");
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+async fn object_ddl_scripts_what_the_server_holds_and_the_table_script_runs_again() {
+    use paboable_core::catalog::ObjectInfo;
+    use paboable_core::sql::{SqlGrammar, split};
+
+    let conn = live_in("tempdb").await;
+    let schema = format!("paboable_ddl_{}", std::process::id());
+    let copy = format!("paboable_ddl_copy_{}", std::process::id());
+    let object = |name: &str, kind| ObjectInfo {
+        schema: Some(schema.clone()),
+        name: name.into(),
+        kind,
+    };
+    run(&conn, &format!("create schema {schema}")).await;
+    run(&conn, &format!("create schema {copy}")).await;
+    run(
+        &conn,
+        &format!(
+            "create table {schema}.customers (id int not null constraint pk_customers primary key);
+             create table {schema}.[Khách hàng] (
+                 id int identity(10, 5) not null,
+                 code varchar(20) collate Latin1_General_BIN not null,
+                 qty int not null constraint df_qty default (1),
+                 price decimal(10, 2) not null,
+                 total as (qty * price) persisted,
+                 note nvarchar(max) null,
+                 customer_id int null,
+                 constraint pk_kh primary key clustered (id),
+                 constraint uq_kh_code unique nonclustered (code desc),
+                 constraint ck_kh_qty check (qty > 0),
+                 constraint fk_kh_customer foreign key (customer_id)
+                     references {schema}.customers (id) on delete cascade
+             );
+             create nonclustered index ix_kh_customer on {schema}.[Khách hàng] (customer_id desc)
+                 include (note) where customer_id is not null;
+             exec sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Đơn hàng',
+                 @level0type = N'SCHEMA', @level0name = N'{schema}',
+                 @level1type = N'TABLE', @level1name = N'Khách hàng';
+             exec sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Số lượng ''đặt''',
+                 @level0type = N'SCHEMA', @level0name = N'{schema}',
+                 @level1type = N'TABLE', @level1name = N'Khách hàng',
+                 @level2type = N'COLUMN', @level2name = N'qty';"
+        ),
+    )
+    .await;
+    let view = format!("create view {schema}.v_kh as select id, qty from {schema}.[Khách hàng]");
+    let scalar = format!("create function {schema}.f_double (@x int) returns int as begin return @x * 2 end");
+    let rows = format!(
+        "create function {schema}.f_rows (@min int) returns table as return select id from {schema}.[Khách hàng] where qty >= @min"
+    );
+    let procedure = format!("create procedure {schema}.p_count as select count(*) from {schema}.[Khách hàng]");
+    for module in [&view, &scalar, &rows, &procedure] {
+        run(&conn, module).await;
+    }
+    run(
+        &conn,
+        &format!(
+            "create sequence {schema}.seq as bigint start with 100 increment by 10 minvalue 1 maxvalue 100000 cycle cache 20"
+        ),
+    )
+    .await;
+
+    let options = CallOptions::default;
+    let table = conn
+        .object_ddl(&object("Khách hàng", ObjectKind::Table), options())
+        .await
+        .unwrap();
+    let name = format!("[{schema}].[Khách hàng]");
+    for piece in [
+        format!("CREATE TABLE {name} (\n"),
+        "[id] int IDENTITY(10, 5) NOT NULL,".into(),
+        "[code] varchar(20) COLLATE Latin1_General_BIN NOT NULL,".into(),
+        "[qty] int NOT NULL CONSTRAINT [df_qty] DEFAULT ((1)),".into(),
+        "[price] decimal(10,2) NOT NULL,".into(),
+        "[total] AS ([qty]*[price]) PERSISTED".into(),
+        "[note] nvarchar(max) NULL,".into(),
+        "CONSTRAINT [pk_kh] PRIMARY KEY CLUSTERED ([id] ASC),".into(),
+        "CONSTRAINT [uq_kh_code] UNIQUE NONCLUSTERED ([code] DESC),".into(),
+        "CONSTRAINT [ck_kh_qty] CHECK ([qty]>(0))\n);".into(),
+        format!(
+            "ALTER TABLE {name} ADD CONSTRAINT [fk_kh_customer] FOREIGN KEY ([customer_id]) \
+             REFERENCES [{schema}].[customers] ([id]) ON DELETE CASCADE;"
+        ),
+        format!(
+            "CREATE NONCLUSTERED INDEX [ix_kh_customer] ON {name} ([customer_id] DESC) INCLUDE ([note]) \
+             WHERE ([customer_id] IS NOT NULL);"
+        ),
+        "@value = N'Đơn hàng'".into(),
+        "@value = N'Số lượng ''đặt''',".into(),
+        "@level2type = N'COLUMN', @level2name = N'qty';".into(),
+    ] {
+        assert!(table.contains(&piece), "{piece}\nnot in\n{table}");
+    }
+    assert_eq!(split(&table, SqlGrammar::SqlServer).len(), 5);
+
+    assert_eq!(
+        conn.object_comment(&object("Khách hàng", ObjectKind::Table), options())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("Đơn hàng")
+    );
+    assert_eq!(
+        conn.object_comment(&object("v_kh", ObjectKind::View), options())
+            .await
+            .unwrap(),
+        None
+    );
+
+    for (name, kind, text) in [
+        ("v_kh", ObjectKind::View, &view),
+        ("f_double", ObjectKind::Function, &scalar),
+        ("f_rows", ObjectKind::TableFunction, &rows),
+        ("p_count", ObjectKind::Procedure, &procedure),
+    ] {
+        let ddl = conn.object_ddl(&object(name, kind), options()).await.unwrap();
+        assert_eq!(ddl.trim(), text.trim(), "{name}");
+    }
+    assert_eq!(
+        conn.object_ddl(&object("seq", ObjectKind::Sequence), options())
+            .await
+            .unwrap(),
+        format!(
+            "CREATE SEQUENCE [{schema}].[seq] AS bigint START WITH 100 INCREMENT BY 10 \
+             MINVALUE 1 MAXVALUE 100000 CYCLE CACHE 20;"
+        )
+    );
+    let missing = conn
+        .object_ddl(&object("paboable_missing", ObjectKind::View), options())
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code, ErrorCode::NotFound);
+
+    // The script made again under another name, in another schema, scripts back the same.
+    let copied = table
+        .replace(&name, &format!("[{copy}].[Khách hàng copy]"))
+        .replace(
+            &format!("@level0name = N'{schema}'"),
+            &format!("@level0name = N'{copy}'"),
+        )
+        .replace("@level1name = N'Khách hàng'", "@level1name = N'Khách hàng copy'");
+    for span in split(&copied, SqlGrammar::SqlServer) {
+        run(&conn, span.text(&copied)).await;
+    }
+    let again = conn
+        .object_ddl(
+            &ObjectInfo {
+                schema: Some(copy.clone()),
+                name: "Khách hàng copy".into(),
+                kind: ObjectKind::Table,
+            },
+            options(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(again, copied);
+
+    run(
+        &conn,
+        &format!(
+            "drop table [{copy}].[Khách hàng copy]; drop view {schema}.v_kh; drop function {schema}.f_double; \
+             drop function {schema}.f_rows; drop procedure {schema}.p_count; drop sequence {schema}.seq; \
+             drop table {schema}.[Khách hàng]; drop table {schema}.customers; drop schema {copy}; drop schema {schema}"
+        ),
+    )
+    .await;
+}
+
+// --- object scripts, without a server -------------------------------------------
+
+mod ddl_text {
+    use paboable_core::sql::{SqlGrammar, split};
+
+    use crate::ddl::*;
+
+    const COLLATION: &str = "SQL_Latin1_General_CP1_CI_AS";
+
+    fn system(name: &str, max_length: i32, precision: i32, scale: i32) -> SqlType {
+        SqlType {
+            name: name.into(),
+            user_schema: None,
+            max_length,
+            precision,
+            scale,
+        }
+    }
+
+    fn column(name: &str, ty: SqlType, nullable: bool) -> TableColumn {
+        TableColumn {
+            name: name.into(),
+            ty,
+            nullable,
+            ..TableColumn::default()
+        }
+    }
+
+    fn key_column(name: &str, descending: bool) -> IndexColumn {
+        IndexColumn {
+            name: name.into(),
+            descending,
+        }
+    }
+
+    #[test]
+    fn names_go_in_brackets_with_a_closing_bracket_doubled() {
+        assert_eq!(bracket("orders"), "[orders]");
+        assert_eq!(bracket("a]b"), "[a]]b]");
+        assert_eq!(bracket("[x]"), "[[x]]]");
+        assert_eq!(qualified("dbo", "Khách hàng"), "[dbo].[Khách hàng]");
+        assert_eq!(qualified("s]", "t"), "[s]]].[t]");
+    }
+
+    #[test]
+    fn text_becomes_an_n_literal_with_its_quotes_doubled() {
+        assert_eq!(text_literal("plain"), "N'plain'");
+        assert_eq!(text_literal("it's"), "N'it''s'");
+        assert_eq!(text_literal("Mô tả 'đơn'"), "N'Mô tả ''đơn'''");
+        assert_eq!(text_literal(""), "N''");
+    }
+
+    #[test]
+    fn types_carry_their_size_as_the_column_list_writes_it() {
+        for (ty, text) in [
+            (system("varchar", 20, 0, 0), "varchar(20)"),
+            (system("varchar", -1, 0, 0), "varchar(max)"),
+            (system("char", 1, 0, 0), "char(1)"),
+            (system("varbinary", -1, 0, 0), "varbinary(max)"),
+            (system("binary", 16, 0, 0), "binary(16)"),
+            (system("nvarchar", 100, 0, 0), "nvarchar(50)"),
+            (system("nvarchar", -1, 0, 0), "nvarchar(max)"),
+            (system("nchar", 2, 0, 0), "nchar(1)"),
+            (system("decimal", 9, 10, 3), "decimal(10,3)"),
+            (system("numeric", 9, 18, 0), "numeric(18,0)"),
+            (system("datetime2", 8, 27, 7), "datetime2(7)"),
+            (system("time", 4, 10, 0), "time(0)"),
+            (system("datetimeoffset", 10, 34, 3), "datetimeoffset(3)"),
+            (system("int", 4, 10, 0), "int"),
+            (system("datetime", 8, 23, 3), "datetime"),
+            (system("sysname", 256, 0, 0), "sysname"),
+        ] {
+            assert_eq!(type_text(&ty), text, "{}", ty.name);
+        }
+    }
+
+    #[test]
+    fn a_user_type_is_written_by_its_schema_and_name_alone() {
+        let ty = SqlType {
+            name: "Số điện thoại".into(),
+            user_schema: Some("dbo".into()),
+            max_length: 40,
+            precision: 0,
+            scale: 0,
+        };
+        assert_eq!(type_text(&ty), "[dbo].[Số điện thoại]");
+    }
+
+    #[test]
+    fn a_column_line_has_its_identity_collation_nullability_and_default() {
+        let mut id = column("id", system("int", 4, 10, 0), false);
+        id.identity = Some(Identity {
+            seed: "10".into(),
+            increment: "5".into(),
+        });
+        assert_eq!(column_line(&id, COLLATION), "[id] int IDENTITY(10, 5) NOT NULL");
+
+        let mut code = column("code", system("varchar", 20, 0, 0), true);
+        code.collation = Some("Latin1_General_BIN".into());
+        assert_eq!(
+            column_line(&code, COLLATION),
+            "[code] varchar(20) COLLATE Latin1_General_BIN NULL"
+        );
+        code.collation = Some(COLLATION.into());
+        assert_eq!(column_line(&code, COLLATION), "[code] varchar(20) NULL");
+
+        let mut qty = column("Số lượng", system("int", 4, 10, 0), false);
+        qty.default = Some(DefaultConstraint {
+            name: "df_qty]".into(),
+            definition: "((1))".into(),
+        });
+        assert_eq!(
+            column_line(&qty, COLLATION),
+            "[Số lượng] int NOT NULL CONSTRAINT [df_qty]]] DEFAULT ((1))"
+        );
+    }
+
+    #[test]
+    fn a_computed_column_is_written_with_its_expression_and_no_type() {
+        let mut total = column("total", system("decimal", 9, 21, 2), false);
+        total.computed = Some(Computed {
+            definition: "([qty]*[price])".into(),
+            persisted: true,
+        });
+        assert_eq!(
+            column_line(&total, COLLATION),
+            "[total] AS ([qty]*[price]) PERSISTED NOT NULL"
+        );
+        total.computed = Some(Computed {
+            definition: "([qty]*[price])".into(),
+            persisted: false,
+        });
+        // The server refuses NOT NULL on a computed column that is not persisted.
+        assert_eq!(column_line(&total, COLLATION), "[total] AS ([qty]*[price])");
+    }
+
+    #[test]
+    fn keys_and_checks_are_written_as_table_constraints() {
+        let key = KeyConstraint {
+            name: "pk_orders".into(),
+            primary: true,
+            clustered: true,
+            columns: vec![key_column("id", false), key_column("line", true)],
+        };
+        assert_eq!(
+            key_constraint_line(&key),
+            "CONSTRAINT [pk_orders] PRIMARY KEY CLUSTERED ([id] ASC, [line] DESC)"
+        );
+        let unique = KeyConstraint {
+            name: "uq_code".into(),
+            primary: false,
+            clustered: false,
+            columns: vec![key_column("code", false)],
+        };
+        assert_eq!(
+            key_constraint_line(&unique),
+            "CONSTRAINT [uq_code] UNIQUE NONCLUSTERED ([code] ASC)"
+        );
+        let check = CheckConstraint {
+            name: "ck_qty".into(),
+            definition: "([qty]>(0))".into(),
+        };
+        assert_eq!(check_line(&check), "CONSTRAINT [ck_qty] CHECK ([qty]>(0))");
+    }
+
+    #[test]
+    fn a_foreign_key_writes_only_the_actions_that_are_not_no_action() {
+        assert_eq!(referential_action("NO_ACTION"), None);
+        assert_eq!(referential_action("CASCADE"), Some("CASCADE"));
+        assert_eq!(referential_action("SET_NULL"), Some("SET NULL"));
+        assert_eq!(referential_action("SET_DEFAULT"), Some("SET DEFAULT"));
+        let mut key = ForeignKey {
+            name: "fk_customer".into(),
+            columns: vec!["customer_id".into(), "region".into()],
+            referenced_schema: "sales".into(),
+            referenced_table: "Khách hàng".into(),
+            referenced_columns: vec!["id".into(), "region".into()],
+            on_delete: "CASCADE".into(),
+            on_update: "NO_ACTION".into(),
+        };
+        assert_eq!(
+            foreign_key_statement("[dbo].[orders]", &key),
+            "ALTER TABLE [dbo].[orders] ADD CONSTRAINT [fk_customer] FOREIGN KEY ([customer_id], [region]) \
+             REFERENCES [sales].[Khách hàng] ([id], [region]) ON DELETE CASCADE;"
+        );
+        key.on_delete = "NO_ACTION".into();
+        key.on_update = "SET_NULL".into();
+        assert!(foreign_key_statement("[dbo].[orders]", &key).ends_with("([id], [region]) ON UPDATE SET NULL;"));
+    }
+
+    #[test]
+    fn an_index_writes_its_keys_included_columns_and_filter() {
+        let mut index = Index {
+            name: "ix_customer".into(),
+            unique: false,
+            clustered: false,
+            columns: vec![key_column("customer_id", true)],
+            included: vec!["note".into(), "qty".into()],
+            filter: Some("([customer_id] IS NOT NULL)".into()),
+        };
+        assert_eq!(
+            index_statement("[dbo].[orders]", &index),
+            "CREATE NONCLUSTERED INDEX [ix_customer] ON [dbo].[orders] ([customer_id] DESC) \
+             INCLUDE ([note], [qty]) WHERE ([customer_id] IS NOT NULL);"
+        );
+        index.unique = true;
+        index.clustered = true;
+        index.included.clear();
+        index.filter = None;
+        assert_eq!(
+            index_statement("[dbo].[orders]", &index),
+            "CREATE UNIQUE CLUSTERED INDEX [ix_customer] ON [dbo].[orders] ([customer_id] DESC);"
+        );
+    }
+
+    #[test]
+    fn a_description_names_its_schema_table_and_column_as_literals() {
+        let table = Description {
+            column: None,
+            text: "Đơn hàng của 'khách'".into(),
+        };
+        assert_eq!(
+            description_statement("dbo", "Khách hàng", &table),
+            "EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Đơn hàng của ''khách''', \
+             @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'Khách hàng';"
+        );
+        let column = Description {
+            column: Some("O'Brien".into()),
+            text: "x".into(),
+        };
+        assert!(
+            description_statement("dbo", "t", &column)
+                .ends_with("@level1name = N't', @level2type = N'COLUMN', @level2name = N'O''Brien';")
+        );
+    }
+
+    #[test]
+    fn a_table_script_is_one_create_then_a_batch_per_foreign_key_index_and_description() {
+        let mut id = column("id", system("int", 4, 10, 0), false);
+        id.identity = Some(Identity {
+            seed: "1".into(),
+            increment: "1".into(),
+        });
+        let table = Table {
+            schema: "dbo".into(),
+            name: "Khách hàng".into(),
+            database_collation: COLLATION.into(),
+            columns: vec![id, column("tên", system("nvarchar", 200, 0, 0), true)],
+            keys: vec![KeyConstraint {
+                name: "pk".into(),
+                primary: true,
+                clustered: true,
+                columns: vec![key_column("id", false)],
+            }],
+            checks: vec![CheckConstraint {
+                name: "ck".into(),
+                definition: "([id]>(0))".into(),
+            }],
+            foreign_keys: vec![ForeignKey {
+                name: "fk".into(),
+                columns: vec!["id".into()],
+                referenced_schema: "dbo".into(),
+                referenced_table: "other".into(),
+                referenced_columns: vec!["id".into()],
+                on_delete: "NO_ACTION".into(),
+                on_update: "NO_ACTION".into(),
+            }],
+            indexes: vec![Index {
+                name: "ix".into(),
+                columns: vec![key_column("tên", false)],
+                ..Index::default()
+            }],
+            descriptions: vec![Description {
+                column: Some("tên".into()),
+                text: "Tên".into(),
+            }],
+        };
+        let script = table_ddl(&table);
+        assert_eq!(
+            script,
+            "CREATE TABLE [dbo].[Khách hàng] (\n    \
+             [id] int IDENTITY(1, 1) NOT NULL,\n    \
+             [tên] nvarchar(100) NULL,\n    \
+             CONSTRAINT [pk] PRIMARY KEY CLUSTERED ([id] ASC),\n    \
+             CONSTRAINT [ck] CHECK ([id]>(0))\n\
+             );\nGO\n\
+             ALTER TABLE [dbo].[Khách hàng] ADD CONSTRAINT [fk] FOREIGN KEY ([id]) REFERENCES [dbo].[other] ([id]);\nGO\n\
+             CREATE NONCLUSTERED INDEX [ix] ON [dbo].[Khách hàng] ([tên] ASC);\nGO\n\
+             EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Tên', \
+             @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'Khách hàng', \
+             @level2type = N'COLUMN', @level2name = N'tên';"
+        );
+        assert_eq!(split(&script, SqlGrammar::SqlServer).len(), 4);
+    }
+
+    #[test]
+    fn a_table_with_only_columns_is_one_statement() {
+        let table = Table {
+            schema: "dbo".into(),
+            name: "t".into(),
+            database_collation: COLLATION.into(),
+            columns: vec![column("a", system("bit", 1, 1, 0), true)],
+            ..Table::default()
+        };
+        assert_eq!(table_ddl(&table), "CREATE TABLE [dbo].[t] (\n    [a] bit NULL\n);");
+    }
+
+    #[test]
+    fn a_sequence_writes_every_option_and_its_cache() {
+        let mut sequence = Sequence {
+            schema: "dbo".into(),
+            name: "Số thứ tự".into(),
+            ty: system("bigint", 8, 19, 0),
+            start: "100".into(),
+            increment: "10".into(),
+            minimum: "1".into(),
+            maximum: "100000".into(),
+            cycling: true,
+            cached: true,
+            cache_size: Some(20),
+        };
+        assert_eq!(
+            sequence_ddl(&sequence),
+            "CREATE SEQUENCE [dbo].[Số thứ tự] AS bigint START WITH 100 INCREMENT BY 10 \
+             MINVALUE 1 MAXVALUE 100000 CYCLE CACHE 20;"
+        );
+        sequence.cache_size = None;
+        assert!(sequence_ddl(&sequence).ends_with(" CYCLE CACHE;"));
+        sequence.cached = false;
+        sequence.cycling = false;
+        sequence.ty = system("decimal", 9, 12, 0);
+        let text = sequence_ddl(&sequence);
+        assert!(text.contains(" AS decimal(12,0) "));
+        assert!(text.ends_with(" NO CYCLE NO CACHE;"));
+    }
+}

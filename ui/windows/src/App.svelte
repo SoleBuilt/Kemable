@@ -27,6 +27,8 @@
   import ObjectTree, { type TreeScope, type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
   import QueryList from "./lib/sidebar/QueryList.svelte";
   import SaveQueryDialog from "./lib/sidebar/SaveQueryDialog.svelte";
+  import ObjectActionDialog, { type ActionKind } from "./lib/sidebar/ObjectActionDialog.svelte";
+  import StructureDialog from "./lib/sidebar/StructureDialog.svelte";
   import UnsavedDialog from "./lib/editor/UnsavedDialog.svelte";
   import TreeMenu from "./lib/sidebar/TreeMenu.svelte";
   import DatabasePicker from "./lib/connect/DatabasePicker.svelte";
@@ -1749,6 +1751,65 @@
     }
   }
 
+  // --- The tree menu's actions (docs/decisions/0017-tree-actions.md) ---------
+
+  type ObjectTarget = TreeTarget & { kind: "object" };
+  /** Rename, empty, drop, maintain or comment: shown with its statements before they run. */
+  let objectAction: { target: ObjectTarget; kind: ActionKind } | null = $state(null);
+  /** Show Structure's dialog. */
+  let structureOf: ObjectTarget | null = $state(null);
+
+  /** Opens `text` on a new query page, to read, change and run. */
+  async function openTextOnPage(text: string) {
+    if (running) {
+      note("Wait for the run to end, or stop it, before you open a page");
+      return;
+    }
+    newQueryPage();
+    await tick();
+    if (!editor) return;
+    editor.restoreState(editor.stateWith(text, 0));
+    keepPagesSoon();
+  }
+
+  async function readDdl(target: ObjectTarget): Promise<string | null> {
+    if (!connection) return null;
+    try {
+      return await ipc.objectDdl(connection.id, target.database, target.object);
+    } catch (caught) {
+      const error = asCoreError(caught);
+      note(`${errorTitle(error)}: ${error.message}`);
+      return null;
+    }
+  }
+
+  async function showDdl(target: ObjectTarget) {
+    const ddl = await readDdl(target);
+    if (ddl !== null) await openTextOnPage(ddl);
+  }
+
+  async function copyDdl(target: ObjectTarget) {
+    const ddl = await readDdl(target);
+    if (ddl !== null) copyText(ddl, "the DDL");
+  }
+
+  /** Edit View Definition: the statement that replaces the view, on a query page, to change and run. */
+  async function editView(target: ObjectTarget) {
+    if (!connection) return;
+    try {
+      await openTextOnPage(await ipc.viewDefinition(connection.id, target.database, target.object));
+    } catch (caught) {
+      const error = asCoreError(caught);
+      note(`${errorTitle(error)}: ${error.message}`);
+    }
+  }
+
+  function actionDone(message: string) {
+    objectAction = null;
+    note(message);
+    void refreshObjects();
+  }
+
   async function refreshObjects() {
     if (!connection) return;
     void ipc.forgetCatalog(connection.id);
@@ -2023,6 +2084,7 @@
               onOpen={(object, inDatabase, newTab) => void openObject(object, inDatabase, newTab)}
               onUseDatabase={useDatabase}
               onCopy={copyText}
+              onAction={(target, kind) => (objectAction = { target, kind })}
               onContext={(target, x, y) => (treeMenu = { target, x, y })}
             />
           {/if}
@@ -2316,6 +2378,40 @@
     onUseDatabase={useDatabase}
     onCopy={copyText}
     onRefresh={() => void refreshObjects()}
+    engine={connection?.engine.id ?? ""}
+    onStructure={(target) => (structureOf = target)}
+    onShowDdl={(target) => void showDdl(target)}
+    onCopyDdl={(target) => void copyDdl(target)}
+    onEditView={(target) => void editView(target)}
+    onAction={(target, kind) => (objectAction = { target, kind })}
+  />
+{/if}
+
+{#if objectAction && connection}
+  {@const action = objectAction}
+  <ObjectActionDialog
+    conn={connection.id}
+    database={action.target.database}
+    engine={connection.engine.id}
+    object={action.target.object}
+    kind={action.kind}
+    onDone={actionDone}
+    onClose={() => (objectAction = null)}
+  />
+{/if}
+
+{#if structureOf && connection}
+  {@const target = structureOf}
+  <StructureDialog
+    conn={connection.id}
+    database={target.database}
+    object={target.object}
+    onCopy={copyText}
+    onEdit={(ddl) => {
+      structureOf = null;
+      void openTextOnPage(ddl);
+    }}
+    onClose={() => (structureOf = null)}
   />
 {/if}
 

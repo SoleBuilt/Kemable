@@ -39,6 +39,20 @@ pub trait Connection: Send + Sync {
 
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>>;
 
+    /// The statement that makes `object` as the server holds it now, for Show
+    /// DDL and Copy DDL (`docs/decisions/0017-tree-actions.md`): a table with
+    /// its columns, keys, constraints and indexes; a view, function or
+    /// procedure as it was written. Several statements end each with `;`.
+    async fn object_ddl(&self, _object: &ObjectInfo, _options: CallOptions) -> Result<String> {
+        Err(DriverError::unsupported("this engine does not script its objects"))
+    }
+
+    /// The comment on `object` (PostgreSQL's `COMMENT ON`, SQL Server's
+    /// `MS_Description`), or `None` when it has none.
+    async fn object_comment(&self, _object: &ObjectInfo, _options: CallOptions) -> Result<Option<String>> {
+        Err(DriverError::unsupported("this engine keeps no comments on its objects"))
+    }
+
     /// Runs one statement, already split from its script, and streams what
     /// it returns into `sink`. A cancel stops the statement on the server.
     async fn execute(&self, statement: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome>;

@@ -18,6 +18,7 @@ use tokio::task::JoinHandle;
 use tokio_postgres::types::{ToSql, Type};
 use tokio_postgres::{AsyncMessage, CancelToken, Client, Config, NoTls, Row, RowStream};
 
+use crate::ddl;
 use crate::decode::{self, Raw};
 use crate::errors::{self, Phase};
 use crate::tls::{self, Tls};
@@ -368,6 +369,111 @@ fn read<'a, T: tokio_postgres::types::FromSql<'a>>(row: &'a Row, index: usize) -
         .map_err(|error| DriverError::new(ErrorCode::Internal, error.to_string()))
 }
 
+fn missing(object: &ObjectInfo) -> DriverError {
+    match &object.schema {
+        Some(schema) => DriverError::not_found(format!("{schema}.{}", object.name)),
+        None => DriverError::not_found(object.name.clone()),
+    }
+}
+
+fn unscripted(object: &ObjectInfo) -> DriverError {
+    DriverError::unsupported(format!("{:?} objects have no DDL here", object.kind))
+}
+
+fn ddl_column(row: &Row) -> Result<ddl::Column> {
+    let identity: String = read(row, 4)?;
+    let generated: String = read(row, 5)?;
+    Ok(ddl::Column {
+        name: read(row, 0)?,
+        type_name: read(row, 1)?,
+        collation: read(row, 2)?,
+        fill: ddl::Fill::from_catalog(&identity, &generated, read(row, 3)?),
+        not_null: read(row, 6)?,
+        comment: read(row, 7)?,
+    })
+}
+
+fn texts(rows: &[Row]) -> Result<Vec<String>> {
+    rows.iter().map(|row| read(row, 0)).collect()
+}
+
+impl PostgresConnection {
+    async fn relation_ddl(&self, row: &Row, options: &CallOptions) -> Result<String> {
+        let oid: String = read(row, 0)?;
+        let kind: String = read(row, 1)?;
+        let schema: String = read(row, 2)?;
+        let name: String = read(row, 3)?;
+        let unlogged = read::<String>(row, 4)? == "u";
+        let reloptions: Vec<String> = read::<Option<Vec<String>>>(row, 5)?.unwrap_or_default();
+        let comment: Option<String> = read(row, 13)?;
+        let definition = || -> Result<String> { Ok(read::<Option<String>>(row, 14)?.unwrap_or_default()) };
+        match kind.as_str() {
+            "v" => Ok(ddl::view_ddl(&schema, &name, &reloptions, &definition()?)),
+            "m" => {
+                let indexes = texts(&self.catalog_rows(ddl::INDEXES, &[&oid], options).await?)?;
+                Ok(ddl::materialized_view_ddl(
+                    &schema,
+                    &name,
+                    &reloptions,
+                    &definition()?,
+                    read(row, 12)?,
+                    &indexes,
+                    comment.as_deref(),
+                ))
+            }
+            "S" => {
+                let rows = self.catalog_rows(ddl::SEQUENCE, &[&oid], options).await?;
+                let sequence = rows
+                    .first()
+                    .ok_or_else(|| DriverError::not_found(format!("{schema}.{name}")))?;
+                let sequence = ddl::Sequence {
+                    type_name: read(sequence, 0)?,
+                    increment: read(sequence, 1)?,
+                    min: read(sequence, 2)?,
+                    max: read(sequence, 3)?,
+                    start: read(sequence, 4)?,
+                    cache: read(sequence, 5)?,
+                    cycle: read(sequence, 6)?,
+                };
+                Ok(ddl::sequence_ddl(&schema, &name, unlogged, &sequence))
+            }
+            _ => {
+                let parent_schema: Option<String> = read(row, 7)?;
+                let parent: Option<String> = read(row, 8)?;
+                let bound: Option<String> = read(row, 9)?;
+                let server: Option<String> = read(row, 10)?;
+                let server_options: Option<Vec<String>> = read(row, 11)?;
+                let table = ddl::Table {
+                    unlogged,
+                    options: reloptions,
+                    partition_key: read(row, 6)?,
+                    partition_of: match (parent_schema, parent, bound) {
+                        (Some(parent_schema), Some(parent), Some(bound)) => Some((parent_schema, parent, bound)),
+                        _ => None,
+                    },
+                    server: server.map(|server| (server, server_options.unwrap_or_default())),
+                    comment,
+                    schema,
+                    name,
+                };
+                let oid = [oid.as_str()];
+                // One catalog session pipelines the three reads.
+                let (columns, constraints, indexes) = tokio::try_join!(
+                    self.catalog_rows(ddl::COLUMNS, &oid, options),
+                    self.catalog_rows(ddl::CONSTRAINTS, &oid, options),
+                    self.catalog_rows(ddl::INDEXES, &oid, options),
+                )?;
+                let columns = columns.iter().map(ddl_column).collect::<Result<Vec<_>>>()?;
+                let constraints = constraints
+                    .iter()
+                    .map(|row| Ok((read(row, 0)?, read(row, 1)?)))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(ddl::table_ddl(&table, &columns, &constraints, &texts(&indexes)?))
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl Connection for PostgresConnection {
     fn engine(&self) -> &'static EngineInfo {
@@ -454,6 +560,45 @@ impl Connection for PostgresConnection {
                 })
             })
             .collect()
+    }
+
+    async fn object_ddl(&self, object: &ObjectInfo, options: CallOptions) -> Result<String> {
+        let schema = object.schema.as_deref().unwrap_or("");
+        if let Some(kinds) = ddl::prokinds(object.kind) {
+            let rows = self
+                .catalog_rows(ddl::ROUTINES, &[schema, &object.name, kinds], &options)
+                .await?;
+            if rows.is_empty() {
+                return Err(missing(object));
+            }
+            return Ok(ddl::routines_ddl(&texts(&rows)?));
+        }
+        let kinds = ddl::relkinds(object.kind).ok_or_else(|| unscripted(object))?;
+        let rows = self
+            .catalog_rows(ddl::RELATION, &[schema, &object.name, kinds], &options)
+            .await?;
+        let row = rows.first().ok_or_else(|| missing(object))?;
+        self.relation_ddl(row, &options).await
+    }
+
+    async fn object_comment(&self, object: &ObjectInfo, options: CallOptions) -> Result<Option<String>> {
+        let schema = object.schema.as_deref().unwrap_or("");
+        let (sql, kinds) = match (ddl::relkinds(object.kind), ddl::prokinds(object.kind)) {
+            (Some(kinds), _) => (ddl::RELATION_COMMENT, kinds),
+            (None, Some(kinds)) => (ddl::ROUTINE_COMMENT, kinds),
+            (None, None) => return Err(unscripted(object)),
+        };
+        let rows = self.catalog_rows(sql, &[schema, &object.name, kinds], &options).await?;
+        if rows.is_empty() {
+            return Err(missing(object));
+        }
+        // Overloads under one bare name: the first that has a comment.
+        for row in &rows {
+            if let Some(comment) = read::<Option<String>>(row, 0)? {
+                return Ok(Some(comment));
+            }
+        }
+        Ok(None)
     }
 
     async fn execute(&self, statement: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome> {
