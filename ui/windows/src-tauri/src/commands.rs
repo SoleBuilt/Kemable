@@ -16,9 +16,9 @@ use paboable_core::keys::{KeyDetail, KeyPage, KeyScan};
 use paboable_core::registry::DriverRegistry;
 use paboable_core::sink::ResultSink;
 use paboable_core::sql::{
-    BrowseQuery, Clause, CompletionItem, NewValue, ResultFilter, ResultWhere, RowEdit, SortColumn, SqlGrammar,
-    completion_context, completions, count_statement, edit_statement, page_statement, sorted_statement, split,
-    statement_at,
+    BrowseQuery, Clause, CompletionItem, NewValue, ResultFilter, ResultSource, ResultWhere, RowEdit, SortColumn,
+    SqlGrammar, completion_context, completions, count_statement, edit_statement, page_statement, sorted_statement,
+    split, statement_at,
 };
 use paboable_core::text_file::{self, LineEnding, TextEncoding, TextFile};
 use paboable_core::value::Value;
@@ -574,6 +574,25 @@ pub async fn sort_result(
         .map_err(|error| DriverError::internal(error.to_string()))?;
     Ok(SortOutcome::Sorted {
         limited: store.state().limited,
+    })
+}
+
+/// The one table result `result` comes from, for "Open <table> to edit"
+/// (`docs/decisions/0011-filtering-a-result.md`): its database, and the
+/// statement's `WHERE` as filters when they can hold it. `None` when the
+/// statement is not a plain `SELECT` from one table.
+#[tauri::command]
+pub async fn result_source(state: State<'_, Arc<AppState>>, result: u64) -> CommandResult<Option<ResultSource>> {
+    Ok(source_of(&state, result))
+}
+
+pub(crate) fn source_of(state: &AppState, result: u64) -> Option<ResultSource> {
+    let origin = state.origin(result)?;
+    let grammar = origin.grammar?;
+    let statement = origin.part.as_deref().unwrap_or(&origin.statement);
+    paboable_core::sql::result_source(statement, grammar).map(|mut source| {
+        source.database = source.database.or(origin.database);
+        source
     })
 }
 

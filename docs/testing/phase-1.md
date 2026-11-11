@@ -334,6 +334,18 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Ở tab bảng có chỉnh sửa, nhấn **Ctrl+S**.
   **Đúng:** vẫn mở Preview & save như trước (Ctrl+S chỉ lưu file ở tab query).
 
+### 8.2c Open <table> to edit
+- [ ] Chạy `select * from <bảng> where City = 'Miami'` (đổi tên bảng, cột cho đúng database).
+  **Đúng:** thanh kết quả có nút **Open <bảng> to edit**. Bấm: mở tab bảng, hàng Filter mở sẵn với điều kiện `City = Miami`, chỉ các dòng đó hiện ra, sửa được như tab bảng.
+- [ ] Chạy `select * from <bảng> where a = 1 or b like 'x%'`.
+  **Đúng:** bộ lọc có hai điều kiện, nối bằng **OR**, điều kiện thứ hai là "starts with x".
+- [ ] Chạy `select * from <bảng> where upper(City) = 'MIAMI'` rồi bấm nút.
+  **Đúng:** mở cả bảng không lọc; status bar nói WHERE không chuyển được sang bộ lọc.
+- [ ] Chạy câu có JOIN, GROUP BY, DISTINCT hoặc UNION.
+  **Đúng:** không có nút.
+- [ ] SQL Server: hai câu `select` không có `GO`, câu đầu có WHERE. Bấm nút ở Result 1 rồi ở Result 2.
+  **Đúng:** mỗi nút mở đúng bảng của câu đó; chỉ Result 1 mang theo bộ lọc.
+
 ### 8.3 Tab bảng
 - [ ] Double-click bảng `order_items`.
   **Đúng:** mở tab riêng có icon bảng và số dòng; không có editor; pager nằm bên phải status bar.

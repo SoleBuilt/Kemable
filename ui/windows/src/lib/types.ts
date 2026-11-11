@@ -174,6 +174,18 @@ export interface SavedConnection {
   color: string | null;
 }
 
+/** The one table a query result comes from (docs/decisions/0011-filtering-a-result.md). */
+export interface ResultSource {
+  /** The database it is in: the run's, or a SQL Server three-part name's. */
+  database: string | null;
+  table: TableRef;
+  /** The statement's WHERE as the table tab's filters, when they can hold it. */
+  filters: Filter[];
+  matchAny: boolean;
+  /** The statement had a WHERE the filters could not hold: the table opens whole. */
+  whereLeft: boolean;
+}
+
 /** How a script file's bytes are written (docs/decisions/0016-sql-files.md). */
 export type TextEncoding = "utf8" | "utf8Bom" | "utf16Le" | "utf16Be";
 export type LineEnding = "crlf" | "lf";

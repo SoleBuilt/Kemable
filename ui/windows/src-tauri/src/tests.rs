@@ -832,3 +832,47 @@ async fn a_script_file_saves_back_in_the_encoding_it_was_read_in() {
     assert_eq!(missing.code, paboable_core::ErrorCode::Io);
     let _ = std::fs::remove_dir_all(&folder);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_result_names_its_table_and_brings_its_where_as_filters() {
+    use paboable_core::config::{ConnectionConfig, Target};
+    use paboable_driver_sqlite::SqliteDriver;
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
+    let driver = state.registry.get("sqlite").cloned().unwrap();
+    let config = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: ":memory:".into(),
+            read_only: false,
+        },
+        options: Default::default(),
+    };
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    let events = run_script(
+        &state,
+        &server,
+        "create table customer (id integer primary key, city text);\n\
+         insert into customer (city) values ('Miami'), ('Hà Nội');\n\
+         select * from customer c where c.city = 'Hà Nội';\n\
+         select city, count(*) from customer group by city;",
+        SqlGrammar::Sqlite,
+    )
+    .await;
+    let sets: Vec<u64> = of_type(&events, "setStarted")
+        .iter()
+        .map(|event| event["result"].as_u64().unwrap())
+        .collect();
+    assert_eq!(sets.len(), 2);
+
+    let source = crate::commands::source_of(&state, sets[0]).unwrap();
+    let json = serde_json::to_value(&source).unwrap();
+    assert_eq!(json["table"]["name"], "customer");
+    assert_eq!(json["filters"][0]["column"], "city");
+    assert_eq!(json["filters"][0]["op"], "equals");
+    assert_eq!(json["filters"][0]["value"], "Hà Nội");
+    assert_eq!(json["whereLeft"], false);
+    // A grouped result is no table's rows.
+    assert!(crate::commands::source_of(&state, sets[1]).is_none());
+    server.close().await;
+}

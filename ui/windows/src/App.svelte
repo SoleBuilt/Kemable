@@ -75,6 +75,7 @@
     SavedConnection,
     SavedQuery,
     TableRef,
+    ResultSource,
     LineEnding,
     TextEncoding,
     TextFile,
@@ -119,6 +120,8 @@
     statement: number;
     /** Where in its statement (a SQL Server batch) the set came from: UTF-8 bytes into the statement. */
     part: ByteRange | null;
+    /** The one table its rows come from, for "Open <table> to edit"; undefined until asked. */
+    source: ResultSource | null | undefined;
     columns: ColumnMeta[];
     totalRows: number;
     finished: boolean;
@@ -1034,6 +1037,7 @@
             result: event.result,
             statement: event.statement,
             part: event.part,
+            source: undefined,
             columns: event.columns,
             totalRows: 0,
             finished: false,
@@ -1119,7 +1123,12 @@
   });
 
   /** Opens a table or view from the tree on a page of its own; `newTab` always opens another page. */
-  async function openObject(object: ObjectInfo, inDatabase: string | null, newTab = false) {
+  async function openObject(
+    object: ObjectInfo,
+    inDatabase: string | null,
+    newTab = false,
+    where: { filters: Filter[]; matchAny: boolean } | null = null,
+  ) {
     if (object.kind !== "table" && object.kind !== "view" && object.kind !== "materializedView") return;
     if (!connection) return;
     if (running) {
@@ -1132,7 +1141,15 @@
       const shown = (page: Page) => (page.id === activePage ? tableTab : page.state.tableTab);
       const existing = pages.find((page) => page.kind === "table" && shown(page)?.title === title && shown(page)?.database === dbName);
       if (existing) {
-        switchTo(existing.id);
+        if (!switchTo(existing.id)) return;
+        // A result's WHERE replaces the filters of the table's page.
+        if (where && tableTab) {
+          const filters = filtersFor(where.filters, tableTab.columns);
+          if (filters) {
+            filtersOpen = true;
+            void loadPage({ ...tableTab, filters, matchAny: where.matchAny, offset: 0 }, true);
+          } else note("Opened the whole table: the statement's WHERE names a column the table does not have");
+        }
         return;
       }
     }
@@ -1147,14 +1164,17 @@
       .filter((column) => column.primaryKey !== null)
       .sort((a, b) => (a.primaryKey ?? 0) - (b.primaryKey ?? 0))
       .map((column) => column.name);
+    const names = columns.map((column) => column.name);
+    const brought = where ? filtersFor(where.filters, names) : [];
+    if (where && !brought) note("Opened the whole table: the statement's WHERE names a column the table does not have");
     const next: TableTab = {
       database: dbName,
       table,
       title,
-      columns: columns.map((column) => column.name),
+      columns: names,
       key,
-      filters: [],
-      matchAny: false,
+      filters: brought ?? [],
+      matchAny: brought && where ? where.matchAny : false,
       sort: [],
       offset: 0,
       limit: pageSize,
@@ -1166,8 +1186,48 @@
     pages = [...keepCurrent(), page];
     activePage = page.id;
     unstash(page.state);
+    if (brought && brought.length > 0) filtersOpen = true;
     await loadPage(next, true);
   }
+
+  /**
+   * A result's filters on the table's own column names, matched without case
+   * (the statement may write `city` for `City`); null when one names no column.
+   * A table whose columns could not be read keeps the names as written.
+   */
+  function filtersFor(filters: Filter[], columns: string[]): Filter[] | null {
+    if (columns.length === 0) return filters;
+    const named: Filter[] = [];
+    for (const filter of filters) {
+      const column = columns.find((name) => name.toLowerCase() === filter.column.toLowerCase());
+      if (!column) return null;
+      named.push({ ...filter, column });
+    }
+    return named;
+  }
+
+  /** "Open <table> to edit": the table a query result comes from, on its own page, filtered by the result's WHERE. */
+  async function openResultTable(source: ResultSource) {
+    await openObject({ schema: source.table.schema, name: source.table.name, kind: "table" }, source.database, false, {
+      filters: source.filters,
+      matchAny: source.matchAny,
+    });
+    if (source.whereLeft) note("Opened the whole table: the statement's WHERE is more than the filter row holds");
+  }
+
+  // A finished result is asked once which table it comes from.
+  $effect(() => {
+    const set = activeSet;
+    if (!set || !set.finished || set.source !== undefined || keyValue) return;
+    const result = set.result;
+    untrack(() => {
+      updateSet(result, { source: null });
+      ipc.resultSource(result).then(
+        (source) => updateSet(result, { source }),
+        () => updateSet(result, { source: null }),
+      );
+    });
+  });
 
   /** Reads one page of a table tab; with `recount`, counts the rows its filters match after. */
   async function loadPage(next: TableTab, recount: boolean) {
@@ -1308,6 +1368,7 @@
             result: read.result,
             statement: 0,
             part: null,
+            source: null,
             columns: read.columns,
             totalRows: read.totalRows,
             finished: true,
@@ -2010,6 +2071,21 @@
             {/if}
             <ResultBar tabs={resultTabs} active={activeTab} {errorCount} onSelect={(tab) => (activeTab = tab)}>
               {#snippet actions()}
+                {#if activeSet?.source && !keyValue}
+                  {@const source = activeSet.source}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="table"
+                    disabled={running}
+                    tip={source.whereLeft
+                      ? "Open the whole table: its WHERE is more than the filter row holds"
+                      : source.filters.length > 0
+                        ? "Open the table on its own page, filtered by the statement's WHERE"
+                        : "Open the table on its own page, to edit its rows"}
+                    onclick={() => void openResultTable(source)}>Open {source.table.name} to edit</Button
+                  >
+                {/if}
                 {#if activeSet && !keyValue}
                   {@const filtered = activeSet.filter}
                   <Button
