@@ -25,18 +25,24 @@
 .ic-spin { animation: pb-spin .8s linear infinite; }
 @keyframes pb-spin { to { transform: rotate(360deg); } }
 
-/* Tooltip on any element with data-tip */
-[data-tip] { position: relative; }
+/* Tooltip on any element with data-tip. It is drawn fixed and anchored to its element (CSS anchor
+   positioning), so a bar, pane, dialog or list that clips or scrolls cannot cut it off. The anchor's
+   name is scoped to each element, so a tip inside another tip's element finds its own; and it is named
+   only while hovered or focused, so a tip hides at once rather than fading out with no place. Near the
+   window's bottom edge a tip flips above its element. */
+[data-tip] { position: relative; anchor-scope: --pb-tip; }
+[data-tip]:hover, [data-tip]:focus-visible { anchor-name: --pb-tip; }
 [data-tip]::after {
   content: attr(data-tip);
-  position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  position: fixed; position-anchor: --pb-tip; top: calc(anchor(bottom) + 6px); left: anchor(center); transform: translateX(-50%);
+  position-try-fallbacks: flip-block;
   padding: 4px 8px; border-radius: var(--radius-md); background: var(--tooltip); color: var(--on-tooltip);
   box-shadow: var(--shadow-popover); font: 400 12px/16px var(--font-sans); white-space: nowrap;
-  opacity: 0; pointer-events: none; transition: opacity .12s var(--ease); z-index: 90;
+  opacity: 0; pointer-events: none; z-index: 90;
 }
-[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transition-delay: .35s; }
-[data-tip-end]::after { left: auto; right: 0; transform: none; }
-[data-tip-start]::after { left: 0; transform: none; }
+[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transition: opacity .12s var(--ease) .35s; }
+[data-tip-end]::after { left: auto; right: anchor(right); transform: none; }
+[data-tip-start]::after { left: anchor(left); transform: none; }
 
 /* Button */
 .pb-btn {
@@ -341,7 +347,7 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-cmdk-foot > span { display: inline-flex; align-items: center; gap: var(--space-1-5); }
 
 /* Tooltips at the bottom edge open upward: a dialog clips what passes its bottom, and the status bar sits on the window edge. */
-.pb-dialog-foot [data-tip]::after, .pb-status [data-tip]::after, [data-tip-up]::after { top: auto; bottom: calc(100% + 6px); }
+.pb-dialog-foot [data-tip]::after, .pb-status [data-tip]::after, [data-tip-up]::after { top: auto; bottom: calc(anchor(top) + 6px); }
 
 /* Sidebar panes, as in VS Code: Objects fills the sidebar; Queries and History open below it,
    and a closed pane keeps only its header. Panes keep their order, so opening History pushes Queries up. */
@@ -486,11 +492,6 @@ span.pb-cond-lead { display: inline-flex; color: var(--fg-muted); font-size: 12p
 .pb-resultbar-tools > .pb-btn { flex: none; }
 .pb-resultbar-tools > .pb-btn.is-shrink { flex: 0 1 auto; min-width: 0; }
 .pb-btn-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-
-/* A tab's tip inside a strip that scrolls would be cut off by it, so it is drawn fixed, under the
-   tab the pointer is on (CSS anchor positioning), and hides with the tab when it scrolls away. */
-.pb-resultbar-tabs [data-tip]:hover, .pb-doctabs-tabs [data-tip]:hover { anchor-name: --pb-tip; }
-.pb-resultbar-tabs [data-tip]::after, .pb-doctabs-tabs [data-tip]::after { position: fixed; position-anchor: --pb-tip; top: calc(anchor(bottom) + 6px); left: anchor(left); transform: none; }
 
 /* A query tab that has run nothing has no results area: the editor fills the work area. */
 .pb-work > .is-hidden { display: none; }
