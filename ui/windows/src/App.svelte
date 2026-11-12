@@ -23,7 +23,7 @@
   import Pager, { PAGE_SIZES } from "./lib/grid/Pager.svelte";
   import RowDetail from "./lib/grid/RowDetail.svelte";
   import { appWindow, asCoreError, ipc } from "./lib/ipc";
-  import { flushStore, readPref, termsAcceptedAtInstall, writePref } from "./lib/store";
+  import { flushStore, readPref, writePref } from "./lib/store";
   import HistoryList from "./lib/sidebar/HistoryList.svelte";
   import KeyBrowser from "./lib/sidebar/KeyBrowser.svelte";
   import ObjectTree, { type TreeScope, type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
@@ -121,9 +121,7 @@
     countSql: string;
   }
 
-  // The terms are asked once a version of them (lib/shell/TermsDialog.svelte); the
-  // installer's terms page counts for the version it installed.
-  if (readPref("termsAccepted") !== TERMS_VERSION && termsAcceptedAtInstall) writePref("termsAccepted", TERMS_VERSION);
+  // The terms are asked once a version of them (lib/shell/TermsDialog.svelte).
   let termsNeeded = $state(readPref("termsAccepted") !== TERMS_VERSION);
 
   function readPageSize(): number {
@@ -2550,7 +2548,9 @@
 {#if termsNeeded}
   <TermsDialog
     onAgree={() => {
+      // Which terms, and when: kept on this computer only, as the terms promise.
       writePref("termsAccepted", TERMS_VERSION);
+      writePref("termsAcceptedAt", new Date().toISOString());
       termsNeeded = false;
     }}
     onDisagree={() => void appWindow.close()}
