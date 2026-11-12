@@ -469,16 +469,14 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 ### 8.8 Cài đặt và thư mục dữ liệu (ADR 0019)
 Dùng file cài `Paboable_<version>_x64-setup.exe` (`pnpm tauri build`, ở `target\release\bundle\nsis\`).
 - [ ] Chạy file cài, bấm Next ở trang chào.
-  **Đúng:** trang **License Agreement** chỉ có một câu và hai link Terms of Service, Privacy Policy (xanh, gạch chân; bấm thì mở trình duyệt); nút Next mờ cho tới khi tick ô **I accept the terms…**.
+  **Đúng:** không có trang điều khoản; app hỏi điều khoản khi mở lần đầu.
 - [ ] (Tài khoản admin) Trang tiếp theo hỏi cài cho mình hay cho mọi người. Tài khoản thường không thấy trang này.
 - [ ] Ở trang **Choose Install Location**, bấm Browse, chọn một thư mục trên ổ D (ví dụ `D:\Apps\Paboable`), Next.
   **Đúng:** cài xong, trang **Completing Paboable Setup** có ô Run Paboable và Create desktop shortcut; bấm Finish.
 - [ ] Mở app, vào Settings.
   **Đúng:** mục **Data** ghi "Beside the app, where it was installed: D:\Apps\Paboable\data…"; bấm **Open** mở đúng thư mục đó trong Explorer, có `connections.json`, `ui.json`, `pages\`, `webview\`.
-- [ ] Mở app lần đầu sau khi cài bằng trình cài (đã tick điều khoản ở đó).
-  **Đúng:** app **không** hỏi điều khoản lần nữa.
-- [ ] Chạy `pnpm tauri dev` với thư mục dữ liệu dev mới (hoặc một bản app copy sang máy khác, chưa từng đồng ý).
-  **Đúng:** hộp thoại **Terms of Service and Privacy Policy** che cả app: một câu với hai link (bấm mở trình duyệt), nút **Disagree and close** và **Agree and continue**; không có nút X, Esc không đóng. **Disagree and close**: app tắt, mở lại vẫn hỏi. **Agree and continue**: hộp thoại tắt; mở lại không hỏi nữa.
+- [ ] Mở app lần đầu sau khi cài (hoặc một bản copy, hoặc `pnpm tauri dev` với thư mục dữ liệu mới).
+  **Đúng:** hộp thoại **Terms of Service and Privacy Policy** che cả app: một câu với hai link (bấm mở trình duyệt), nút **Disagree and close** và **Agree and continue**; không có nút X, Esc không đóng. **Disagree and close**: app tắt, mở lại vẫn hỏi. **Agree and continue**: hộp thoại tắt; mở lại không hỏi nữa; `ui.json` có `termsAccepted` và `termsAcceptedAt` (ngày giờ đồng ý).
 - [ ] Máy đã từng dùng bản cũ: mở app lần đầu sau khi cài.
   **Đúng:** connection đã lưu, các tab query, theme và các lựa chọn cũ vẫn còn. Mở lại app lần nữa: vẫn còn.
 - [ ] Gõ vào một tab query, đóng app ngay bằng **Alt+F4** (không chờ), mở lại.

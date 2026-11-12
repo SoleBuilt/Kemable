@@ -31,8 +31,6 @@ const WEBVIEW: &str = "webview";
 const MAX_PAGE_FILES: usize = 40;
 /// The page key of `.sql` files opened with no connection (`NO_CONNECTION` in `pages.ts`).
 const NO_CONNECTION: &str = "none";
-/// Written by the installer when its terms page was shown and accepted: the app's version.
-const TERMS_AT_INSTALL: &str = "terms-accepted.txt";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,23 +126,14 @@ impl DataFolder {
     /// The script the window runs before the UI's own: the preferences and the
     /// pages of files opened with no connection, so the first paint has them,
     /// and whether this launch reads the WebView's old storage once.
-    pub fn startup_script(&self, import_local_storage: bool, version: &str) -> String {
+    pub fn startup_script(&self, import_local_storage: bool) -> String {
         let startup = json!({
             "prefs": self.prefs(),
             "pagesWithout": self.pages(NO_CONNECTION),
             "importLocalStorage": import_local_storage,
             "folder": self,
-            "termsAcceptedAtInstall": self.terms_accepted_at_install(version),
         });
         format!("window.__PABOABLE__ = {startup};")
-    }
-}
-
-impl DataFolder {
-    /// Whether the installer of this very version showed the terms and they were
-    /// accepted there; an older installer's mark says nothing about newer terms.
-    pub fn terms_accepted_at_install(&self, version: &str) -> bool {
-        fs::read_to_string(self.file(TERMS_AT_INSTALL)).is_ok_and(|kept| kept.trim() == version)
     }
 }
 

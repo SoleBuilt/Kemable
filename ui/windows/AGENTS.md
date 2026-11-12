@@ -26,7 +26,7 @@ Tauri 2 over WebView2, with a Svelte 5 and TypeScript UI. The Rust side (`src-ta
 - `src/lib/connect/`: `ConnectionMenu.svelte` (the title bar's connection), `PasswordDialog.svelte`, `ConnectDialog.svelte` (the connect form for PostgreSQL, SQL Server, Redis and Cloudflare D1, which also saves), `ProfilesDialog.svelte` (Credential profiles, from the palette or the form's profile picker, ADR 0015), `DatabasePicker.svelte` (the toolbar database switcher). Saved connections open from the command palette.
 - `src/app.css`: Tailwind and the tokens. `src/components.css`: the design system's `pb-*` classes (`.claude/rules/ui-theme.md`).
 - `src-tauri/src/lib.rs`: the driver registry, the setup and the command list. `data.rs`: the data folder, `data` beside the app or `%APPDATA%\<identifier>` (`paboable.app` installed, `dev.paboable.app` from `pnpm tauri dev`), and what the UI keeps in it (`docs/decisions/0019-data-folder.md`); `src/lib/store.ts` is its UI side. `window.rs`: the main window, made in setup so its WebView keeps its files in the data folder, and put back where it was closed. `commands.rs`: the commands; `conn` names a server, `database` one of its databases. `run.rs`: running a script and its events. `library.rs`: the saved-connection library in the data folder, with `CredentialVault` over Windows Credential Manager (targets `connection/<id>/password.Paboable` and, for a credential profile, `profile/<id>/password.Paboable`). `state.rs`: the open servers (`OpenServer`, a session per database in use), result sets and runs, by id.
-- `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`: the window, the CSP and what the UI may call. `src-tauri/installer/`: the installer's terms and its NSIS hooks (the `data` folder; keeping it on uninstall).
+- `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`: the window, the CSP and what the UI may call. `src-tauri/installer/`: the installer's NSIS hooks (the `data` folder; keeping it on uninstall).
 - `assets/app-icon.png`: the source of `src-tauri/icons/` (`pnpm tauri icon assets/app-icon.png -o src-tauri/icons`).
 
 ## Commands
@@ -50,7 +50,7 @@ The Rust side builds with the workspace from the root (`cargo clippy --workspace
 The name and the identifier reach past the code: the data folder, the installer and what Windows keeps. A rename changes all of these in the same change:
 
 - `src-tauri/tauri.conf.json`: `productName`, the window's `title`, `identifier` (the installed app's: `%APPDATA%\<identifier>`, the uninstaller's "Delete the application data", Windows' records); `src-tauri/tauri.dev.conf.json`: the development `identifier` (`dev.` and the installed one); `index.html`: `<title>`.
-- `src-tauri/installer/terms.txt` (the app's name throughout) and `installer/hooks.nsh`.
+- `src-tauri/installer/hooks.nsh`, and the terms' sentence in `src/lib/shell/TermsDialog.svelte`.
 - `src-tauri/src/library.rs`: `SERVICE`, the Credential Manager target's suffix (`connection/<id>/password.<SERVICE>`); a new suffix cannot read the passwords kept under the old one, so read the old one once and keep it under the new.
 - A new identifier is a new `%APPDATA%` folder: carry the old one's files over once (`DataFolder::carry_over` in `src-tauri/src/data.rs` takes the folder to copy from).
 - The docs that name the folders: `docs/decisions/0019-data-folder.md`, this file, `docs/testing/`.

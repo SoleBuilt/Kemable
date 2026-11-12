@@ -7,9 +7,8 @@
 </script>
 
 <script lang="ts">
-  // The terms, asked once before the app is used (docs/decisions/0019-data-folder.md):
-  // one sentence with its two links, as CapCut asks. An install whose terms page was
-  // accepted is not asked again; a copy, a development build or newer terms are.
+  // The terms, asked once before the app is used, by the app alone, installed or copied
+  // (docs/decisions/0019-data-folder.md): one sentence with its two links, as CapCut asks.
   import { ipc } from "../ipc";
   import Button from "../ui/Button.svelte";
   import Dialog from "../ui/Dialog.svelte";
