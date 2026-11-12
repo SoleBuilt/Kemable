@@ -45,7 +45,8 @@ pub fn run() {
         .manage(state)
         .setup(|app| {
             // Everything the app remembers is in one folder: `data` beside the app when
-            // the installer made it, else %APPDATA%\dev.paboable.app (ADR 0019).
+            // the installer made it, else %APPDATA%\<identifier>: paboable.app installed,
+            // dev.paboable.app from `pnpm tauri dev` (ADR 0019).
             let profile = app.path().app_data_dir()?;
             let folder = DataFolder::find(profile.clone());
             folder.carry_over(&profile);
