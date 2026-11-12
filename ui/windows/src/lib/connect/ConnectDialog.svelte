@@ -11,13 +11,11 @@
   /** What Connect asks for: a saved connection by id, or a config as typed. */
   export interface ConnectRequest {
     config: ConnectionConfig;
-    /** The saved connection this is, when it was saved or opened for editing. */
-    savedId: string | null;
-    /** A password typed now and not kept, for a saved connection without one. */
-    password: string | null;
     /** The credential profile it signs in with, for a connection not saved. */
     profileId: string | null;
     title: string;
+    /** Save this connection too, once it connects (and only then), with the password typed now. */
+    keep: { connection: SavedConnection; password: string | null } | null;
   }
 </script>
 
@@ -379,21 +377,28 @@
     };
   }
 
+  /** The form as a saved connection: a new one, or the one being edited. */
+  function formConnection(config: ConnectionConfig): SavedConnection {
+    return {
+      id: savedId ?? "",
+      name: name.trim() || defaultName(),
+      config,
+      savePassword: usesLogin && savePassword && !withProfile,
+      lastUsed: saved?.lastUsed ?? null,
+      profileId: withProfile ? profileId : null,
+      color,
+    };
+  }
+
+  /** The password typed now, to keep with the connection; blank keeps the one kept. */
+  function typedPassword(): string | null {
+    return usesLogin && !withProfile && password !== "" ? password : null;
+  }
+
   /** Saves the form to the library; resolves to whether it worked. */
   async function saveToLibrary(config: ConnectionConfig): Promise<boolean> {
     try {
-      const stored = await ipc.saveConnection(
-        {
-          id: savedId ?? "",
-          name: name.trim() || defaultName(),
-          config,
-          savePassword: usesLogin && savePassword && !withProfile,
-          lastUsed: saved?.lastUsed ?? null,
-          profileId: withProfile ? profileId : null,
-          color,
-        },
-        usesLogin && !withProfile && password !== "" ? password : null,
-      );
+      const stored = await ipc.saveConnection(formConnection(config), typedPassword());
       savedId = stored.id;
       name = stored.name;
       onSaved();
@@ -409,19 +414,16 @@
     const config = buildConfig();
     if (!config) return;
     busy = true;
-    if (save && !(await saveToLibrary(config))) {
-      busy = false;
-      return;
-    }
-    // A saved connection connects by id, so a password left blank uses the
-    // one kept in Credential Manager.
+    // With Save this connection, the connection is saved only once the server has
+    // answered, so a mistyped host or login is never kept; a password left blank
+    // on a saved connection uses the one kept in Credential Manager.
     error = await onConnect({
       config,
-      savedId: save ? savedId : null,
-      password: usesLogin && !withProfile && password !== "" ? password : null,
       profileId: withProfile ? profileId : null,
       title: name.trim() || defaultName(),
+      keep: save ? { connection: formConnection(config), password: typedPassword() } : null,
     });
+    if (save && !error) onSaved();
     busy = false;
   }
 

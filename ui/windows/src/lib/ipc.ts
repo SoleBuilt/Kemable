@@ -57,6 +57,9 @@ export const ipc = {
 
   /** Opens a connection as typed; `profileId` signs it in with a credential profile instead. */
   connect: (config: ConnectionConfig, profileId: string | null = null) => invoke<OpenedConnection>("connect", { config, profileId }),
+  /** Connects with the connect form's connection, and saves it only once the server has answered. */
+  connectAndSave: (connection: SavedConnection, password: string | null) =>
+    invoke<OpenedConnection>("connect_and_save", { connection, password }),
 
   /** Connects, reads the version and the databases, and closes. `savedId` lends a kept password to a blank field. */
   testConnection: (config: ConnectionConfig, savedId: string | null, profileId: string | null = null) =>
