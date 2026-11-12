@@ -27,6 +27,7 @@ serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
 tauri-plugin-dialog.workspace = true
+tauri-plugin-window-state.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 window-vibrancy.workspace = true

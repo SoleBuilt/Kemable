@@ -54,6 +54,7 @@ uuid = { version = "1", features = ["v4"] }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-window-state = "2"
 # Mica behind the window. Tauri already builds it; the app calls it to learn whether Mica took.
 window-vibrancy = "0.8"
 

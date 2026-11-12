@@ -429,6 +429,10 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** nền đỏ như Windows 11; bấm thì app đóng.
 - [ ] Kéo cạnh và góc cửa sổ.
   **Đúng:** đổi được kích thước.
+- [ ] Kéo cửa sổ sang chỗ khác và đổi kích thước, bấm nút đóng, mở lại app.
+  **Đúng:** cửa sổ mở đúng chỗ và đúng kích thước lúc đóng, không chớp ở chỗ mặc định trước. Phóng to rồi đóng, mở lại: app mở phóng to; bấm khôi phục thì về đúng chỗ và kích thước trước khi phóng to.
+- [ ] (Nếu có hai màn hình) Để cửa sổ ở màn hình phụ, đóng app, rút màn hình phụ, mở lại.
+  **Đúng:** cửa sổ hiện trên màn hình còn lại, không nằm ngoài tầm nhìn.
 
 ### 8.6 Ô nhập
 - [ ] Bấm vào ô Filter objects, ô Value của filter, ô tìm trong Ctrl+K.
