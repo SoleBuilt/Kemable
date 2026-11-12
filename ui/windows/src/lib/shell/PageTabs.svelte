@@ -18,6 +18,7 @@
   import type { Snippet } from "svelte";
   import Count from "../ui/Count.svelte";
   import Icon from "../ui/Icon.svelte";
+  import { showSelected, wheelSideways } from "../ui/strip";
   import { tipAttrs } from "../ui/tip";
 
   /**
@@ -35,16 +36,19 @@
 
   let { tabs, active, onSelect, onClose, onNew, tools }: Props = $props();
 
-  // A mouse wheel scrolls the tabs sideways, as a browser's tab strip does.
-  function onWheel(event: WheelEvent) {
-    const strip = event.currentTarget as HTMLElement;
-    if (event.deltaY !== 0 && strip.scrollWidth > strip.clientWidth) strip.scrollLeft += event.deltaY;
-  }
+  let strip: HTMLDivElement | undefined = $state();
+
+  // A new page, or one picked from the palette or by a key, can be past the strip's edge; bring it into view.
+  $effect(() => {
+    void active;
+    void tabs.length;
+    showSelected(strip);
+  });
 </script>
 
 <div class="pb-doctabs">
   <div class="pb-doctabs-left">
-    <div class="pb-doctabs-tabs" role="tablist" aria-label="Open pages" tabindex="-1" onwheel={onWheel}>
+    <div class="pb-doctabs-tabs" role="tablist" aria-label="Open pages" tabindex="-1" bind:this={strip} onwheel={wheelSideways}>
       {#each tabs as tab (tab.id)}
         <span
           class="pb-doctab is-link"

@@ -16,6 +16,7 @@
   import Count from "../ui/Count.svelte";
   import Tab from "../ui/Tab.svelte";
   import TabList from "../ui/TabList.svelte";
+  import { showSelected, wheelSideways } from "../ui/strip";
 
   /** The bar over the results: one tab per result set, then Messages; the result's tools at the end. */
   interface Props {
@@ -35,13 +36,14 @@
   $effect(() => {
     void active;
     void tabs.length;
-    strip?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    showSelected(strip);
   });
 </script>
 
 <!-- The tabs take what the tools leave and scroll sideways; the tools keep their place at the end. -->
 <div class="pb-bar pb-resultbar">
-  <div class="pb-resultbar-tabs" bind:this={strip}>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="pb-resultbar-tabs" bind:this={strip} onwheel={wheelSideways}>
     <TabList label="Results">
       {#each tabs as tab, index (tab.key)}
         <Tab selected={active === index} tip={tab.tip} onclick={() => onSelect(index)}>

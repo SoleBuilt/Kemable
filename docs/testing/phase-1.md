@@ -329,6 +329,8 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** luôn còn một tab query trống.
 - [ ] Mở nhiều tab đến khi tràn thanh.
   **Đúng:** thanh tab cuộn ngang (lăn chuột cũng cuộn), thanh cuộn mỏng; công cụ bên phải không bị đẩy ra ngoài.
+- [ ] Khi thanh tab đã tràn, double-click thêm vài bảng trong cây (mỗi bảng mở một tab), rồi Ctrl+Tab qua lại.
+  **Đúng:** tab vừa mở hoặc vừa chọn luôn tự cuộn vào tầm nhìn, không nằm khuất ngoài mép. Thanh Result cũng vậy, và lăn chuột trên thanh Result cuộn ngang các tab.
 - [ ] Chạy script có 3 câu SELECT, bấm lần lượt Result 1, 2, 3.
   **Đúng:** editor có khung nhẹ quanh câu tạo ra result đang xem.
 - [ ] Thu hẹp cửa sổ (còn khoảng 800px), chạy script có câu `select * from <bảng có tên dài>` rồi 6 câu `select 1;`, mở Result 1.
