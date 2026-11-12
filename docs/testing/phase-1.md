@@ -86,7 +86,7 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Ctrl+K, gõ `profile`, chọn **Credential profiles…**.
   **Đúng:** hộp thoại rộng, bên trái danh sách (lần đầu: "No profiles yet"), bên phải trống "Make a profile to fill this in."
 - [ ] Bấm **New profile**, đặt Name `app-reader`, User và Password của một login PostgreSQL thật, bấm **Save** (hoặc Enter).
-  **Đúng:** khung xanh **Saved**; danh sách ghi "app_reader · not used". Mở Windows Credential Manager › Windows Credentials: có `profile/<id>/password.Paboable`. Mở `%APPDATA%\dev.paboable.app\profiles.json`: có tên và user, không có mật khẩu.
+  **Đúng:** khung xanh **Saved**; danh sách ghi "app_reader · not used". Mở Windows Credential Manager › Windows Credentials: có `profile/<id>/password.Paboable`. Mở `profiles.json` trong thư mục dữ liệu (Settings › Data › **Open**): có tên và user, không có mật khẩu.
 - [ ] Tạo thêm profile tên `APP-READER` rồi Save.
   **Đúng:** khung đỏ báo tên đã có (không phân biệt hoa thường), không lưu.
 - [ ] **New connection…**, PostgreSQL, điền Host, ở **Credentials** chọn **From a profile**, chọn `app-reader`, bấm **Test**, rồi **Connect** với **Save this connection** bật.

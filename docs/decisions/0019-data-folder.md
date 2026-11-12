@@ -22,7 +22,7 @@ What the app remembered was in three places: the saved connections, profiles, qu
 - Installed for Everyone, the PC's users share one data folder: the same saved connections and pages. Their passwords stay each user's own, in Credential Manager.
 - A folder this user cannot write, such as an old install in Program Files, falls back to `%APPDATA%`, and Settings says so.
 - The terms are a first text written with the app, not reviewed by a lawyer.
-- `pnpm tauri dev` keeps its data in `%APPDATA%\dev.paboable.app`, apart from any installed copy.
+- The installed app is `paboable.app`; `pnpm tauri dev` is `dev.paboable.app` (`src-tauri/tauri.dev.conf.json`, laid over by `scripts/tauri.mjs`) and keeps its data in `%APPDATA%\dev.paboable.app`, so uninstalling with "Delete the application data" never touches a development build's data, and a fresh install starts empty. Decided with the user on 2026-11-12.
 
 ## Alternatives considered
 
