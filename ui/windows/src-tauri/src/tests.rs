@@ -1149,3 +1149,125 @@ async fn import_generate_and_export_move_rows_and_a_cancel_leaves_nothing() {
     server.close().await;
     let _ = std::fs::remove_dir_all(&folder);
 }
+
+// --- The data folder (docs/decisions/0019-data-folder.md) -------------------
+
+fn data_folder(name: &str) -> crate::data::DataFolder {
+    let path = std::env::temp_dir().join(format!("paboable-data-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    std::fs::create_dir_all(&path).unwrap();
+    crate::data::DataFolder { path, beside_app: true }
+}
+
+#[test]
+fn pages_and_prefs_come_back_as_written_and_only_for_their_key() {
+    let folder = data_folder("pages");
+    assert_eq!(folder.prefs(), None);
+    folder
+        .write_prefs(&serde_json::json!({ "settings": { "theme": "dark" } }))
+        .unwrap();
+    assert_eq!(folder.prefs().unwrap()["settings"]["theme"], "dark");
+
+    let kept = serde_json::json!({ "pages": [{ "number": 1, "text": "select 1", "cursor": 3 }], "active": 0, "at": 1 });
+    folder.write_pages("saved:abc", kept.clone()).unwrap();
+    assert_eq!(folder.pages("saved:abc"), Some(kept));
+    assert_eq!(folder.pages("saved:other"), None);
+    // A long file path is a key like any other.
+    let long = format!("file:{}", r"D:\folder\".repeat(60));
+    folder.write_pages(&long, serde_json::json!({ "pages": [] })).unwrap();
+    assert!(folder.pages(&long).is_some());
+    // Nothing is left half written.
+    let leftovers = std::fs::read_dir(folder.path.join("pages"))
+        .unwrap()
+        .filter(|entry| entry.as_ref().unwrap().path().extension().unwrap() == "tmp")
+        .count();
+    assert_eq!(leftovers, 0);
+    let _ = std::fs::remove_dir_all(&folder.path);
+}
+
+#[test]
+fn only_the_forty_connections_written_last_keep_their_pages() {
+    let folder = data_folder("prune");
+    for index in 0..45 {
+        folder
+            .write_pages(&format!("saved:{index}"), serde_json::json!({ "pages": [] }))
+            .unwrap();
+        // File times need to differ for the order to show.
+        std::thread::sleep(std::time::Duration::from_millis(15));
+    }
+    assert_eq!(std::fs::read_dir(folder.path.join("pages")).unwrap().count(), 40);
+    assert!(folder.pages("saved:44").is_some());
+    assert!(folder.pages("saved:0").is_none());
+    let _ = std::fs::remove_dir_all(&folder.path);
+}
+
+#[test]
+fn a_new_data_folder_takes_what_the_old_one_kept_once_and_leaves_it_there() {
+    let old = data_folder("old");
+    std::fs::write(old.path.join("connections.json"), b"[1]").unwrap();
+    std::fs::write(old.path.join("history.db"), b"db").unwrap();
+    let folder = data_folder("new");
+    folder.carry_over(&old.path);
+    assert_eq!(std::fs::read(folder.path.join("connections.json")).unwrap(), b"[1]");
+    assert_eq!(std::fs::read(folder.path.join("history.db")).unwrap(), b"db");
+    assert!(old.path.join("connections.json").exists());
+    // Once the new folder has its own, the old one is not read again.
+    std::fs::write(old.path.join("connections.json"), b"[2]").unwrap();
+    folder.carry_over(&old.path);
+    assert_eq!(std::fs::read(folder.path.join("connections.json")).unwrap(), b"[1]");
+    // The folder in the profile is the old one itself: nothing to carry.
+    let profile = crate::data::DataFolder {
+        path: old.path.clone(),
+        beside_app: false,
+    };
+    profile.carry_over(&folder.path);
+    assert_eq!(std::fs::read(old.path.join("connections.json")).unwrap(), b"[2]");
+    let _ = std::fs::remove_dir_all(&old.path);
+    let _ = std::fs::remove_dir_all(&folder.path);
+}
+
+#[test]
+fn the_old_webview_storage_is_read_once_then_the_new_folder_is_used() {
+    let folder = data_folder("webview");
+    let old = folder.path.join("old-EBWebView");
+    // No older version: the new folder from the start.
+    assert_eq!(
+        crate::data::webview_for_launch(&folder, &old),
+        (Some(folder.webview()), false)
+    );
+    // An older version's storage, not moved yet: this launch reads it.
+    std::fs::create_dir_all(&old).unwrap();
+    assert_eq!(crate::data::webview_for_launch(&folder, &old), (None, true));
+    // Moved: the preferences file says so.
+    folder.write_prefs(&serde_json::json!({})).unwrap();
+    assert_eq!(
+        crate::data::webview_for_launch(&folder, &old),
+        (Some(folder.webview()), false)
+    );
+    let script = folder.startup_script(false);
+    assert!(script.starts_with("window.__PABOABLE__ = {"), "{script}");
+    assert!(script.contains("\"besideApp\":true"), "{script}");
+    let _ = std::fs::remove_dir_all(&folder.path);
+}
+
+#[test]
+fn a_window_is_on_screen_when_any_corner_is() {
+    use tauri::{PhysicalPosition, PhysicalSize};
+    let screen = PhysicalPosition::new(0, 0);
+    let size = PhysicalSize::new(1920u32, 1080u32);
+    let window = PhysicalSize::new(1000u32, 700u32);
+    assert!(crate::window::on_screen(&screen, &size, 150, 120, window));
+    assert!(crate::window::on_screen(&screen, &size, -900, -600, window));
+    assert!(!crate::window::on_screen(&screen, &size, -30_000, -30_000, window));
+    assert!(!crate::window::on_screen(&screen, &size, 1920, 0, window));
+    let maximized = crate::window::Place {
+        x: -8,
+        y: -8,
+        width: 1000,
+        height: 700,
+        maximized: true,
+        prev_x: 150,
+        prev_y: 120,
+    };
+    assert_eq!(maximized.restore_at(), (150, 120));
+}

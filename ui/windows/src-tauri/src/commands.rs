@@ -34,6 +34,7 @@ use tauri::State;
 use tauri::ipc::{Channel, Response};
 use tokio_util::sync::CancellationToken;
 
+use crate::data::{self, DataFolder};
 use crate::library::Library;
 use crate::run::{self, Run, RunEvent, Statement};
 use crate::state::{AppState, CONNECT_TIMEOUT, OpenServer};
@@ -1543,4 +1544,79 @@ pub async fn set_mica(window: tauri::WebviewWindow, on: bool, dark: bool) -> Com
     receiver
         .await
         .map_err(|_| DriverError::internal("the window closed before Mica was set"))
+}
+
+// --- What the app remembers (docs/decisions/0019-data-folder.md) ------------
+
+async fn in_background<T: Send + 'static>(
+    work: impl FnOnce() -> CommandResult<T> + Send + 'static,
+) -> CommandResult<T> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|error| DriverError::internal(error.to_string()))?
+}
+
+/// The query pages kept for a connection, or null.
+#[tauri::command]
+pub async fn read_pages(folder: State<'_, DataFolder>, key: String) -> CommandResult<Option<serde_json::Value>> {
+    let folder = folder.inner().clone();
+    in_background(move || Ok(folder.pages(&key))).await
+}
+
+/// Keeps a connection's query pages; resolves once they are on disk.
+#[tauri::command]
+pub async fn write_pages(folder: State<'_, DataFolder>, key: String, kept: serde_json::Value) -> CommandResult<()> {
+    let folder = folder.inner().clone();
+    in_background(move || {
+        folder
+            .write_pages(&key, kept)
+            .map_err(|error| data::io_error("cannot keep the pages", error))
+    })
+    .await
+}
+
+/// Keeps the UI's preferences; resolves once they are on disk.
+#[tauri::command]
+pub async fn write_prefs(folder: State<'_, DataFolder>, prefs: serde_json::Value) -> CommandResult<()> {
+    let folder = folder.inner().clone();
+    in_background(move || {
+        folder
+            .write_prefs(&prefs)
+            .map_err(|error| data::io_error("cannot keep the settings", error))
+    })
+    .await
+}
+
+/// Moves what an older version kept in the WebView's storage into files, once:
+/// each connection's pages, then the preferences, whose file says the move is done.
+#[tauri::command]
+pub async fn import_local_storage(
+    folder: State<'_, DataFolder>,
+    prefs: serde_json::Value,
+    pages: serde_json::Map<String, serde_json::Value>,
+) -> CommandResult<()> {
+    let folder = folder.inner().clone();
+    in_background(move || {
+        for (key, kept) in pages {
+            if folder.pages(&key).is_none() {
+                folder
+                    .write_pages(&key, kept)
+                    .map_err(|error| data::io_error("cannot keep the pages", error))?;
+            }
+        }
+        folder
+            .write_prefs(&prefs)
+            .map_err(|error| data::io_error("cannot keep the settings", error))
+    })
+    .await
+}
+
+/// Opens the data folder in Explorer.
+#[tauri::command]
+pub async fn open_data_folder(folder: State<'_, DataFolder>) -> CommandResult<()> {
+    std::process::Command::new("explorer")
+        .arg(&folder.path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| data::io_error("cannot open the folder", error))
 }

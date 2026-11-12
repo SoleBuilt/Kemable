@@ -59,7 +59,7 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** kết nối ngay, không hỏi mật khẩu.
 - [ ] Mở **Windows Credential Manager** → **Windows Credentials** → **Generic Credentials**.
   **Đúng:** có mục tên kiểu `connection/<id>/password.Paboable`.
-- [ ] Mở `%APPDATA%\dev.paboable.app\connections.json` bằng Notepad.
+- [ ] Mở `connections.json` trong thư mục dữ liệu (Settings › Data › **Open**) bằng Notepad.
   **Đúng:** có connection nhưng **không có mật khẩu**.
 - [ ] Bấm combobox kết nối → **Edit this connection…**, đổi tên, bỏ tick **Keep the password…**, bấm **Save**.
   **Đúng:** mục trong Credential Manager biến mất; mở connection đó từ Ctrl+K thì app hỏi mật khẩu.
@@ -465,6 +465,26 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** dòng gợi ý đổi thành "This Windows cannot show Mica. It needs Windows 11."; app vẫn đặc, không lộ desktop.
 - [ ] **Đo tốc độ** (cửa sổ giờ luôn trong suốt): chạy câu lệnh 2,000,000 dòng ở `.claude/rules/data-grid.md` trên SQLite in-memory, cuộn bằng chuột, thanh cuộn và bàn phím, một lần với Mica Off và một lần với Mica On.
   **Đúng:** DevTools › Performance (F12, bản dev) cho frame dưới 8 ms ở cả hai lần. Ghi số đo vào mô tả của merge. (Đã đo tự động ngày 2026-11-11 trên một máy: không khác nhau; số đo ở ADR 0012, Consequences. Vẫn nên thử bằng tay trên máy khác, nhất là màn hình 120 Hz hoặc 4K.)
+
+### 8.8 Cài đặt và thư mục dữ liệu (ADR 0019)
+Dùng file cài `Paboable_<version>_x64-setup.exe` (`pnpm tauri build`, ở `target\release\bundle\nsis\`).
+- [ ] Chạy file cài, bấm Next ở trang chào.
+  **Đúng:** trang **License Agreement** có điều khoản cuộn được và ô **I accept the terms…**; nút Next mờ cho tới khi tick ô đó.
+- [ ] (Tài khoản admin) Trang tiếp theo hỏi cài cho mình hay cho mọi người. Tài khoản thường không thấy trang này.
+- [ ] Ở trang **Choose Install Location**, bấm Browse, chọn một thư mục trên ổ D (ví dụ `D:\Apps\Paboable`), Next.
+  **Đúng:** cài xong, trang **Completing Paboable Setup** có ô Run Paboable và Create desktop shortcut; bấm Finish.
+- [ ] Mở app, vào Settings.
+  **Đúng:** mục **Data** ghi "Beside the app, where it was installed: D:\Apps\Paboable\data…"; bấm **Open** mở đúng thư mục đó trong Explorer, có `connections.json`, `ui.json`, `pages\`, `webview\`.
+- [ ] Máy đã từng dùng bản cũ: mở app lần đầu sau khi cài.
+  **Đúng:** connection đã lưu, các tab query, theme và các lựa chọn cũ vẫn còn. Mở lại app lần nữa: vẫn còn.
+- [ ] Gõ vào một tab query, đóng app ngay bằng **Alt+F4** (không chờ), mở lại.
+  **Đúng:** chữ vừa gõ vẫn còn.
+- [ ] Kéo rộng sidebar và kéo cao editor, đóng app, mở lại.
+  **Đúng:** sidebar và editor giữ đúng kích thước vừa kéo.
+- [ ] Gỡ cài đặt (Settings của Windows › Apps), **không** tick "Delete the application data".
+  **Đúng:** thư mục cài chỉ còn `data`. Cài lại vào đúng thư mục đó: mọi thứ trở lại như trước.
+- [ ] Gỡ cài đặt, **có** tick "Delete the application data".
+  **Đúng:** thư mục cài biến mất cùng `data`.
 
 ---
 

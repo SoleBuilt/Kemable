@@ -50,7 +50,7 @@ The first window had one editor and one row of result tabs. A table opened from 
 ## Consequences
 
 - A page shown keeps its state in the App's live variables; a hidden page keeps it in its `PageState`. A new field of a page's state goes into `stash` and `unstash` in `App.svelte`.
-- Query pages come back across launches (added 2026-11-11): `ui/windows/src/lib/pages.ts` keeps each connection's query pages (number, text, cursor) in the WebView's storage, a saved connection by its id, a SQLite file by its path, anything else by engine and title, for the 40 connections used last. They are kept 400 ms after typing stops, when a page opens, closes or is switched to, before another connection opens, and before the window closes from its button. Opening the connection again brings them back. Table pages, results and undo history are not kept.
+- Query pages come back across launches (added 2026-11-11): `ui/windows/src/lib/pages.ts` keeps each connection's query pages (number, text, cursor) in the data folder (amended 2026-11-12, `docs/decisions/0019-data-folder.md`; it was the WebView's storage), a saved connection by its id, a SQLite file by its path, anything else by engine and title, for the 40 connections used last. They are kept 400 ms after typing stops, when a page opens, closes or is switched to, before another connection opens, and before the window closes, however it closes. Opening the connection again brings them back. Table pages, results and undo history are not kept.
 - Still to build, and shown disabled or left out for now (`docs/roadmap.md`):
   - in the tree menu: DDL, structure, export and import, truncate and drop;
   - Profile;

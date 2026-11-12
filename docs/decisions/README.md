@@ -46,3 +46,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0016 | [A query page can be a `.sql` file](0016-sql-files.md) |
 | 0017 | [The object tree's menu: DDL, structure and actions shown before they run](0017-tree-actions.md) |
 | 0018 | [Export, Import and Generate Rows: jobs that stream, run in one transaction, and stop clean](0018-export-import-generate.md) |
+| 0019 | [One data folder, beside the app where it was installed; an installer that asks where and has terms to accept](0019-data-folder.md) |

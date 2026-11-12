@@ -281,10 +281,21 @@ export const ipc = {
   /** A result's filter as a WHERE for the connection's engine, to copy. */
   resultWhere: (conn: number, result: number, filters: ResultFilter[], matchAny: boolean) =>
     invoke<ResultWhere>("result_where", { conn, result, filters, matchAny }),
+
+  // What the app remembers, in the data folder (docs/decisions/0019-data-folder.md); lib/store.ts and lib/pages.ts use these.
+  /** A connection's query pages as kept, or null. */
+  readPages: (key: string) => invoke<unknown>("read_pages", { key }),
+  /** Keeps a connection's query pages; resolves once they are on disk. */
+  writePages: (key: string, kept: unknown) => invoke<void>("write_pages", { key, kept }),
+  /** Keeps the UI's preferences; resolves once they are on disk. */
+  writePrefs: (prefs: Record<string, unknown>) => invoke<void>("write_prefs", { prefs }),
+  /** Moves what an older version kept in the WebView's storage into the data folder. */
+  importLocalStorage: (prefs: Record<string, unknown>, pages: Record<string, unknown>) =>
+    invoke<void>("import_local_storage", { prefs, pages }),
+  /** Opens the data folder in Explorer. */
+  openDataFolder: () => invoke<void>("open_data_folder"),
 };
 
-/** Work that must happen before the window closes from its close button, such as keeping the pages. */
-export const beforeClose = new Set<() => void>();
 
 /**
  * The app's window. It has no system title bar: the toolbar draws the
@@ -295,11 +306,13 @@ export const appWindow = {
   /** Zooms the whole window's content, as Ctrl+= does in VS Code; 1 is 100 %. */
   setZoom: (factor: number) => getCurrentWebview().setZoom(factor),
   toggleMaximize: () => getCurrentWindow().toggleMaximize(),
-  /** Runs the `beforeClose` work (keeping the pages), then closes. */
-  close: () => {
-    for (const work of beforeClose) work();
-    return getCurrentWindow().close();
-  },
+  /** Asks the window to close; `onCloseRequested` work runs first, whatever closed it. */
+  close: () => getCurrentWindow().close(),
+  /**
+   * Runs `work` when the window is asked to close (its button, Alt+F4, the taskbar),
+   * and closes once it is done, so what is kept reaches the disk first.
+   */
+  onCloseRequested: (work: () => Promise<void>) => getCurrentWindow().onCloseRequested(work),
   isMaximized: () => getCurrentWindow().isMaximized(),
   /** Calls `handler` after every resize; resolves to the function that stops it. */
   onResized: (handler: () => void) => getCurrentWindow().onResized(handler),
