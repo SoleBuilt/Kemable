@@ -294,6 +294,8 @@ export const ipc = {
     invoke<void>("import_local_storage", { prefs, pages }),
   /** Opens the data folder in Explorer. */
   openDataFolder: () => invoke<void>("open_data_folder"),
+  /** Opens the Terms of Service or the Privacy Policy in the browser. */
+  openTerms: (which: "terms" | "privacy") => invoke<void>("open_terms", { which }),
 };
 
 

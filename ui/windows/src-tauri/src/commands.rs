@@ -1620,3 +1620,31 @@ pub async fn open_data_folder(folder: State<'_, DataFolder>) -> CommandResult<()
         .map(|_| ())
         .map_err(|error| data::io_error("cannot open the folder", error))
 }
+
+// --- The terms (docs/decisions/0019-data-folder.md) ---------------------------
+
+/// Where the terms and the privacy policy are read. For now CapCut's pages stand in,
+/// until Paboable's own site has them; `installer/terms.txt` names the same two.
+const TERMS_OF_SERVICE: &str = "https://www.capcut.com/clause/terms-of-service?store_region=vn&lang=vi";
+const PRIVACY_POLICY: &str = "https://www.capcut.com/clause/privacy-policy?store_region=vn&lang=vi";
+
+/// Opens the terms (`which`: "terms") or the privacy policy ("privacy") in the
+/// browser. Only these two: the UI never hands a web address to the system.
+#[tauri::command]
+pub async fn open_terms(which: String) -> CommandResult<()> {
+    let url = match which.as_str() {
+        "terms" => TERMS_OF_SERVICE,
+        "privacy" => PRIVACY_POLICY,
+        _ => {
+            return Err(DriverError::new(
+                paboable_core::ErrorCode::ConfigInvalid,
+                format!("no page named {which}"),
+            ));
+        }
+    };
+    std::process::Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", url])
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| data::io_error("cannot open the browser", error))
+}

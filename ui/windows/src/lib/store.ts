@@ -18,6 +18,8 @@ interface Startup {
   /** An older version kept all this in the WebView's storage: move it into files, once. */
   importLocalStorage: boolean;
   folder: DataFolderInfo | null;
+  /** This version's installer showed the terms and they were accepted there. */
+  termsAcceptedAtInstall: boolean;
 }
 
 declare global {
@@ -26,9 +28,11 @@ declare global {
   }
 }
 
-const startup: Startup = window.__PABOABLE__ ?? { prefs: null, pagesWithout: null, importLocalStorage: false, folder: null };
+const startup: Startup = window.__PABOABLE__ ?? { prefs: null, pagesWithout: null, importLocalStorage: false, folder: null, termsAcceptedAtInstall: false };
 
 export const dataFolder: DataFolderInfo | null = startup.folder;
+
+export const termsAcceptedAtInstall: boolean = startup.termsAcceptedAtInstall === true;
 
 // --- Moving an older version's storage ----------------------------------------
 

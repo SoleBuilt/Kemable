@@ -14,6 +14,8 @@
     maxHeight?: string;
     /** While it works, Esc and the close button do nothing. */
     busy?: boolean;
+    /** False for a question that must be answered with its own buttons: no close button, and Esc does nothing. */
+    closable?: boolean;
     onClose: () => void;
     /** Makes the dialog a form: Enter in a field submits it. */
     onsubmit?: () => void;
@@ -24,14 +26,14 @@
     footer?: Snippet;
   }
 
-  let { title, width = 480, maxHeight = "80vh", busy = false, onClose, onsubmit, bodyStyle, children, footer }: Props = $props();
+  let { title, width = 480, maxHeight = "80vh", busy = false, closable = true, onClose, onsubmit, bodyStyle, children, footer }: Props = $props();
   const id = $props.id();
   const self = Symbol();
   open.push(self);
   onDestroy(() => open.splice(open.indexOf(self), 1));
 
   function close() {
-    if (!busy) onClose();
+    if (!busy && closable) onClose();
   }
 </script>
 
@@ -44,7 +46,9 @@
 {#snippet inner()}
   <div class="pb-dialog-head">
     <h2 class="pb-dialog-title" id="{id}-title">{title}</h2>
-    <Button variant="ghost" size="sm" icon="x" label="Close" tip="Close  Esc" tipAt="end" disabled={busy} onclick={close} />
+    {#if closable}
+      <Button variant="ghost" size="sm" icon="x" label="Close" tip="Close  Esc" tipAt="end" disabled={busy} onclick={close} />
+    {/if}
   </div>
   <div class="pb-dialog-body is-scroll" style={bodyStyle}>
     {@render children()}
