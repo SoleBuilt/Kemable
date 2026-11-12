@@ -25,7 +25,7 @@ async fn run_script(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &st
         }
         Ok(())
     });
-    let statements = split(script, grammar)
+    let statements = crate::run::statements_to_run(script, split(script, grammar), Some(grammar), true)
         .iter()
         .map(|span| Statement {
             text: span.text(script).to_owned(),
@@ -150,6 +150,45 @@ async fn a_sql_server_script_follows_create_database_and_use() {
         })
         .collect();
     assert_eq!(answers, [Some(created.clone()), Some("1".to_owned())]);
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+async fn a_sql_server_batch_that_creates_a_database_runs_the_rest_in_it() {
+    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
+    let driver = state.registry.get("mssql").cloned().expect("the driver is registered");
+    let first = driver
+        .connect(&config, CallOptions::default())
+        .await
+        .expect("the server accepts the connection");
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    let created = format!("paboable_batch_{}", std::process::id());
+
+    // One batch, no GO, as a selection run with Ctrl+Enter sends it.
+    let script = format!(
+        "CREATE DATABASE [{created}];
+  create table bang_thu (id int);
+  select db_name(), case when object_id('bang_thu') is not null then 1 else 0 end
+GO
+         use master
+GO
+         drop database [{created}]"
+    );
+    let events = run_script(&state, &server, &script, SqlGrammar::SqlServer).await;
+
+    assert!(of_type(&events, "statementFailed").is_empty(), "{events:#?}");
+    let switches: Vec<_> = of_type(&events, "databaseChanged")
+        .iter()
+        .map(|event| event["database"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(switches, [created.clone(), "master".to_owned()]);
+    assert_eq!(
+        first_rows(&state, &events),
+        [vec![Some(created.clone()), Some("1".to_owned())]]
+    );
     server.close().await;
 }
 

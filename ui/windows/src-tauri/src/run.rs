@@ -10,7 +10,10 @@ use paboable_core::catalog::ColumnMeta;
 use paboable_core::command::select_database;
 use paboable_core::connection::Connection;
 use paboable_core::sink::ResultSink;
-use paboable_core::sql::{DatabaseChange, SqlGrammar, StatementKind, batch_queries, database_change};
+use paboable_core::sql::{
+    DatabaseChange, SqlGrammar, StatementKind, StatementSpan, batch_queries, database_change,
+    split_after_created_databases,
+};
 use paboable_core::value::Value;
 use paboable_core::{CallOptions, DriverError};
 use paboable_store::ResultStore;
@@ -217,6 +220,23 @@ impl ResultSink for RunSink {
             statement: self.statement(),
             text: text.to_owned(),
         });
+    }
+}
+
+/// The statements a run sends, from the ones chosen in the script. A SQL Server
+/// batch runs whole, so its `CREATE DATABASE` would move the run only once the
+/// batch had finished; when the run follows a created database, the batch is cut
+/// after it and the rest runs in the new database.
+pub fn statements_to_run(
+    script: &str,
+    chosen: Vec<StatementSpan>,
+    grammar: Option<SqlGrammar>,
+    follow_created_database: bool,
+) -> Vec<StatementSpan> {
+    if follow_created_database && grammar == Some(SqlGrammar::SqlServer) {
+        split_after_created_databases(script, chosen)
+    } else {
+        chosen
     }
 }
 

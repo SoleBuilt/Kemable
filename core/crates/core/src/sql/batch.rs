@@ -18,8 +18,8 @@
 
 use std::ops::Range;
 
-use super::SqlGrammar;
 use super::lex::{Kind, Token, lex, lex_strict};
+use super::{DatabaseChange, SqlGrammar, StatementSpan, database_change};
 
 /// Words that begin a statement in T-SQL.
 const STARTERS: &[&str] = &[
@@ -129,6 +129,55 @@ pub fn batch_queries(batch: &str) -> Option<Vec<Range<usize>>> {
 pub fn batch_statement_count(batch: &str) -> Option<usize> {
     let tokens = lex_strict(batch, SqlGrammar::SqlServer)?;
     Some(parts(batch, &tokens).len())
+}
+
+/// The statements of a script, with every SQL Server batch that creates a
+/// database and goes on cut after its `CREATE DATABASE`, so a run that moves to
+/// the new database (`DatabaseChange::Created`) runs the rest of the batch
+/// there, as it does a script of separate statements. A batch whose earlier
+/// statements declare a variable is left whole: the rest would lose it.
+pub fn split_after_created_databases(script: &str, spans: Vec<StatementSpan>) -> Vec<StatementSpan> {
+    let mut out = Vec::with_capacity(spans.len());
+    for span in spans {
+        let mut rest = span;
+        while let Some((create_end, next_start)) = after_created_database(rest.text(script)) {
+            out.push(StatementSpan {
+                start: rest.start,
+                end: rest.start + create_end,
+                kind: rest.kind,
+            });
+            rest = StatementSpan {
+                start: rest.start + next_start,
+                ..rest
+            };
+        }
+        out.push(rest);
+    }
+    out
+}
+
+/// In one batch: where its first `CREATE DATABASE` statement ends and the
+/// statement after it starts, when one follows and nothing declared before
+/// would be lost by cutting there.
+fn after_created_database(batch: &str) -> Option<(usize, usize)> {
+    let tokens = lex_strict(batch, SqlGrammar::SqlServer)?;
+    let parts = parts(batch, &tokens);
+    let index = parts.iter().position(|part| {
+        let text = &batch[tokens[part.first].start..tokens[part.last].end];
+        matches!(
+            database_change(text, SqlGrammar::SqlServer),
+            Some(DatabaseChange::Created(_))
+        )
+    })?;
+    let create = &parts[index];
+    let next = parts.get(index + 1)?;
+    if tokens[..create.last]
+        .iter()
+        .any(|token| token.is_word(batch, "DECLARE"))
+    {
+        return None;
+    }
+    Some((tokens[create.last].end, tokens[next.first].start))
 }
 
 /// Where each statement of a SQL Server batch starts, as byte offsets, for
@@ -390,6 +439,51 @@ fn select_sets(text: &str, tokens: &[Token]) -> Sets {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_batch_that_creates_a_database_is_cut_after_it_so_the_rest_runs_there() {
+        use crate::sql::{StatementKind, split};
+        let script = "CREATE DATABASE thu_tu_dong;
+  create table bang_thu (id int);";
+        let spans = split_after_created_databases(script, split(script, SqlGrammar::SqlServer));
+        let texts: Vec<&str> = spans.iter().map(|span| span.text(script)).collect();
+        assert_eq!(
+            texts,
+            ["CREATE DATABASE thu_tu_dong", "create table bang_thu (id int);"]
+        );
+        assert!(spans.iter().all(|span| span.kind == StatementKind::Sql));
+
+        // No `;` is needed in T-SQL, and a batch may create two.
+        let script = "select 1
+create database a
+create table t (id int)
+create database b
+insert t values (1)";
+        let texts: Vec<String> = split_after_created_databases(script, split(script, SqlGrammar::SqlServer))
+            .iter()
+            .map(|span| span.text(script).to_owned())
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                "select 1
+create database a",
+                "create table t (id int)
+create database b",
+                "insert t values (1)"
+            ]
+        );
+
+        // Left whole: nothing after it, a variable declared before, or no CREATE DATABASE.
+        for script in [
+            "create database a;",
+            "declare @n int = 1; create database a; select @n",
+            "create table t (id int); select 1",
+        ] {
+            let spans = split(script, SqlGrammar::SqlServer);
+            assert_eq!(split_after_created_databases(script, spans.clone()), spans, "{script}");
+        }
+    }
 
     fn queries(batch: &str) -> Option<Vec<&str>> {
         batch_queries(batch).map(|ranges| ranges.into_iter().map(|range| &batch[range]).collect())
