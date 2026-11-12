@@ -1244,9 +1244,19 @@ fn the_old_webview_storage_is_read_once_then_the_new_folder_is_used() {
         crate::data::webview_for_launch(&folder, &old),
         (Some(folder.webview()), false)
     );
-    let script = folder.startup_script(false);
+    let script = folder.startup_script(false, "0.1.0");
     assert!(script.starts_with("window.__PABOABLE__ = {"), "{script}");
     assert!(script.contains("\"besideApp\":true"), "{script}");
+    // The installer's mark counts only for the version it installed.
+    assert!(script.contains("\"termsAcceptedAtInstall\":false"), "{script}");
+    std::fs::write(
+        folder.path.join("terms-accepted.txt"),
+        "0.1.0
+",
+    )
+    .unwrap();
+    assert!(folder.terms_accepted_at_install("0.1.0"));
+    assert!(!folder.terms_accepted_at_install("0.2.0"));
     let _ = std::fs::remove_dir_all(&folder.path);
 }
 

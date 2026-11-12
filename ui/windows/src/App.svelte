@@ -23,7 +23,7 @@
   import Pager, { PAGE_SIZES } from "./lib/grid/Pager.svelte";
   import RowDetail from "./lib/grid/RowDetail.svelte";
   import { appWindow, asCoreError, ipc } from "./lib/ipc";
-  import { flushStore, readPref, writePref } from "./lib/store";
+  import { flushStore, readPref, termsAcceptedAtInstall, writePref } from "./lib/store";
   import HistoryList from "./lib/sidebar/HistoryList.svelte";
   import KeyBrowser from "./lib/sidebar/KeyBrowser.svelte";
   import ObjectTree, { type TreeScope, type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
@@ -52,6 +52,7 @@
   import SidePane from "./lib/shell/SidePane.svelte";
   import StatusBar from "./lib/shell/StatusBar.svelte";
   import TitleBar from "./lib/shell/TitleBar.svelte";
+  import TermsDialog, { TERMS_VERSION } from "./lib/shell/TermsDialog.svelte";
   import Welcome from "./lib/shell/Welcome.svelte";
   import Badge from "./lib/ui/Badge.svelte";
   import Button from "./lib/ui/Button.svelte";
@@ -119,6 +120,11 @@
     pageSql: string;
     countSql: string;
   }
+
+  // The terms are asked once a version of them (lib/shell/TermsDialog.svelte); the
+  // installer's terms page counts for the version it installed.
+  if (readPref("termsAccepted") !== TERMS_VERSION && termsAcceptedAtInstall) writePref("termsAccepted", TERMS_VERSION);
+  let termsNeeded = $state(readPref("termsAccepted") !== TERMS_VERSION);
 
   function readPageSize(): number {
     const value = Number(readPref("pageSize"));
@@ -2538,4 +2544,15 @@
 {#if askPassword}
   {@const target = askPassword}
   <PasswordDialog saved={target} onSubmit={(password) => void openSaved(target, password)} onClose={() => (askPassword = null)} />
+{/if}
+
+<!-- Last, so it covers everything else until it is answered. -->
+{#if termsNeeded}
+  <TermsDialog
+    onAgree={() => {
+      writePref("termsAccepted", TERMS_VERSION);
+      termsNeeded = false;
+    }}
+    onDisagree={() => void appWindow.close()}
+  />
 {/if}

@@ -1,26 +1,7 @@
-PABOABLE TERMS OF USE
+By ticking the box below and clicking Next, you agree to the Paboable Terms of Service and acknowledge that you have read the Paboable Privacy Policy.
 
-Please read these terms before you install Paboable. By ticking the box below and going on, you accept them. If you do not accept them, cancel the installation.
+Terms of Service:
+https://www.capcut.com/clause/terms-of-service?store_region=vn&lang=vi
 
-1. USE
-You may install Paboable on computers you own or are allowed to use, and use it to work with databases you are allowed to reach.
-
-2. YOUR DATA STAYS WITH YOU
-Paboable connects only to the servers and files you choose. It sends nothing anywhere else: it has no account, no telemetry and no advertising.
-What it remembers (saved connections, query tabs, query history, settings) is kept on this computer, in the "data" folder beside the app. Passwords are kept in Windows Credential Manager, never in that folder.
-Uninstalling keeps the data folder unless you tick "Delete the application data".
-
-3. WHAT YOU RUN IS YOURS
-Paboable runs the statements you write, open or confirm. Some of them change or delete data, and some cannot be undone. Check what you run, above all on production servers, and keep backups of the data that matters to you.
-
-4. NO WARRANTY
-Paboable is provided "as is", without warranty of any kind, express or implied, including fitness for a particular purpose and freedom from errors.
-
-5. LIMITATION OF LIABILITY
-To the extent the law allows, the makers of Paboable are not liable for any loss of data, profit or business, or any other damage, that comes from using or being unable to use it.
-
-6. OTHER SOFTWARE
-Paboable includes open-source components, each under its own license, and uses the Microsoft Edge WebView2 Runtime, under Microsoft's terms.
-
-7. CHANGES
-A newer version of Paboable may come with new terms; installing it means accepting them.
+Privacy Policy:
+https://www.capcut.com/clause/privacy-policy?store_region=vn&lang=vi

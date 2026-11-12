@@ -127,6 +127,7 @@ pub fn run() {
             commands::write_prefs,
             commands::import_local_storage,
             commands::open_data_folder,
+            commands::open_terms,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

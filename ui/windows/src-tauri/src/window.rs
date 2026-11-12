@@ -53,8 +53,9 @@ pub fn open(app: &App, folder: &DataFolder, webview: Option<PathBuf>, import_loc
         .find(|window| window.label == LABEL)
         .cloned()
         .ok_or_else(|| tauri::Error::WindowNotFound)?;
+    let version = app.package_info().version.to_string();
     let mut builder = WebviewWindowBuilder::from_config(app.handle(), &config)?
-        .initialization_script(folder.startup_script(import_local_storage));
+        .initialization_script(folder.startup_script(import_local_storage, &version));
     if let Some(webview) = webview {
         builder = builder.data_directory(webview);
     }
