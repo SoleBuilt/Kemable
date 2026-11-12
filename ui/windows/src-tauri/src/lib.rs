@@ -90,6 +90,7 @@ pub fn run() {
             commands::delete_profile,
             commands::connect_saved,
             commands::connect,
+            commands::connect_and_save,
             commands::test_connection,
             commands::list_form_databases,
             commands::disconnect,

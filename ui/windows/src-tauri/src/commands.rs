@@ -46,12 +46,12 @@ const METADATA_TIMEOUT: Duration = Duration::from_secs(15);
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenedConnection {
-    id: u64,
+    pub(crate) id: u64,
     engine: EngineInfo,
     server_version: Option<String>,
-    title: String,
+    pub(crate) title: String,
     /// The saved connection it was opened from, if any.
-    saved_id: Option<String>,
+    pub(crate) saved_id: Option<String>,
     /// The database the connection opened on, for an engine with databases.
     database: Option<String>,
 }
@@ -79,6 +79,56 @@ pub async fn connect(
     sign_in_with(&library, &mut config, profile_id.as_deref())?;
     let title = title_of(&config.target);
     open_server(&state, config, title, None).await
+}
+
+/// Connects with the connect form's connection and saves it only once the
+/// server has answered: a connection that cannot connect is never kept. The
+/// login is the form's: the typed password, else a credential profile, else
+/// the one kept for the connection being edited.
+#[tauri::command]
+pub async fn connect_and_save(
+    state: State<'_, Arc<AppState>>,
+    library: State<'_, Library>,
+    connection: SavedConnection,
+    password: Option<String>,
+) -> CommandResult<OpenedConnection> {
+    let mut config = connection.config.clone();
+    let editing = (!connection.id.is_empty()).then(|| connection.id.clone());
+    sign_in_as_form(&library, &mut config, editing, connection.profile_id.clone())?;
+    let title = connection.name.clone();
+    open_then_keep(&state, config, title, || {
+        library.with(|library, vault| {
+            let saved = library.save(connection, password.map(Secret::new), vault)?;
+            // A failure to record the time is not worth failing the connection for.
+            let _ = library.touch(&saved.id);
+            Ok(saved)
+        })
+    })
+    .await
+}
+
+/// Opens `config`, then keeps it with `keep`: nothing is kept when the server
+/// does not answer, and a connection that cannot be kept is closed again.
+pub(crate) async fn open_then_keep(
+    state: &AppState,
+    config: ConnectionConfig,
+    title: String,
+    keep: impl FnOnce() -> CommandResult<SavedConnection>,
+) -> CommandResult<OpenedConnection> {
+    let opened = open_server(state, config, title, None).await?;
+    match keep() {
+        Ok(saved) => Ok(OpenedConnection {
+            saved_id: Some(saved.id),
+            title: saved.name,
+            ..opened
+        }),
+        Err(error) => {
+            if let Some(server) = state.remove_server(opened.id) {
+                server.close().await;
+            }
+            Err(error)
+        }
+    }
 }
 
 fn sign_in_with(library: &Library, config: &mut ConnectionConfig, profile_id: Option<&str>) -> CommandResult<()> {

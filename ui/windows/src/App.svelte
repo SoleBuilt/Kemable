@@ -708,9 +708,9 @@
 
   async function connectNetwork(request: ConnectRequest): Promise<CoreError | null> {
     const error = await openWith(async () => {
-      // A saved connection opens by id: a password left blank is the kept one.
-      const opened = request.savedId
-        ? await ipc.connectSaved(request.savedId, request.password)
+      // Kept: it connects first and is saved only once it has; the page names it as saved.
+      const opened = request.keep
+        ? await ipc.connectAndSave(request.keep.connection, request.keep.password)
         : await ipc.connect(request.config, request.profileId);
       return { ...opened, title: request.title };
     });

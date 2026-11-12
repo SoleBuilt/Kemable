@@ -1271,3 +1271,66 @@ fn a_window_is_on_screen_when_any_corner_is() {
     };
     assert_eq!(maximized.restore_at(), (150, 120));
 }
+
+// --- Connect and save from the connect form ----------------------------------
+
+#[tokio::test]
+async fn the_connect_form_keeps_a_connection_only_once_it_connects() {
+    use paboable_core::config::{ConnectionConfig, Target};
+    use paboable_storage::SavedConnection;
+    let state = Arc::new(AppState::new(
+        DriverRegistry::new().with(Arc::new(paboable_driver_sqlite::SqliteDriver)),
+    ));
+    let folder = std::env::temp_dir().join(format!("paboable-keep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    let config = |path: std::path::PathBuf| ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File { path, read_only: true },
+        options: Default::default(),
+    };
+    let saved = |name: &str| SavedConnection {
+        id: "kept-1".into(),
+        name: name.into(),
+        config: config(folder.join("a.db")),
+        save_password: false,
+        last_used: None,
+        profile_id: None,
+        color: None,
+    };
+
+    // A server that does not answer (here, a read-only file that is not there): nothing is kept.
+    let kept = std::sync::atomic::AtomicUsize::new(0);
+    let missing = crate::commands::open_then_keep(&state, config(folder.join("not-there.db")), "x".into(), || {
+        kept.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(saved("never"))
+    })
+    .await;
+    assert!(missing.is_err());
+    assert_eq!(kept.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+    // It connects: then it is kept, and the page names it as saved.
+    rusqlite_file(&folder.join("a.db"));
+    let opened = crate::commands::open_then_keep(&state, config(folder.join("a.db")), "x".into(), || Ok(saved("Shop")))
+        .await
+        .unwrap();
+    assert_eq!(opened.saved_id.as_deref(), Some("kept-1"));
+    assert_eq!(opened.title, "Shop");
+    assert!(state.server(opened.id).is_ok());
+
+    // Keeping fails: the connection does not stay open behind the error.
+    let failed = crate::commands::open_then_keep(&state, config(folder.join("a.db")), "x".into(), || {
+        Err(paboable_core::DriverError::config("a saved connection needs a name"))
+    })
+    .await;
+    assert!(failed.is_err());
+    // Ids count up: the one it opened came next, and is gone; the kept one stays.
+    assert!(state.server(opened.id + 1).is_err());
+    assert!(state.server(opened.id).is_ok());
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// An empty SQLite database at `path`.
+fn rusqlite_file(path: &std::path::Path) {
+    std::fs::write(path, b"").unwrap();
+}
