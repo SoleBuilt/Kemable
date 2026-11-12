@@ -13,7 +13,7 @@ mod result_source;
 mod sorted;
 mod split;
 
-pub use batch::{batch_queries, batch_statement_count};
+pub use batch::{batch_queries, batch_statement_count, split_after_created_databases};
 pub use browse::{BrowseQuery, BrowseSort, Filter, FilterOp, count_statement, export_statement, page_statement};
 pub use completion::{
     CatalogView, Clause, CompletionContext, CompletionItem, ItemKind, Lookups, TableReference, completion_context,

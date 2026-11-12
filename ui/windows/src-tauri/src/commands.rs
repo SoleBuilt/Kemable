@@ -518,6 +518,7 @@ pub async fn run_query(
             .unwrap_or_default(),
         None => &spans[..],
     };
+    let chosen = run::statements_to_run(&sql, chosen.to_vec(), grammar, follow_created_database);
     let statements = chosen
         .iter()
         .map(|span| Statement {
