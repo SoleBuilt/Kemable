@@ -6,7 +6,7 @@ Cùng cách làm với `docs/testing/phase-1.md`: phần chuẩn bị (mục 0) 
 
 ## 1. Lịch sử truy vấn (History)
 
-Lịch sử nằm trong `history.db` ở thư mục dữ liệu của app (`%APPDATA%\<app id>`), giữ tối đa 20.000 câu, câu cũ nhất bị xóa trước.
+Lịch sử nằm trong `history.db` ở thư mục dữ liệu của app (thư mục `data` cạnh app khi cài, xem Settings › Data), giữ tối đa 20.000 câu, câu cũ nhất bị xóa trước.
 
 - [ ] Kết nối `Local PG`, chạy `select now();` bằng **Ctrl+Enter**, rồi mở tab **History** ở sidebar.
   **Đúng:** câu vừa chạy đứng đầu, có dấu ✓, giờ chạy, số ms, `1 rows`, tên database.

@@ -4,11 +4,13 @@
 
 mod catalog;
 mod commands;
+mod data;
 mod export;
 mod jobs;
 mod library;
 mod run;
 mod state;
+mod window;
 
 #[cfg(test)]
 mod tests;
@@ -22,8 +24,8 @@ use paboable_driver_postgres::PostgresDriver;
 use paboable_driver_redis::RedisDriver;
 use paboable_driver_sqlite::SqliteDriver;
 use tauri::Manager;
-use tauri_plugin_window_state::StateFlags;
 
+use crate::data::DataFolder;
 use crate::library::Library;
 use crate::state::AppState;
 
@@ -40,31 +42,23 @@ pub fn run() {
     let state = Arc::new(AppState::new(registry()));
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        // The window opens where it was closed, at the same size, maximized if it was.
-        // The state is kept beside the library (%APPDATA%\dev.paboable.app); a
-        // position on a screen no longer there is left to Windows.
-        .plugin(
-            tauri_plugin_window_state::Builder::new()
-                .with_filename("window-state.json")
-                .with_state_flags(StateFlags::POSITION | StateFlags::SIZE | StateFlags::MAXIMIZED)
-                .build(),
-        )
         .manage(state)
         .setup(|app| {
-            // The window starts hidden so it does not flash at the default place before the
-            // plugin above moves it; the plugin has run by now, and the app shows it even
-            // when restoring failed.
-            if let Some(window) = app.get_webview_window("main") {
-                window.show()?;
-                window.set_focus()?;
-            }
-            // %APPDATA%\dev.paboable.app, the folder Windows keeps per user.
-            let folder = app.path().app_data_dir()?;
-            app.manage(Library::in_folder(&folder));
+            // Everything the app remembers is in one folder: `data` beside the app when
+            // the installer made it, else %APPDATA%\dev.paboable.app (ADR 0019).
+            let profile = app.path().app_data_dir()?;
+            let folder = DataFolder::find(profile.clone());
+            folder.carry_over(&profile);
+            std::fs::create_dir_all(&folder.path)?;
+            let old_webview = app.path().app_local_data_dir()?.join("EBWebView");
+            let (webview, import_local_storage) = data::webview_for_launch(&folder, &old_webview);
+            app.manage(Library::in_folder(&folder.path));
             // Without a history the app still runs; the History tab says so.
-            if let Ok(history) = paboable_storage::history::QueryHistory::open(&folder) {
+            if let Ok(history) = paboable_storage::history::QueryHistory::open(&folder.path) {
                 let _ = app.state::<Arc<AppState>>().history.set(Arc::new(history));
             }
+            app.manage(folder.clone());
+            window::open(app, &folder, webview, import_local_storage)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -127,6 +121,11 @@ pub fn run() {
             commands::edit_preview,
             commands::apply_edits,
             commands::set_mica,
+            commands::read_pages,
+            commands::write_pages,
+            commands::write_prefs,
+            commands::import_local_storage,
+            commands::open_data_folder,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

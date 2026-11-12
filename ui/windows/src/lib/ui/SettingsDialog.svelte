@@ -1,11 +1,12 @@
 <script lang="ts" module>
   import { appWindow } from "../ipc";
+  import { readPref, writePref } from "../store";
 
   export type ThemeChoice = "system" | "light" | "dark";
   /** The accent: black and white, or the orange of ERP Tinh gọn. Only the accent tokens differ. */
   export type StyleChoice = "mono" | "orange";
 
-  /** What Settings keeps, remembered in the WebView's storage across launches. */
+  /** What Settings keeps, remembered in the data folder across launches (docs/decisions/0019-data-folder.md). */
   export interface Settings {
     theme: ThemeChoice;
     style: StyleChoice;
@@ -43,7 +44,6 @@
   /** The row caps on offer; null keeps every row. */
   export const ROW_CAPS: (number | null)[] = [1_000, 10_000, 100_000, 500_000, 1_000_000, null];
 
-  const KEY = "paboable.settings";
   const DEFAULTS: Settings = {
     theme: "system",
     style: "mono",
@@ -56,7 +56,8 @@
 
   export function readSettings(): Settings {
     try {
-      const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Settings>;
+      const kept = readPref("settings");
+      const saved = (typeof kept === "object" && kept !== null ? kept : {}) as Partial<Settings>;
       return {
         theme: saved.theme === "light" || saved.theme === "dark" ? saved.theme : "system",
         style: saved.style === "orange" ? "orange" : "mono",
@@ -75,11 +76,7 @@
   }
 
   export function writeSettings(settings: Settings): void {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(settings));
-    } catch {
-      // Without storage the settings still apply until the app closes.
-    }
+    writePref("settings", settings);
   }
 
   /** Applies the theme: data-theme on <html>, or none to follow the system. */
@@ -137,6 +134,8 @@
   import Segmented from "./Segmented.svelte";
   import Setting from "./Setting.svelte";
   import Spacer from "./Spacer.svelte";
+  import { ipc } from "../ipc";
+  import { dataFolder } from "../store";
 
   interface Props {
     settings: Settings;
@@ -225,6 +224,16 @@
   <Checkbox top bind:checked={draft.followCreatedDatabase}>
     <span>After <span class="pb-mono">CREATE DATABASE</span>, run the rest of the script in the new database</span>
   </Checkbox>
+
+  {#if dataFolder}
+    <h3 class="pb-section-title">Data</h3>
+    <Setting
+      title="Data folder"
+      hint={`${dataFolder.besideApp ? "Beside the app, where it was installed" : "In your Windows profile"}: ${dataFolder.path}. Passwords stay in Windows Credential Manager.`}
+    >
+      <Button variant="secondary" size="sm" icon="folder" onclick={() => void ipc.openDataFolder()}>Open</Button>
+    </Setting>
+  {/if}
 
   {#snippet footer()}
     <Spacer />

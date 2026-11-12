@@ -18,6 +18,7 @@
         "minWidth": 720,
         "minHeight": 480,
         "visible": false,
+        "create": false,
         "decorations": false,
         "transparent": true,
         "dragDropEnabled": false
@@ -30,9 +31,14 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "licenseFile": "installer/terms.txt",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" }
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": {
+        "installMode": "both",
+        "installerHooks": "installer/hooks.nsh"
+      }
     }
   }
 }

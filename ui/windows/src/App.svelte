@@ -6,6 +6,7 @@
     connectionKey,
     fileName,
     readPages,
+    readPagesWithoutConnection,
     readRecentFiles,
     writePages,
     type KeptPage,
@@ -21,7 +22,8 @@
   import FilterRow, { type Condition } from "./lib/grid/FilterRow.svelte";
   import Pager, { PAGE_SIZES } from "./lib/grid/Pager.svelte";
   import RowDetail from "./lib/grid/RowDetail.svelte";
-  import { asCoreError, beforeClose, ipc } from "./lib/ipc";
+  import { appWindow, asCoreError, ipc } from "./lib/ipc";
+  import { flushStore, readPref, writePref } from "./lib/store";
   import HistoryList from "./lib/sidebar/HistoryList.svelte";
   import KeyBrowser from "./lib/sidebar/KeyBrowser.svelte";
   import ObjectTree, { type TreeScope, type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
@@ -118,15 +120,9 @@
     countSql: string;
   }
 
-  const PAGE_SIZE_KEY = "paboable.pageSize";
-
   function readPageSize(): number {
-    try {
-      const value = Number(localStorage.getItem(PAGE_SIZE_KEY));
-      return PAGE_SIZES.includes(value) ? value : 1_000;
-    } catch {
-      return 1_000;
-    }
+    const value = Number(readPref("pageSize"));
+    return PAGE_SIZES.includes(value) ? value : 1_000;
   }
 
   interface ResultSetView {
@@ -280,8 +276,20 @@
   let tree: ObjectTree | undefined = $state();
   let treeRefreshing = $state(false);
 
-  let editorHeight = $state(188);
-  let sidebarWidth = $state(260);
+  /** A size the user dragged, as kept, when it is a number in `min`..`max`. */
+  function keptSize(name: string, min: number, max: number, fallback: number): number {
+    const kept = readPref(name);
+    return typeof kept === "number" && kept >= min && kept <= max ? kept : fallback;
+  }
+  let editorHeight = $state(keptSize("editorHeight", 72, 4000, 188));
+  let sidebarWidth = $state(keptSize("sidebarWidth", 180, 480, 260));
+  // The splitters' sizes are kept as they settle; the first run of each effect keeps nothing.
+  $effect(() => {
+    if (editorHeight !== readPref("editorHeight")) writePref("editorHeight", editorHeight);
+  });
+  $effect(() => {
+    if (sidebarWidth !== readPref("sidebarWidth")) writePref("sidebarWidth", sidebarWidth);
+  });
   let editor: SqlEditor | undefined = $state();
 
   /** The sidebar's folding panes (Objects always shows). */
@@ -530,7 +538,7 @@
    */
   async function restorePages(key: string, carried: Page[] = []) {
     pagesKey = key;
-    const kept = readPages(key);
+    const kept = await readPages(key);
     if ((!kept && carried.length === 0) || !editor) return;
     const view = editor;
     const restored: Page[] = await Promise.all(
@@ -564,15 +572,18 @@
 
   // Files opened and queries written with no connection come back at launch
   // (ADR 0016), once the work area's editor mounts to read them.
-  const keptWithout = readPages(NO_CONNECTION);
+  const keptWithout = readPagesWithoutConnection();
   if (keptWithout?.pages.some((page) => page.file || page.text.trim() !== "")) {
     drafting = true;
     void tick().then(() => restorePages(NO_CONNECTION));
   }
 
-  // The close button and a page that goes away keep the last keystrokes too.
-  beforeClose.add(keepPages);
-  window.addEventListener("pagehide", keepPages);
+  // However the window closes (its button, Alt+F4, the taskbar), the last keystrokes are
+  // kept and everything not on disk yet is written before it goes.
+  void appWindow.onCloseRequested(async () => {
+    keepPages();
+    await flushStore();
+  });
 
   /** Every page's result sets go, and one empty query page stays; the editor keeps its text. */
   function resetPages() {
@@ -1652,11 +1663,7 @@
     const tab = tableTab;
     if (!tab) return;
     pageSize = limit;
-    try {
-      localStorage.setItem(PAGE_SIZE_KEY, String(limit));
-    } catch {
-      // Not remembered, still used.
-    }
+    writePref("pageSize", limit);
     void loadPage({ ...tab, limit, offset: 0 }, false);
   }
 
@@ -1736,22 +1743,10 @@
   }
 
   // --- The tree shows every database, or only the one in use ---
-  const TREE_SCOPE_KEY = "paboable.treeScope";
-  function readTreeScope(): TreeScope {
-    try {
-      return localStorage.getItem(TREE_SCOPE_KEY) === "current" ? "current" : "all";
-    } catch {
-      return "all";
-    }
-  }
-  let treeScope: TreeScope = $state(readTreeScope());
+  let treeScope: TreeScope = $state(readPref("treeScope") === "current" ? "current" : "all");
   function toggleTreeScope() {
     treeScope = treeScope === "all" ? "current" : "all";
-    try {
-      localStorage.setItem(TREE_SCOPE_KEY, treeScope);
-    } catch {
-      // Without storage the choice lasts until the app closes.
-    }
+    writePref("treeScope", treeScope);
   }
 
   // --- The tree menu's actions (docs/decisions/0017-tree-actions.md) ---------
