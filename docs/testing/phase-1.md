@@ -305,6 +305,8 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Gõ tiếng Việt bằng Unikey/EVKey trong editor và ô Filter.
   **Đúng:** bỏ dấu bình thường.
 - [ ] Kéo thanh chia giữa editor và kết quả, giữa sidebar và editor.
+- [ ] Rê chuột lên các nút có tooltip ở: thanh tab trang (Copy SQL, Export của tab bảng), thanh Result (tab Result, Row detail), nút Refresh của sidebar, nút đóng và nút Test của connect form.
+  **Đúng:** tooltip hiện đủ cả khung, không bị cắt thành một đường kẻ đen; tooltip của sidebar được tràn ra ngoài sidebar. Rời chuột thì tooltip tắt ngay.
 
 ---
 
