@@ -22,6 +22,7 @@ use paboable_driver_postgres::PostgresDriver;
 use paboable_driver_redis::RedisDriver;
 use paboable_driver_sqlite::SqliteDriver;
 use tauri::Manager;
+use tauri_plugin_window_state::StateFlags;
 
 use crate::library::Library;
 use crate::state::AppState;
@@ -39,8 +40,24 @@ pub fn run() {
     let state = Arc::new(AppState::new(registry()));
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // The window opens where it was closed, at the same size, maximized if it was.
+        // The state is kept beside the library (%APPDATA%\dev.paboable.app); a
+        // position on a screen no longer there is left to Windows.
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_filename("window-state.json")
+                .with_state_flags(StateFlags::POSITION | StateFlags::SIZE | StateFlags::MAXIMIZED)
+                .build(),
+        )
         .manage(state)
         .setup(|app| {
+            // The window starts hidden so it does not flash at the default place before the
+            // plugin above moves it; the plugin has run by now, and the app shows it even
+            // when restoring failed.
+            if let Some(window) = app.get_webview_window("main") {
+                window.show()?;
+                window.set_focus()?;
+            }
             // %APPDATA%\dev.paboable.app, the folder Windows keeps per user.
             let folder = app.path().app_data_dir()?;
             app.manage(Library::in_folder(&folder));
