@@ -46,8 +46,8 @@ agree that no further consent from you is needed for such a transfer.
 
 ## 6. Why This Is Needed
 
-Kemable is licensed under the GNU Affero General Public License v3 (AGPLv3)
-for the open-source community. The Maintainer also offers premium features
+Kemable is licensed under the GNU Affero General Public License, version 3 only
+(AGPL-3.0-only), for the open-source community. The Maintainer also offers premium features
 under a separate commercial license. This agreement lets the Maintainer:
 
 - Distribute Kemable with premium features under commercial terms

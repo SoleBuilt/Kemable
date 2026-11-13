@@ -20,7 +20,8 @@ Closes #<!-- issue number, or delete this line -->
 
 ## Checks
 
-- [ ] `node scripts/verify.mjs` prints `PASS` (build, `pnpm check`, `cargo fmt`, clippy, tests)
+- [ ] `node scripts/verify.mjs` prints `PASS` (build, `pnpm check`, `cargo fmt`, clippy, tests, dependency licenses)
+- [ ] A new dependency's license is on `deny.toml`'s list, and `ui/windows/THIRD-PARTY-NOTICES.md` is written again after a lock file change <!-- or "no dependency change" -->
 - [ ] A test covers the new or fixed behavior
 - [ ] A test changed on purpose is named here, with why: <!-- or "none" -->
 - [ ] What only a person can check has its steps in `docs/testing/` <!-- or "nothing to check by hand" -->

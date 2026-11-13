@@ -25,7 +25,9 @@ jobs:
               || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA.'))
     steps:
       - name: CLA Assistant
-        uses: contributor-assistant/github-action@v2.6.1
+        # Pinned to the commit, not the tag: this job can write to the repository,
+        # and a tag can be moved to other code.
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
         env:
           # Given to every workflow run by GitHub; nothing to add.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
