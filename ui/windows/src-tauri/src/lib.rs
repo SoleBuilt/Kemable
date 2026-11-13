@@ -58,6 +58,11 @@ pub fn run() {
             if let Ok(history) = kemable_storage::history::QueryHistory::open(&folder.path) {
                 let _ = app.state::<Arc<AppState>>().history.set(Arc::new(history));
             }
+            // The SSH servers trusted here, beside the user's own ~/.ssh/known_hosts (ADR 0024).
+            let _ = app
+                .state::<Arc<AppState>>()
+                .host_keys
+                .set(Arc::new(kemable_tunnel::HostKeys::new(folder.path.join("known_hosts"))));
             app.manage(folder.clone());
             window::open(app, &folder)?;
             Ok(())
@@ -87,6 +92,7 @@ pub fn run() {
             commands::write_text_file,
             commands::file_stamps,
             commands::list_sql_folder,
+            commands::trust_ssh_host,
             commands::list_profiles,
             commands::save_profile,
             commands::delete_profile,

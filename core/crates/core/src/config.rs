@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -84,6 +85,67 @@ pub struct ConnectionConfig {
     /// Engine-specific settings, such as `application_name` or `sslrootcert`.
     #[serde(default)]
     pub options: BTreeMap<String, String>,
+    /// Reach a network target through this SSH server
+    /// (`docs/decisions/0024-ssh-tunnels.md`). The app opens the tunnel and
+    /// sets [`Self::dial`]; a driver never opens one itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<SshTunnel>,
+    /// Where a driver opens its TCP link instead of the target's host and
+    /// port: an SSH tunnel's local end. The host still names the server
+    /// (TLS, SNI, a login that carries it). Set by the app, never kept or sent.
+    #[serde(skip)]
+    pub dial: Option<SocketAddr>,
+}
+
+/// An SSH server a connection goes through: the database's host and port
+/// are then as that server sees them (often `localhost`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshTunnel {
+    pub host: String,
+    /// 22 when not given.
+    pub port: Option<u16>,
+    pub user: String,
+    pub auth: SshAuth,
+}
+
+impl SshTunnel {
+    pub const DEFAULT_PORT: u16 = 22;
+
+    pub fn port(&self) -> u16 {
+        self.port.unwrap_or(Self::DEFAULT_PORT)
+    }
+
+    /// The password or the key's passphrase: what the vault keeps.
+    pub fn secret(&self) -> &Secret {
+        match &self.auth {
+            SshAuth::Password { password } => password,
+            SshAuth::Key { passphrase, .. } => passphrase,
+        }
+    }
+
+    pub fn set_secret(&mut self, secret: Secret) {
+        match &mut self.auth {
+            SshAuth::Password { password } => *password = secret,
+            SshAuth::Key { passphrase, .. } => *passphrase = secret,
+        }
+    }
+}
+
+/// How the SSH login is proven.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SshAuth {
+    Password {
+        #[serde(default)]
+        password: Secret,
+    },
+    /// A private key file in OpenSSH or PEM form, its passphrase empty when it has none.
+    Key {
+        path: PathBuf,
+        #[serde(default)]
+        passphrase: Secret,
+    },
 }
 
 #[cfg(test)]

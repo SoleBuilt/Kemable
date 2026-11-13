@@ -686,6 +686,8 @@ async fn a_file_target_is_refused_before_connecting() {
             read_only: false,
         },
         options: BTreeMap::new(),
+        ssh: None,
+        dial: None,
     };
     let error = PostgresDriver
         .connect(&config, CallOptions::default())
@@ -708,6 +710,8 @@ async fn a_closed_port_fails_to_connect() {
             tls: TlsMode::Disable,
         },
         options: BTreeMap::new(),
+        ssh: None,
+        dial: None,
     };
     let error = PostgresDriver
         .connect(&config, CallOptions::default())

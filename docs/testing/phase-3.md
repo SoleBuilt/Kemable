@@ -217,6 +217,69 @@ Thử trên bản release (`pnpm tauri build` rồi chạy app đã cài, hoặc
 
 ---
 
+## 6. SSH tunnel (thêm 2026-11-14, ADR 0024)
+
+Kết nối tới database qua một SSH server (bastion), giống `ssh -L`. Cần một máy Linux có SSH (VPS, WSL, hoặc Docker) mà từ đó tới được database.
+
+**Chuẩn bị nhanh bằng Docker** (nếu không có sẵn server): chạy một PostgreSQL và một SSH server cùng mạng:
+```
+docker network create kemable-ssh
+docker run -d --name pg --network kemable-ssh -e POSTGRES_PASSWORD=pw postgres:17
+docker run -d --name bastion --network kemable-ssh -p 2222:2222 -e USER_NAME=me -e USER_PASSWORD=pw -e PASSWORD_ACCESS=true -e DOCKER_MODS=linuxserver/mods:openssh-server-ssh-tunnel linuxserver/openssh-server
+```
+Khi đó: SSH host `localhost`, port `2222`, user `me`, password `pw`; database host (như bastion thấy) là `pg`, port `5432`, user `postgres`, password `pw`.
+
+### 6.1 Kết nối lần đầu, tin key của server
+- [ ] **Ctrl+N**, chọn PostgreSQL. Host `pg`, Port `5432`, User `postgres`, Password `pw`. Tick **Connect through an SSH tunnel**: SSH host `localhost`, SSH port `2222`, SSH user `me`, **SSH sign-in** chọn **Password**, SSH password `pw`.
+  **Đúng:** form hiện thêm các ô SSH và dòng giải thích host/port ở trên là của database "as the SSH server sees them".
+- [ ] Bấm **Test**.
+  **Đúng:** dải vàng "localhost is not a known SSH server" kèm fingerprint dạng `ED25519 SHA256:...` và nút **Trust this key**. Chưa kết nối.
+- [ ] (Nếu có) so fingerprint với `ssh-keygen -lf` trên server, rồi bấm **Trust this key**.
+  **Đúng:** tự Test lại và ra dải xanh **Connected through SSH** kèm phiên bản PostgreSQL. File `known_hosts` có trong thư mục dữ liệu (`target\debug\data\known_hosts` khi chạy dev), có dòng `[localhost]:2222 ssh-ed25519 ...`.
+- [ ] Bấm Test lần nữa.
+  **Đúng:** không hỏi lại key; ra Connected ngay.
+- [ ] Mở ô **Database** (combobox).
+  **Đúng:** danh sách database đọc qua tunnel (`postgres`, …).
+- [ ] Bấm **Connect** (để Save this connection).
+  **Đúng:** kết nối mở, sidebar có cây database, chạy `select inet_server_addr(), version();` được (địa chỉ là IP của container `pg`, không phải máy bạn).
+
+### 6.2 Dùng như kết nối thường
+- [ ] Mở vài bảng, chạy query dài rồi **Stop** (`select pg_sleep(30);` rồi Stop).
+  **Đúng:** Stop dừng được (cancel request cũng đi qua tunnel).
+- [ ] Đổi database ở toolbar sang database khác.
+  **Đúng:** đổi được, mỗi database một session qua cùng tunnel.
+- [ ] Mở tab Live (Ctrl+Alt+L), nghe `orders`; ở tab query chạy `NOTIFY orders, 'qua ssh';`.
+  **Đúng:** tab Live nhận được sự kiện.
+- [ ] Đóng kết nối, mở lại từ Ctrl+K.
+  **Đúng:** mở được không hỏi mật khẩu SSH (đã giữ trong Credential Manager, mục `connection/<id>/ssh.Kemable`). Mở **Credential Manager** của Windows thấy mục đó; `connections.json` trong thư mục dữ liệu **không** có chữ `pw` của SSH.
+
+### 6.3 Lỗi
+- [ ] Sửa kết nối, đổi SSH password thành sai, bấm Test.
+  **Đúng:** lỗi "The SSH server refused the login".
+- [ ] Đổi SSH port thành `2223` (không có gì), Test.
+  **Đúng:** lỗi "Could not reach the SSH server".
+- [ ] SSH đúng, nhưng host database thành `khong-co` (bastion không tới được), Test.
+  **Đúng:** lỗi "The SSH server would not reach the database" kèm `khong-co:5432`.
+- [ ] Xoá container bastion rồi tạo lại (key mới), giữ nguyên dòng cũ trong `known_hosts`, Test.
+  **Đúng:** lỗi đỏ "This SSH server's key has changed", **không** có nút Trust. Xoá dòng `[localhost]:2222` trong file `known_hosts` của Kemable rồi Test: lại hỏi Trust như lần đầu.
+- [ ] Với kết nối đã lưu, khi server đổi key (như trên) rồi xoá dòng cũ, mở kết nối từ Ctrl+K.
+  **Đúng:** dải vàng trên cửa sổ "… is not a known SSH server" kèm fingerprint và nút **Trust this key and connect**; bấm thì mở được.
+
+### 6.4 Private key
+- [ ] Trên máy bạn tạo key `ssh-keygen -t ed25519 -f %USERPROFILE%\.ssh\kemable_test` (có hoặc không passphrase), đưa public key vào `~/.ssh/authorized_keys` của user `me` trên bastion.
+- [ ] Sửa kết nối: **SSH sign-in** chọn **Private key**, bấm **Browse…** chọn file `kemable_test` (không phải `.pub`), nhập passphrase nếu có. Test.
+  **Đúng:** Connected through SSH.
+- [ ] Để trống passphrase của một key có passphrase (kết nối mới, chưa lưu), Test.
+  **Đúng:** lỗi "The SSH server refused the login", chi tiết "the key needs its passphrase".
+- [ ] Chọn một file không tồn tại, Test.
+  **Đúng:** lỗi "The connection settings are not valid", chi tiết "cannot read the key …".
+
+### 6.5 SQL Server và Redis
+- [ ] SQL Server qua SSH: Host là tên/IP SQL Server như bastion thấy, **phải có Port** (1433), không dùng `host\INSTANCE`.
+  **Đúng:** kết nối, chạy query, Stop đều được.
+- [ ] Redis qua SSH (host `redis`, port 6379 như bastion thấy).
+  **Đúng:** cây key hiện, mở key được, tab Live pub/sub nhận tin.
+
 ## Test tự động chạy trên server thật
 
 Hai test của phần nghe cần server thật (thay mật khẩu):

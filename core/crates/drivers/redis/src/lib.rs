@@ -117,6 +117,7 @@ fn endpoint(config: &ConnectionConfig) -> Result<Endpoint> {
     Ok(Endpoint {
         host: host.trim().to_owned(),
         port: port.unwrap_or(6379),
+        dial: config.dial,
         user: user.clone(),
         password: password.clone(),
         database,

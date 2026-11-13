@@ -28,6 +28,9 @@ pub(crate) type Stream = BufStream<Box<dyn Io>>;
 pub struct Endpoint {
     pub host: String,
     pub port: u16,
+    /// An SSH tunnel's local end, connected to instead of the host and port;
+    /// the host still names the server for TLS (`ConnectionConfig::dial`).
+    pub dial: Option<std::net::SocketAddr>,
     pub user: Option<String>,
     pub password: Secret,
     pub database: u32,
@@ -101,9 +104,11 @@ async fn exchange(stream: &mut Stream, commands: &[Vec<Vec<u8>>]) -> Result<Vec<
 
 /// A new connection, logged in and on the endpoint's database.
 pub(crate) async fn connect(endpoint: &Endpoint) -> Result<Stream, DriverError> {
-    let tcp = TcpStream::connect((endpoint.host.as_str(), endpoint.port))
-        .await
-        .map_err(|error| DriverError::new(ErrorCode::Connect, error.to_string()))?;
+    let tcp = match endpoint.dial {
+        Some(dial) => TcpStream::connect(dial).await,
+        None => TcpStream::connect((endpoint.host.as_str(), endpoint.port)).await,
+    }
+    .map_err(|error| DriverError::new(ErrorCode::Connect, error.to_string()))?;
     let _ = tcp.set_nodelay(true);
     let io: Box<dyn Io> = match &endpoint.tls {
         None => Box::new(tcp),

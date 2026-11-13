@@ -818,7 +818,26 @@
     askPassword = null;
     connectDialog = null;
     connectError = await openWith(() => ipc.connectSaved(saved.id, password));
+    // An SSH server not known yet: the strip shows its fingerprint and can trust it, then open again.
+    untrusted = connectError?.code === "ssh.host_unknown" && saved.config.ssh ? { saved, password } : null;
     savedKey++;
+  }
+
+  /** A saved connection whose SSH server was not known, to open again once its key is trusted. */
+  let untrusted: { saved: SavedConnection; password: string | null } | null = $state(null);
+
+  async function trustAndOpen() {
+    const target = untrusted;
+    const ssh = target?.saved.config.ssh;
+    if (!target || !ssh) return;
+    untrusted = null;
+    try {
+      await ipc.trustSshHost(ssh.host, ssh.port);
+    } catch (caught) {
+      connectError = asCoreError(caught);
+      return;
+    }
+    await openSaved(target.saved, target.password);
   }
 
   function editSaved(saved: SavedConnection) {
@@ -2314,7 +2333,22 @@
   </TitleBar>
 
   {#if connectError}
-    <InfoBar tone="danger" strip title={errorTitle(connectError)} message={connectError.message} onDismiss={() => (connectError = null)} />
+    {#if untrusted && connectError.code === "ssh.host_unknown"}
+      <InfoBar
+        tone="warning"
+        strip
+        title={`${untrusted.saved.config.ssh?.host ?? "The SSH server"} is not a known SSH server`}
+        message={`Its key is ${connectError.message}. Trust it only if your server's administrator gives the same fingerprint.`}
+        onDismiss={() => {
+          connectError = null;
+          untrusted = null;
+        }}
+      >
+        <Button size="sm" label="Trust this key and connect" onclick={() => void trustAndOpen()} />
+      </InfoBar>
+    {:else}
+      <InfoBar tone="danger" strip title={errorTitle(connectError)} message={connectError.message} onDismiss={() => (connectError = null)} />
+    {/if}
   {/if}
 
   {#if workspace}

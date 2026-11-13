@@ -9,6 +9,7 @@ members = [
     "core/crates/drivers/mssql",
     "core/crates/drivers/redis",
     "core/crates/drivers/d1",
+    "core/crates/tunnel",
     "ui/windows/src-tauri",
 ]
 
@@ -31,6 +32,7 @@ kemable-driver-postgres = { path = "core/crates/drivers/postgres" }
 kemable-driver-mssql = { path = "core/crates/drivers/mssql" }
 kemable-driver-redis = { path = "core/crates/drivers/redis" }
 kemable-driver-d1 = { path = "core/crates/drivers/d1" }
+kemable-tunnel = { path = "core/crates/tunnel" }
 
 async-trait = "0.1"
 fallible-iterator = "0.2"
@@ -44,6 +46,8 @@ tiberius = { version = "0.13", default-features = false, features = ["tds73", "r
 tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime"] }
 tokio-postgres-rustls = { version = "0.14", default-features = false }
 tokio-rustls = { version = "0.26", default-features = false }
+# SSH tunnels: ring for its crypto, as rustls uses, rather than aws-lc-rs.
+russh = { version = "0.65", default-features = false, features = ["ring", "flate2", "rsa"] }
 rusqlite = { version = "0.41", features = ["bundled", "column_decltype"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

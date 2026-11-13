@@ -69,7 +69,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 - [ ] RabbitMQ: queues, exchanges, peek, publish.
 - [ ] Firebase: Firestore collections and documents, Realtime Database.
 - [ ] PGlite through a pglite-socket sidecar.
-- [ ] SSH tunnels.
+- [x] SSH tunnels. Built 2026-11-14 (`docs/decisions/0024-ssh-tunnels.md`): PostgreSQL, SQL Server and Redis through an SSH server, with a password or a private key; the server's key checked against `known_hosts` and an unknown one shown to trust. Not yet: an SSH agent, a jump host.
 - [x] Export and import. Built in the UX backlog as the tree menu's Export, Import and Generate Rows (`docs/decisions/0018-export-import-generate.md`); Transfer To and Copy To stay there.
 
 ## Later

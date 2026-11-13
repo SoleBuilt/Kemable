@@ -42,6 +42,23 @@ pub enum ErrorCode {
     /// A file's bytes are not UTF-8 or UTF-16 text (`text_file`).
     #[serde(rename = "file.not_text")]
     NotText,
+    /// The SSH server of a tunnel could not be reached, or dropped the link
+    /// (`docs/decisions/0024-ssh-tunnels.md`).
+    #[serde(rename = "ssh.connect")]
+    SshConnect,
+    /// The SSH server refused the login, or the key could not be read with its passphrase.
+    #[serde(rename = "ssh.auth")]
+    SshAuth,
+    /// The SSH server's key is in no known hosts file: the user is shown its
+    /// fingerprint (the message) and may trust it.
+    #[serde(rename = "ssh.host_unknown")]
+    SshHostUnknown,
+    /// The SSH server's key differs from the one known for that host.
+    #[serde(rename = "ssh.host_changed")]
+    SshHostChanged,
+    /// The SSH server would not open a link to the database's host and port.
+    #[serde(rename = "ssh.forward")]
+    SshForward,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -64,6 +81,11 @@ impl ErrorCode {
             Self::FilterRaw => "filter.raw",
             Self::FilterInvalid => "filter.invalid",
             Self::NotText => "file.not_text",
+            Self::SshConnect => "ssh.connect",
+            Self::SshAuth => "ssh.auth",
+            Self::SshHostUnknown => "ssh.host_unknown",
+            Self::SshHostChanged => "ssh.host_changed",
+            Self::SshForward => "ssh.forward",
             Self::Internal => "internal",
         }
     }
