@@ -278,6 +278,15 @@ pub async fn file_stamps(paths: Vec<String>) -> CommandResult<Vec<Option<FileSta
         .map_err(|error| DriverError::internal(error.to_string()))
 }
 
+/// The `.sql` files under a folder linked into the sidebar, folders first
+/// (`docs/decisions/0016-sql-files.md`).
+#[tauri::command]
+pub async fn list_sql_folder(path: String) -> CommandResult<crate::folders::SqlFolder> {
+    tauri::async_runtime::spawn_blocking(move || crate::folders::list(Path::new(&path)))
+        .await
+        .map_err(|error| DriverError::internal(error.to_string()))?
+}
+
 /// The credential profiles, by name. Their passwords stay in the vault.
 #[tauri::command]
 pub async fn list_profiles(library: State<'_, Library>) -> CommandResult<Vec<CredentialProfile>> {

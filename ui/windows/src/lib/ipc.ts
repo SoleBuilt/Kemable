@@ -22,6 +22,7 @@ import type {
   TextEncoding,
   TextFile,
   FileStamp,
+  SqlFolder,
   BrowseQuery,
   BrowseStatements,
   ColumnInfo,
@@ -143,6 +144,8 @@ export const ipc = {
   /** Writes a query page's text back in `encoding` with `lineEnding`; resolves to the file's stamp once written. */
   writeTextFile: (path: string, text: string, encoding: TextEncoding, lineEnding: LineEnding) =>
     invoke<FileStamp | null>("write_text_file", { path, text, encoding, lineEnding }),
+  /** The `.sql` files under a folder linked into the sidebar, folders first. */
+  listSqlFolder: (path: string) => invoke<SqlFolder>("list_sql_folder", { path }),
   /** Each file's stamp, null for one that is gone: how a page tells its file changed outside the app. */
   fileStamps: (paths: string[]) => invoke<(FileStamp | null)[]>("file_stamps", { paths }),
 

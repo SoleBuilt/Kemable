@@ -6,6 +6,7 @@ mod catalog;
 mod commands;
 mod data;
 mod export;
+mod folders;
 mod jobs;
 mod library;
 mod live;
@@ -85,6 +86,7 @@ pub fn run() {
             commands::read_text_file,
             commands::write_text_file,
             commands::file_stamps,
+            commands::list_sql_folder,
             commands::list_profiles,
             commands::save_profile,
             commands::delete_profile,

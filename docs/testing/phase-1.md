@@ -414,6 +414,27 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Ở tab bảng có chỉnh sửa, nhấn **Ctrl+S**.
   **Đúng:** vẫn mở Preview & save như trước (Ctrl+S chỉ lưu file ở tab query).
 
+### 8.2b2 Thư mục `.sql` trong sidebar (thêm 2026-11-14, ADR 0016)
+Chuẩn bị một thư mục, ví dụ `D:\scripts`, có vài file `.sql`, một thư mục con có file `.sql`, một thư mục con chỉ có file `.txt`, và một thư mục `.git` hoặc `node_modules` có file `.sql`.
+- [ ] Mở một connection. Ở sidebar mở pane **SQL files** (dưới Queries).
+  **Đúng:** pane ghi "No folder linked" và có nút **Link folder…**.
+- [ ] Bấm **Link folder…**, chọn `D:\scripts`.
+  **Đúng:** hiện dòng `scripts` với số file; bên dưới là thư mục con trước, rồi các file theo tên. Thư mục chỉ có `.txt`, thư mục `.git` và `node_modules` không hiện.
+- [ ] Bấm thư mục con để mở, bấm một file.
+  **Đúng:** file mở thành tab query mang tên file, dòng của nó trong pane được tô. Bấm lại file đó thì chỉ chuyển sang tab đã mở, không mở tab thứ hai.
+- [ ] Gõ một phần tên file vào ô **Find a file**.
+  **Đúng:** chỉ còn các file có chữ đó, kèm đường dẫn con (ví dụ `reports/sales.sql`).
+- [ ] Tạo một file `.sql` mới trong thư mục bằng Explorer, rồi bấm lại vào cửa sổ Kemable.
+  **Đúng:** file mới hiện trong pane (không cần Refresh). Save As một tab vào thư mục đó cũng làm file hiện ra.
+- [ ] Chuột phải dòng `scripts`: có **Refresh**, **Link another folder…**, **Remove from the sidebar**. Chọn Remove.
+  **Đúng:** thư mục biến mất khỏi pane, status bar ghi file vẫn còn trên đĩa; file trên đĩa không bị đụng tới.
+- [ ] Link lại thư mục, đóng app, mở lại và mở một connection khác.
+  **Đúng:** thư mục vẫn còn trong pane SQL files (dùng chung cho mọi connection).
+- [ ] Ctrl+K, gõ `link`.
+  **Đúng:** có lệnh **Link a folder of .sql files…**.
+- [ ] Link một thư mục rất lớn (ví dụ `C:\Windows`).
+  **Đúng:** app không treo; pane hiện tối đa 5,000 file, kèm dòng "Only the first 5,000 files are listed" khi có nhiều hơn. Sau đó Remove nó.
+
 ### 8.2c Open <table> to edit
 - [ ] Chạy `select * from <bảng> where City = 'Miami'` (đổi tên bảng, cột cho đúng database).
   **Đúng:** thanh kết quả có nút **Open <bảng> to edit**. Bấm: mở tab bảng, hàng Filter mở sẵn với điều kiện `City = Miami`, chỉ các dòng đó hiện ra, sửa được như tab bảng.
