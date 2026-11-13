@@ -57,6 +57,9 @@ pub struct Live {
     /// The database to listen in; `None` for the one the connection opened on.
     pub database: Option<String>,
     pub topics: Vec<LiveTopic>,
+    /// Supabase Realtime's project URL and API key, for tables and broadcasts
+    /// (`docs/decisions/0025-supabase-realtime.md`); `None` listens through the driver.
+    pub realtime: Option<(String, kemable_core::config::Secret)>,
     pub max_events: u64,
     pub cancel: CancellationToken,
     pub channel: Channel<LiveEvent>,
@@ -139,11 +142,13 @@ pub async fn listen(state: Arc<AppState>, live: Live) {
     let reporter = tokio::spawn(report(Arc::clone(&sink)));
     let config = live.server.config_for(live.database.as_deref());
     let shared: Arc<dyn ResultSink> = sink.clone();
-    let outcome = live
-        .server
-        .driver
-        .listen(&config, &live.topics, shared, CallOptions::new(live.cancel.clone()))
-        .await;
+    let options = CallOptions::new(live.cancel.clone());
+    let outcome = match &live.realtime {
+        Some((url, key)) => {
+            kemable_driver_postgres::realtime::listen(url, key, &live.topics, shared.as_ref(), &options).await
+        }
+        None => live.server.driver.listen(&config, &live.topics, shared, options).await,
+    };
     reporter.abort();
     state.remove_run(live.id);
     if let Some(store) = sink.store() {

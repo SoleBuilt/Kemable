@@ -280,6 +280,36 @@ Khi đó: SSH host `localhost`, port `2222`, user `me`, password `pw`; database 
 - [ ] Redis qua SSH (host `redis`, port 6379 như bastion thấy).
   **Đúng:** cây key hiện, mở key được, tab Live pub/sub nhận tin.
 
+## 7. Tab Live với Supabase Realtime (thêm 2026-11-14, ADR 0025)
+
+Cần một project Supabase. Trong Supabase Dashboard › Project Settings › API lấy **Project URL** và **anon key** (hoặc service_role key nếu bảng có RLS chặn đọc). Bảng muốn nghe phải bật Realtime: Database › Publications › `supabase_realtime`, hoặc chạy `alter publication supabase_realtime add table public.orders;`.
+
+### 7.1 Mở và nghe thay đổi của bảng
+- [ ] Kết nối tới project (host `db.<ref>.supabase.co`, hoặc pooler `aws-0-....pooler.supabase.com` với user `postgres.<ref>`), mở tab Live (**Ctrl+Alt+L**).
+  **Đúng:** thanh trên có nút chọn **LISTEN | Realtime**. Kết nối PostgreSQL thường (localhost) thì **không** có nút này.
+- [ ] Chọn **Realtime**.
+  **Đúng:** hiện 3 ô **Tables**, **Broadcast**, **API key**; dòng gợi ý nói bảng phải nằm trong publication `supabase_realtime`.
+- [ ] Gõ `public.orders` vào Tables, dán anon key vào API key, nhấn **Enter**.
+  **Đúng:** status bar ghi Listening; grid có cột `received`, `channel`, `event`, `committed`, `record`, `old_record`; ô API key được xoá trắng (key đã giữ trong Credential Manager, mục `realtime/<ref>.supabase.co/key.Kemable`).
+- [ ] Ở tab query chạy `insert into public.orders(...) values (...);`, rồi `update ...`, rồi `delete ...` một dòng.
+  **Đúng:** tab Live có 3 dòng: `public.orders`, event `INSERT` / `UPDATE` / `DELETE`; `record` là JSON của dòng mới; `old_record` có khoá chính (đầy đủ cột nếu bảng có `REPLICA IDENTITY FULL`, NULL nếu server không gửi).
+- [ ] Stop rồi Listen lại, để trống ô API key.
+  **Đúng:** vẫn nghe được (dùng key đã giữ).
+
+### 7.2 Broadcast và nhiều bảng
+- [ ] Tables `public.*`, Broadcast `room1`, Listen. Từ Supabase Dashboard › Realtime › Inspector gửi một broadcast vào `room1` (event `cursor`, payload `{"x":1}`).
+  **Đúng:** dòng `room1`, event `cursor`, `record` là `{"x":1}`, `committed` NULL. Thay đổi ở mọi bảng của schema `public` (trong publication) đều tới.
+
+### 7.3 Lỗi
+- [ ] Gõ một bảng không có trong publication (ví dụ `public.khong_co`), Listen.
+  **Đúng:** lỗi đỏ "The query failed" kèm lý do của server (không subscribe được); không bắt đầu nghe.
+- [ ] Xoá key đã giữ (Credential Manager), Listen với ô API key trống.
+  **Đúng:** lỗi "The connection settings are not valid", chi tiết "Realtime needs the project's API key".
+- [ ] Nhập API key sai, Listen.
+  **Đúng:** lỗi "Access denied" (key bị từ chối) hoặc lỗi của server về key.
+- [ ] Đang nghe thì tắt Wi-Fi khoảng 1 phút.
+  **Đúng:** trong khoảng 25–50 giây tab Live dừng với lỗi "The connection was lost"; các dòng đã nhận vẫn còn.
+
 ## Test tự động chạy trên server thật
 
 Hai test của phần nghe cần server thật (thay mật khẩu):

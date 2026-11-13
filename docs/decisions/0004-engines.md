@@ -27,7 +27,7 @@ The Live tab, one kind of tab for every engine that pushes changes (`docs/decisi
 
 | Engine | Live source |
 |---|---|
-| PostgreSQL, Neon, Supabase | Done: `LISTEN` / `NOTIFY` on a session of its own, not through a pooler in transaction mode. To build: Supabase Realtime over its WebSocket |
+| PostgreSQL, Neon, Supabase | Done: `LISTEN` / `NOTIFY` on a session of its own, not through a pooler in transaction mode. Supabase also through Realtime over its WebSocket: tables' changes and broadcast channels (`docs/decisions/0025-supabase-realtime.md`) |
 | Redis | Done: `SUBSCRIBE`, `PSUBSCRIBE`, keyspace notifications as the channels they are, with a `PING` every 30 s |
 | RabbitMQ | a consumer on a queue, or on a temporary queue bound to an exchange |
 | Firebase | the Realtime Database's server-sent events; Firestore listens over gRPC, which is added only if its size is worth it |

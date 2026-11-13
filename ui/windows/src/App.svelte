@@ -2520,6 +2520,7 @@
               session={liveSession}
               engine={connection.engine}
               {database}
+              realtimeUrl={connection.realtimeUrl}
               {detailOpen}
               onListen={listenLive}
               onCopy={gridCallbacks.copy}

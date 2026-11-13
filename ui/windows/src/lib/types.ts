@@ -95,6 +95,8 @@ export interface OpenedConnection {
   /** The database the connection opened on, for an engine with databases. */
   database: string | null;
   title: string;
+  /** A Supabase project's URL: its Live tab can listen to Realtime too. */
+  realtimeUrl: string | null;
 }
 
 /** Rows from the first, in the order the grid shows them. */

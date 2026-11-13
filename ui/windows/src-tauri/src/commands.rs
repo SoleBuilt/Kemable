@@ -54,6 +54,9 @@ pub struct OpenedConnection {
     pub(crate) saved_id: Option<String>,
     /// The database the connection opened on, for an engine with databases.
     database: Option<String>,
+    /// A Supabase project's URL, read from the host: its Live tab can listen
+    /// to Realtime too (`docs/decisions/0025-supabase-realtime.md`).
+    realtime_url: Option<String>,
 }
 
 #[tauri::command]
@@ -162,6 +165,7 @@ async fn open_server(
         title,
         saved_id,
         database: server.engine.has_databases.then(|| server.home.clone()),
+        realtime_url: server.realtime_url(),
     };
     let id = state.add_server(server);
     Ok(OpenedConnection { id, ..opened })
@@ -1232,28 +1236,51 @@ pub async fn delete_query(library: State<'_, Library>, id: String) -> CommandRes
 /// `cancel_run` stops (`docs/decisions/0020-live-tab.md`). `channels` and
 /// `patterns` are what the user typed; the core reads the names in them.
 /// Events arrive on `on_event` until one of type `finished`.
+#[allow(clippy::too_many_arguments)] // Each is one field of the Live page's request.
 #[tauri::command]
 pub async fn start_live(
     state: State<'_, Arc<AppState>>,
+    library: State<'_, Library>,
     conn: u64,
     database: Option<String>,
     channels: String,
     patterns: String,
+    realtime: Option<RealtimeTopics>,
     on_event: Channel<crate::live::LiveEvent>,
 ) -> CommandResult<u64> {
     let server = state.server(conn)?;
-    let topics = kemable_core::live::topics(&channels, &patterns);
-    if topics.is_empty() {
-        return Err(DriverError::config("no channel or pattern to listen to"));
-    }
-    if topics
-        .iter()
-        .any(|topic| !server.engine.live_topics.contains(&topic.kind))
-    {
-        return Err(DriverError::unsupported(
-            "this engine does not listen to that kind of topic",
-        ));
-    }
+    let RealtimeTopics {
+        tables,
+        broadcasts,
+        api_key,
+    } = realtime.unwrap_or_default();
+    let realtime = !tables.trim().is_empty() || !broadcasts.trim().is_empty();
+    let (topics, realtime) = if realtime {
+        // Supabase Realtime: a socket of its own, not a session (ADR 0025).
+        let url = server
+            .realtime_url()
+            .ok_or_else(|| DriverError::unsupported("Realtime is a Supabase project's"))?;
+        let key = realtime_key(&library, &url, api_key)?;
+        let topics = kemable_core::live::topics_of(&[
+            (kemable_core::live::LiveTopicKind::Table, &tables),
+            (kemable_core::live::LiveTopicKind::Broadcast, &broadcasts),
+        ]);
+        (topics, Some((url, key)))
+    } else {
+        let topics = kemable_core::live::topics(&channels, &patterns);
+        if topics.is_empty() {
+            return Err(DriverError::config("no channel or pattern to listen to"));
+        }
+        if topics
+            .iter()
+            .any(|topic| !server.engine.live_topics.contains(&topic.kind))
+        {
+            return Err(DriverError::unsupported(
+                "this engine does not listen to that kind of topic",
+            ));
+        }
+        (topics, None)
+    };
     let cancel = server.closing.child_token();
     let id = state.add_run(cancel.clone());
     let live = crate::live::Live {
@@ -1261,12 +1288,41 @@ pub async fn start_live(
         server,
         database,
         topics,
+        realtime,
         max_events: crate::live::MAX_EVENTS,
         cancel,
         channel: on_event,
     };
     tauri::async_runtime::spawn(crate::live::listen(Arc::clone(&state), live));
     Ok(id)
+}
+
+/// What a Live tab of a Supabase project listens to through Realtime, as typed.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealtimeTopics {
+    #[serde(default)]
+    tables: String,
+    #[serde(default)]
+    broadcasts: String,
+    /// Typed now; none uses the one kept for the project.
+    api_key: Option<String>,
+}
+
+/// The API key Realtime signs in with: the one typed, which is then kept in
+/// Windows Credential Manager for the project, or the one kept.
+fn realtime_key(library: &Library, url: &str, typed: Option<String>) -> CommandResult<Secret> {
+    let name = format!("realtime/{}/key", url.trim_start_matches("https://"));
+    library.with(|_, vault| match typed.filter(|key| !key.trim().is_empty()) {
+        Some(key) => {
+            let key = Secret::new(key.trim());
+            vault.set(&name, &key)?;
+            Ok(key)
+        }
+        None => vault
+            .get(&name)?
+            .ok_or_else(|| DriverError::config("Realtime needs the project's API key")),
+    })
 }
 
 #[tauri::command]
