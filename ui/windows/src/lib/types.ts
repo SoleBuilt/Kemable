@@ -306,6 +306,12 @@ export type LineEnding = "crlf" | "lf";
 
 /** A script file's text with `
 ` line endings, and how a save writes it back. */
+/** When a file was last written (nanoseconds, as text) and its length: compared, never read as a time. */
+export interface FileStamp {
+  modified: string;
+  size: number;
+}
+
 export interface TextFile {
   text: string;
   encoding: TextEncoding;

@@ -18,11 +18,19 @@ Scripts live in files: in git, shared by a team, opened from Explorer. Kemable k
 - **Close.** Closing a page whose text is not saved asks Save, Don't save or Cancel. Closing the window does not ask: the page's text is kept with the pages (ADR 0013), so it comes back unsaved, with its `●`.
 - **Text as the file has it.** The core reads the bytes: UTF-8 with or without a BOM, and UTF-16 (SSMS's older default), and the line endings. A save writes the same encoding and line endings back. A new file is UTF-8 without a BOM, with CRLF.
 - **Across launches.** A bound page keeps its path. Opening the connection again reads the file again; when the kept text differs from the file, the kept text wins and the page shows `●`.
+- **A file changed outside the app** (added 2026-11-14). When the window comes back to the front, and when a file's page is shown, the app reads each bound file's stamp (when it was last written, its length; `file_stamps`), never the files. A file is read only when its stamp moved since the page read or wrote it:
+  - the same text the page last saw, or the page's own text: nothing is said;
+  - a page with nothing unsaved takes the new text at once, as one change the editor's undo keeps, and the status bar says Reloaded;
+  - a page with unsaved text keeps it and shows, over the editor, "<file> changed outside Kemable" with **Reload from disk** (drop the page's text for the file's) and **Keep my changes** (the page stays unsaved against the file as it is now, and Ctrl+S writes over it);
+  - a file deleted or moved: the page keeps its text, unsaved, and says the file is no longer on disk, with **Save** (write it again) and **Dismiss**.
+  
+  Ctrl+S never writes over a version the page has not seen: it looks at the stamp first, and when the file changed it shows the notice instead of saving.
 
 ## Consequences
 
 - Built 2026-11-11: `kemable_core::text_file` decodes and encodes (tested with BOMs, UTF-16 and mixed line endings; bytes that are not text are refused with `file.not_text`, never guessed); the Windows app's `read_text_file` and `write_text_file` read and write (64 MB at most, a save through a temporary file and a rename), and the dialog plugin's `save` asks for a path (`dialog:allow-save`). In `App.svelte` a page's `file` holds the path, the encoding, the line endings and the text last saved; the tab's `●` compares the editor's text with it.
-- Backlog (not decided further): a notice when a file changes outside the app (Reload from disk, or keep my changes), and linking a folder of `.sql` files into the sidebar.
+- A file changed outside the app, built 2026-11-14: `write_text_file` resolves to the file's stamp once written; the stamps are nanoseconds and a length, compared, never read as a time, so a touch with the same text says nothing. No file watcher runs: a change is seen when the window or the page is shown again, which is when the person can act on it, and nothing runs while the app is in the background.
+- Backlog (not decided further): linking a folder of `.sql` files into the sidebar.
 
 ## Alternatives considered
 

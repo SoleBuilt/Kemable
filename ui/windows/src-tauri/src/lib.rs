@@ -84,6 +84,7 @@ pub fn run() {
             commands::run_statements,
             commands::read_text_file,
             commands::write_text_file,
+            commands::file_stamps,
             commands::list_profiles,
             commands::save_profile,
             commands::delete_profile,

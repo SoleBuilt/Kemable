@@ -395,6 +395,18 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** hỏi "Save changes to <tên>?" với **Save**, **Don't save**, **Cancel**; Cancel giữ tab, Don't save đóng mất chữ mới, Save lưu rồi đóng.
 - [ ] Gõ thêm (chưa lưu), đóng app bằng nút ×, mở lại app và connection.
   **Đúng:** không bị hỏi khi đóng app; mở lại thì tab file vẫn có chữ chưa lưu và chấm tròn. Nếu không sửa gì mà file bị đổi bằng Notepad, mở lại thấy nội dung mới của file.
+- [ ] **File bị sửa bên ngoài, tab chưa có thay đổi** (thêm 2026-11-14, ADR 0016). Mở một file `.sql` trong Kemable, không gõ gì. Mở chính file đó bằng Notepad, sửa một dòng, lưu, rồi bấm lại vào cửa sổ Kemable.
+  **Đúng:** chữ trong tab đổi thành nội dung mới ngay, status bar ghi "Reloaded <tên file>: it changed outside Kemable", tab không có chấm tròn. **Ctrl+Z** trả lại chữ cũ (tab có chấm).
+- [ ] **File bị sửa bên ngoài, tab đang có thay đổi chưa lưu.** Gõ thêm vào tab (có chấm tròn), rồi sửa file bằng Notepad và lưu, bấm lại vào Kemable.
+  **Đúng:** trên editor hiện dải vàng "<tên file> changed outside Kemable" với **Reload from disk** và **Keep my changes**; chữ trong tab chưa đổi.
+  - Bấm **Reload from disk**: chữ thành nội dung của Notepad, dải biến mất, hết chấm tròn.
+  - Làm lại, lần này bấm **Keep my changes**: chữ giữ nguyên, dải biến mất, vẫn có chấm tròn; **Ctrl+S** lưu đè lên file (mở Notepad lại thấy chữ của Kemable).
+- [ ] **Ctrl+S không ghi đè bản chưa thấy.** Gõ thêm vào tab, sửa file bằng Notepad và lưu, rồi **không bấm ra ngoài**: nhấn Ctrl+S ngay trong Kemable (dùng Alt+Tab về Kemable rồi nhấn Ctrl+S cũng được).
+  **Đúng:** không lưu; status bar ghi "<tên file> changed outside Kemable: reload it or keep your changes, then save" và dải vàng hiện ra.
+- [ ] **File bị xoá hoặc đổi tên bên ngoài.** Mở một file trong Kemable, rồi xoá (hoặc đổi tên) nó trong Explorer, bấm lại vào Kemable.
+  **Đúng:** dải vàng "<tên file> is no longer on disk", tab có chấm tròn, chữ vẫn còn. Bấm **Save**: file được tạo lại đúng chỗ cũ, dải và chấm biến mất.
+- [ ] **Hai tab file, tab kia đang ẩn.** Mở hai file `.sql`, xem tab A, sửa file B bằng Notepad và lưu, bấm lại Kemable rồi chuyển sang tab B.
+  **Đúng:** tab B đã có nội dung mới (nếu B không có thay đổi chưa lưu), hoặc hiện dải vàng (nếu có).
 - [ ] Ctrl+K, nhóm **Recent files**.
   **Đúng:** có các file vừa mở hoặc lưu, chọn là mở lại (nếu đã mở thì chuyển sang tab đó).
 - [ ] Mở một file không phải chữ (ví dụ đổi đuôi một file ảnh thành `.sql`).

@@ -217,13 +217,15 @@ pub async fn read_text_file(path: String) -> CommandResult<TextFile> {
 
 /// Writes a query page's text to `path` in `encoding` with `line_ending`,
 /// through a temporary file and a rename, so a failed save leaves the old file.
+/// Resolves to the file's stamp once written, which a later [`file_stamps`]
+/// compares with to tell a change made outside the app.
 #[tauri::command]
 pub async fn write_text_file(
     path: String,
     text: String,
     encoding: TextEncoding,
     line_ending: LineEnding,
-) -> CommandResult<()> {
+) -> CommandResult<Option<FileStamp>> {
     tauri::async_runtime::spawn_blocking(move || {
         let bytes = text_file::encode(&text, encoding, line_ending);
         let target = Path::new(&path);
@@ -232,10 +234,48 @@ pub async fn write_text_file(
         std::fs::rename(&temporary, target).map_err(|error| {
             let _ = std::fs::remove_file(&temporary);
             file_error("cannot replace", &path, error)
-        })
+        })?;
+        Ok(FileStamp::of(target))
     })
     .await
     .map_err(|error| DriverError::internal(error.to_string()))?
+}
+
+/// When a file was last written and how long it is: what tells that it
+/// changed on disk without reading it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileStamp {
+    /// Nanoseconds since the Unix epoch, as text: more than a JavaScript number holds.
+    pub modified: String,
+    pub size: u64,
+}
+
+impl FileStamp {
+    /// `None` when the file is gone or cannot be read.
+    pub fn of(path: &Path) -> Option<Self> {
+        let metadata = std::fs::metadata(path).ok().filter(std::fs::Metadata::is_file)?;
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |since| since.as_nanos());
+        Some(Self {
+            modified: modified.to_string(),
+            size: metadata.len(),
+        })
+    }
+}
+
+/// The stamp of each of `paths`, `None` for one that is gone: a query page
+/// asks for its file's when the window comes back to the front, so a file
+/// changed outside the app is noticed (`docs/decisions/0016-sql-files.md`).
+/// Only metadata is read, never the files.
+#[tauri::command]
+pub async fn file_stamps(paths: Vec<String>) -> CommandResult<Vec<Option<FileStamp>>> {
+    tauri::async_runtime::spawn_blocking(move || paths.iter().map(|path| FileStamp::of(Path::new(path))).collect())
+        .await
+        .map_err(|error| DriverError::internal(error.to_string()))
 }
 
 /// The credential profiles, by name. Their passwords stay in the vault.
@@ -1754,4 +1794,31 @@ fn open_in_browser(url: &str) -> CommandResult<()> {
         .spawn()
         .map(|_| ())
         .map_err(|error| data::io_error("cannot open the browser", error))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_files_stamp_moves_when_it_is_written_and_is_none_once_it_is_gone() {
+        let folder = std::env::temp_dir().join(format!("kemable-stamps-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("script.sql");
+        std::fs::write(&path, "select 1;").unwrap();
+        let first = FileStamp::of(&path).unwrap();
+        assert_eq!(first.size, 9);
+        assert_eq!(
+            FileStamp::of(&path),
+            Some(first.clone()),
+            "reading the stamp changes nothing"
+        );
+        std::fs::write(&path, "select 12;").unwrap();
+        let second = FileStamp::of(&path).unwrap();
+        assert_ne!(second, first, "a write of another length is another stamp");
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(FileStamp::of(&path), None);
+        assert_eq!(FileStamp::of(&folder), None, "a folder is not a file");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
 }
