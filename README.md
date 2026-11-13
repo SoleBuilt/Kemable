@@ -28,6 +28,7 @@ select x, x * 2 as doubled, 'row ' || x as label from c
 ## Kiểm tra trước khi xong một thay đổi
 
 ```bash
+cargo install --locked cargo-deny; cargo install --locked --features cli cargo-about   # một lần: kiểm tra license của thư viện
 node scripts/verify.mjs
 ```
 
@@ -39,3 +40,24 @@ node scripts/verify.mjs
 - `docs/roadmap.md`: lộ trình và danh sách engine
 - `docs/testing/`: danh sách kiểm thử thủ công theo từng phase (`phase-1.md`)
 - `.claude/rules/`, `.claude/skills/`: rule theo đường dẫn và các skill `verify`, `add-driver`, `fix-issue`
+
+## License
+
+```
+Kemable, a fast, light database client.
+Copyright (C) 2026 Huỳnh Trung Đức
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, version 3 of the License only.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+```
+
+Toàn văn license ở `LICENSE` (AGPL-3.0-only). License thương mại, phần nào theo license nào: `LICENSING.md`. Tên và logo: `TRADEMARKS.md`. Thư viện bên thứ ba: `ui/windows/THIRD-PARTY-NOTICES.md`. Ai gửi pull request thì đồng ý với `CLA.md` (`CONTRIBUTING.md`). Kemable được phát triển dưới tổ chức [SoleBuilt](https://github.com/SoleBuilt).

@@ -28,6 +28,8 @@ The last line is `PASS` or `FAIL: <steps>`. Only `PASS` means done. Report the v
 | rust fmt | `cargo fmt --all -- --check` | formatting; fix with `cargo fmt --all` |
 | rust clippy | `cargo clippy --workspace --all-targets --locked -- -D warnings` | the workspace lints, `unwrap` outside tests |
 | rust test | `cargo test --workspace --locked` | behavior |
+| licenses | `cargo deny --log-level error check licenses bans sources` (full run only) | a crate whose license `deny.toml` does not allow, or from an unknown source |
+| notices | `node scripts/licenses.mjs --check` (full run only) | an npm package whose license is not allowed; `ui/windows/THIRD-PARTY-NOTICES.md` out of date after a lock file changed |
 
 ## Reading a failure
 
@@ -36,6 +38,9 @@ The last line is `PASS` or `FAIL: <steps>`. Only `PASS` means done. Report the v
 - **Clippy `unwrap_used`/`expect_used`** outside tests: return the error with `?` or handle the `None`.
 - **A Tauri `generate_context!` error about `frontendDist`**: `ui/windows/dist` is missing; run `node scripts/verify.mjs --ui` first.
 - **svelte-check `state_referenced_locally` or effect warnings**: read `.claude/rules/ui-windows.md`; usually an `$effect` that reads what it writes, or props read outside a closure.
+- **licenses or notices: "no such command"**: run `cargo install --locked cargo-deny; cargo install --locked --features cli cargo-about` once; `scripts/licenses.mjs` names the cargo-about version it needs.
+- **notices out of date**: a lock file changed; run `node scripts/licenses.mjs` and commit `ui/windows/THIRD-PARTY-NOTICES.md`.
+- **A license not allowed**: the dependency cannot ship in the commercial build. Pick another; a new license on the list needs a decision (`docs/decisions/0023-licensing.md`).
 - **A test that hangs**: a missing cancel or deadline. Rerun the one test with `cargo test -p <crate> <name> -- --nocapture`.
 
 ## Beyond the script

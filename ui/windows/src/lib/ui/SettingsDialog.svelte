@@ -147,6 +147,12 @@
 
   // svelte-ignore state_referenced_locally
   let draft: Settings = $state({ ...settings });
+  let version = $state("");
+  // Without it the title is the name alone.
+  void ipc
+    .appVersion()
+    .then((built) => (version = built))
+    .catch(() => {});
   const numberFormat = new Intl.NumberFormat();
 
   // The theme, style and Mica show at once, so the choice can be judged; Cancel puts the old ones back.
@@ -234,6 +240,20 @@
       <Button variant="secondary" size="sm" icon="folder" onclick={() => void ipc.openDataFolder()}>Open</Button>
     </Setting>
   {/if}
+
+  <h3 class="pb-section-title">About</h3>
+  <Setting
+    title={version ? `Kemable ${version}` : "Kemable"}
+    hint="Free software under the GNU Affero General Public License, version 3 only. Copyright (C) 2026 Huỳnh Trung Đức."
+  >
+    <Button variant="secondary" size="sm" onclick={() => void ipc.openAbout("license")}>License</Button>
+  </Setting>
+  <Setting title="Source code" hint="The code this app is built from, on GitHub: yours to read, build, change and share under the license.">
+    <Button variant="secondary" size="sm" onclick={() => void ipc.openAbout("source")}>Open</Button>
+  </Setting>
+  <Setting title="Third-party notices" hint="The libraries and fonts inside Kemable, and their licenses.">
+    <Button variant="secondary" size="sm" icon="file" onclick={() => void ipc.openAbout("notices")}>Open</Button>
+  </Setting>
 
   {#snippet footer()}
     <Spacer />

@@ -1,6 +1,6 @@
 # 0019: One data folder, beside the app where it was installed; an installer that asks where
 
-- **Status**: Accepted; amended by `docs/decisions/0022-rename-to-kemable.md` (identifiers, and the move of the WebView's old storage removed)
+- **Status**: Accepted; amended by `docs/decisions/0022-rename-to-kemable.md` (identifiers, and the move of the WebView's old storage removed) and `docs/decisions/0023-licensing.md` (the terms dialog hidden for now)
 - **Date**: 2026-11-12
 - **Amends**: `docs/decisions/0013-pages-and-tabs.md` (query pages were kept in the WebView's storage). Decided with the user on 2026-11-12.
 

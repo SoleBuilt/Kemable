@@ -2637,7 +2637,12 @@
   <PasswordDialog saved={target} onSubmit={(password) => void openSaved(target, password)} onClose={() => (askPassword = null)} />
 {/if}
 
-<!-- Last, so it covers everything else until it is answered. -->
+<!--
+  Hidden until Kemable has terms and a privacy policy of its own: the links still
+  point at stand-in pages (`open_terms` in commands.rs). To ask again, remove this
+  comment around the block (docs/decisions/0023-licensing.md).
+
+  Last, so it covers everything else until it is answered.
 {#if termsNeeded}
   <TermsDialog
     onAgree={() => {
@@ -2649,3 +2654,4 @@
     onDisagree={() => void appWindow.close()}
   />
 {/if}
+-->

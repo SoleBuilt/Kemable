@@ -476,7 +476,11 @@ Dùng file cài `Kemable_<version>_x64-setup.exe` (`pnpm tauri build`, ở `targ
 - [ ] Mở app, vào Settings.
   **Đúng:** mục **Data** ghi "Beside the app, where it was installed: D:\Apps\Kemable\data…"; bấm **Open** mở đúng thư mục đó trong Explorer, có `connections.json`, `ui.json`, `pages\`, `webview\`.
 - [ ] Mở app lần đầu sau khi cài (hoặc một bản copy, hoặc `pnpm tauri dev` với thư mục dữ liệu mới).
-  **Đúng:** hộp thoại **Terms of Service and Privacy Policy** che cả app: một câu với hai link (bấm mở trình duyệt), nút **Disagree and close** và **Agree and continue**; không có nút X, Esc không đóng. **Disagree and close**: app tắt, mở lại vẫn hỏi. **Agree and continue**: hộp thoại tắt; mở lại không hỏi nữa; `ui.json` có `termsAccepted` và `termsAcceptedAt` (ngày giờ đồng ý).
+  **Đúng:** **không** có hộp thoại **Terms of Service and Privacy Policy** (tạm ẩn cho tới khi Kemable có điều khoản riêng, ADR 0023); vào thẳng màn Welcome.
+- [ ] Settings › **About** (ADR 0023).
+  **Đúng:** dòng đầu ghi `Kemable 0.1.0` (đúng version trong `tauri.conf.json`) và câu về AGPL. **License** mở trang LICENSE trên GitHub; **Source code › Open** mở `github.com/SoleBuilt/Kemable`; **Third-party notices › Open** mở `THIRD-PARTY-NOTICES.md` bằng Notepad, có các mục Rust crates, npm packages, Lucide icons.
+- [ ] Windows Settings › Apps › Installed apps, tìm Kemable.
+  **Đúng:** Publisher ghi **SoleBuilt** (không phải `app`).
 - [ ] Máy đã từng dùng bản cũ (có `%APPDATA%\kemable.app`): mở app lần đầu sau khi cài.
   **Đúng:** connection đã lưu và lịch sử query vẫn còn. Mở lại app lần nữa: vẫn còn.
 - [ ] Gõ vào một tab query, đóng app ngay bằng **Alt+F4** (không chờ), mở lại.

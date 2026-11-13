@@ -1703,13 +1703,52 @@ pub async fn open_terms(which: String) -> CommandResult<()> {
     let url = match which.as_str() {
         "terms" => TERMS_OF_SERVICE,
         "privacy" => PRIVACY_POLICY,
-        _ => {
-            return Err(DriverError::new(
-                kemable_core::ErrorCode::ConfigInvalid,
-                format!("no page named {which}"),
-            ));
-        }
+        _ => return Err(no_page(&which)),
     };
+    open_in_browser(url)
+}
+
+// --- About (docs/decisions/0023-licensing.md) ---------------------------------
+
+/// Where Kemable's source is: whoever has the app can read, build and share
+/// the code it is built from (AGPL-3.0, section 6).
+const SOURCE_CODE: &str = "https://github.com/SoleBuilt/Kemable";
+const LICENSE: &str = "https://github.com/SoleBuilt/Kemable/blob/main/LICENSE";
+/// The libraries and fonts inside the app with their licenses, installed beside
+/// it (`bundle.resources` in tauri.conf.json, written by scripts/licenses.mjs).
+const NOTICES: &str = "THIRD-PARTY-NOTICES.md";
+
+/// Opens the source (`which`: "source") or the license ("license") in the
+/// browser, or the third-party notices ("notices") in Notepad, which every
+/// Windows has and which reads Markdown as the plain text it is.
+#[tauri::command]
+pub async fn open_about(app: tauri::AppHandle, which: String) -> CommandResult<()> {
+    use tauri::Manager;
+    match which.as_str() {
+        "source" => open_in_browser(SOURCE_CODE),
+        "license" => open_in_browser(LICENSE),
+        "notices" => {
+            let notices = app
+                .path()
+                .resource_dir()
+                .map_err(|error| data::io_error("cannot find the notices", error))?
+                .join(NOTICES);
+            std::process::Command::new("notepad")
+                .arg(notices)
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| data::io_error("cannot open the notices", error))
+        }
+        _ => Err(no_page(&which)),
+    }
+}
+
+fn no_page(which: &str) -> DriverError {
+    DriverError::new(kemable_core::ErrorCode::ConfigInvalid, format!("no page named {which}"))
+}
+
+/// Only addresses named in this file reach here: the UI never hands one to the system.
+fn open_in_browser(url: &str) -> CommandResult<()> {
     std::process::Command::new("rundll32")
         .args(["url.dll,FileProtocolHandler", url])
         .spawn()

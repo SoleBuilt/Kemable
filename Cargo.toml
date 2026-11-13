@@ -17,6 +17,10 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
 publish = false
+license = "AGPL-3.0-only"
+authors = ["Huỳnh Trung Đức <huynhtrungduc.growth@gmail.com>"]
+repository = "https://github.com/SoleBuilt/Kemable"
+homepage = "https://github.com/SoleBuilt/Kemable"
 
 [workspace.dependencies]
 kemable-core = { path = "core/crates/core" }

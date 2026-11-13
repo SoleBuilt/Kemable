@@ -1,6 +1,7 @@
 // The one place the UI calls the Rust side. Every command is listed here with
 // its types, so a rename in commands.rs fails `pnpm check` instead of at runtime.
 
+import { getVersion } from "@tauri-apps/api/app";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -310,6 +311,10 @@ export const ipc = {
   openDataFolder: () => invoke<void>("open_data_folder"),
   /** Opens the Terms of Service or the Privacy Policy in the browser. */
   openTerms: (which: "terms" | "privacy") => invoke<void>("open_terms", { which }),
+  /** Opens the source or the license in the browser, or the third-party notices in Notepad. */
+  openAbout: (which: "source" | "license" | "notices") => invoke<void>("open_about", { which }),
+  /** The app's version, as built (tauri.conf.json). */
+  appVersion: () => getVersion(),
 };
 
 

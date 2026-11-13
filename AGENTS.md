@@ -29,6 +29,7 @@ Read the guide of the folder you work in before editing it: `core/AGENTS.md` or 
 - Rust: edition 2024, the workspace lints (no `unwrap` or `expect` outside tests, no `unsafe`), `cargo fmt`. Comments say why, never what.
 - TypeScript: strict, `pnpm check` with no warnings. No `any`.
 - A rename or signature change updates every caller and test in the same change.
+- A dependency has a license `deny.toml` allows, since Kemable is also sold under a commercial license. After a lock file changes, `node scripts/licenses.mjs` writes the notices again (`docs/decisions/0023-licensing.md`).
 - Writing: short sentences, plain words. Repo text is English; talk to the user in their language.
 
 ## Commits

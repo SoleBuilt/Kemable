@@ -1,7 +1,8 @@
 <script lang="ts" module>
   /**
    * Lucide's shapes (24px grid, 1.75 stroke), kept here as path data so no icon
-   * package ships with the app (docs/decisions/0012-design-system.md, D3).
+   * package ships with the app (docs/decisions/0012-design-system.md, D3). Their
+   * license is LUCIDE-LICENSE beside this file, quoted in THIRD-PARTY-NOTICES.md.
    */
   const PATHS = {
     play: ["M6 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 6 4.5z"],

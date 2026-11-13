@@ -2,7 +2,7 @@
 // The check every change passes. The last line is PASS or FAIL.
 // Node, so it runs the same from cmd, PowerShell and bash:
 //
-//   node scripts/verify.mjs          everything
+//   node scripts/verify.mjs          everything, the dependencies' licenses too
 //   node scripts/verify.mjs --rust   only the Rust steps (needs ui/windows/dist from an earlier build)
 //   node scripts/verify.mjs --ui     only the UI steps
 //
@@ -53,6 +53,13 @@ if (runRust) {
     step("rust clippy", "cargo clippy --workspace --all-targets --locked -- -D warnings");
     step("rust test", "cargo test --workspace --locked");
   }
+}
+
+// Both halves' packages, so only a full run (docs/decisions/0023-licensing.md).
+// Needs cargo-deny and cargo-about: cargo install --locked cargo-deny; cargo install --locked --features cli cargo-about
+if (runUi && runRust) {
+  step("licenses", "cargo deny --log-level error check licenses bans sources");
+  step("notices", "node scripts/licenses.mjs --check");
 }
 
 if (failed.length === 0) {
