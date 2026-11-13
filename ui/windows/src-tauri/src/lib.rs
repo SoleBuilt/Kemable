@@ -8,6 +8,7 @@ mod data;
 mod export;
 mod jobs;
 mod library;
+mod live;
 mod run;
 mod state;
 mod window;
@@ -100,6 +101,7 @@ pub fn run() {
             commands::fetch_columns,
             commands::run_query,
             commands::cancel_run,
+            commands::start_live,
             commands::sort_result,
             commands::filter_result,
             commands::result_counts,

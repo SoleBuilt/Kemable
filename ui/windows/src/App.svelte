@@ -18,7 +18,10 @@
   import DataGrid from "./lib/grid/DataGrid.svelte";
   import CellEditor, { type Move } from "./lib/grid/CellEditor.svelte";
   import EditPreview from "./lib/grid/EditPreview.svelte";
-  import { setCompactRows, type Cell, type CellBox, type EditOverlay, type GridCallbacks, type GridSelection, type GridSource, type SortKey } from "./lib/grid/engine";
+  import { nextSortKeys, setCompactRows, type Cell, type CellBox, type EditOverlay, type GridCallbacks, type GridSelection, type GridSource, type SortKey } from "./lib/grid/engine";
+  import LivePage from "./lib/live/LivePage.svelte";
+  import LiveTools from "./lib/live/LiveTools.svelte";
+  import { LiveSession } from "./lib/live/session.svelte";
   import FilterRow, { type Condition } from "./lib/grid/FilterRow.svelte";
   import Pager, { PAGE_SIZES } from "./lib/grid/Pager.svelte";
   import RowDetail from "./lib/grid/RowDetail.svelte";
@@ -200,9 +203,11 @@
 
   interface Page {
     id: number;
-    kind: "query" | "table";
-    /** A query page's number, for its title ("Query 2"). */
+    kind: "query" | "table" | "live";
+    /** A query or Live page's number, for its title ("Query 2", "Live 2"). */
     number: number;
+    /** A Live page's listening, which goes on while another page is shown (docs/decisions/0020-live-tab.md). */
+    live?: LiveSession;
     /** A query page's editor, kept while another page is shown. */
     editor: EditorState | null;
     state: PageState;
@@ -246,6 +251,11 @@
   let drafting = $state(false);
   const currentPage = $derived(pages.find((page) => page.id === activePage));
   const onTablePage = $derived(currentPage?.kind === "table");
+  const onLivePage = $derived(currentPage?.kind === "live");
+  /** The page shown has no editor: what goes to the editor opens a query page first. */
+  const offQuery = $derived(onTablePage || onLivePage);
+  const liveSession = $derived(currentPage?.live ?? null);
+  let livePage: LivePage | undefined = $state();
 
   // --- The connection and the page shown ---------------------------------
 
@@ -456,6 +466,26 @@
     keepPagesSoon();
   }
 
+  /** Ctrl+Alt+L: a Live page, for an engine that pushes changes (docs/decisions/0020-live-tab.md). */
+  function newLivePage() {
+    if (!connection || connection.engine.liveTopics.length === 0) return;
+    if (running) {
+      note("Wait for the run to end, or stop it, before you open a page");
+      return;
+    }
+    const number = Math.max(0, ...pages.filter((page) => page.kind === "live").map((page) => page.number)) + 1;
+    const page: Page = { id: nextPageId++, kind: "live", number, editor: null, state: emptyState(), file: null, live: new LiveSession() };
+    pages = [...keepCurrent(), page];
+    activePage = page.id;
+    unstash(page.state);
+    void tick().then(() => livePage?.focusTopics());
+  }
+
+  /** F5 on a Live page: listens in the database the toolbar shows. */
+  function listenLive() {
+    if (connection && liveSession) void liveSession.start(connection.id, database);
+  }
+
   function releaseState(state: PageState) {
     for (const set of state.sets) void ipc.releaseResult(set.result);
   }
@@ -481,6 +511,7 @@
       return;
     }
     releaseState(state);
+    page.live?.close();
     const index = pages.findIndex((candidate) => candidate.id === id);
     let rest = (shown ? pages : keepCurrent()).filter((candidate) => candidate.id !== id);
     const emptied = !rest.some((candidate) => candidate.kind === "query");
@@ -592,6 +623,7 @@
   /** Every page's result sets go, and one empty query page stays; the editor keeps its text. */
   function resetPages() {
     for (const page of pages) if (page.id !== activePage) releaseState(page.state);
+    for (const page of pages) page.live?.close();
     clearResults();
     const kept = currentPage?.kind === "query" ? currentPage : null;
     pages = [{ id: nextPageId++, kind: "query", number: 1, editor: null, state: emptyState(), file: null }];
@@ -603,11 +635,13 @@
   function pageTitle(page: Page): string {
     if (page.file) return fileName(page.file.path);
     if (page.kind === "query") return `Query ${page.number}`;
+    if (page.kind === "live") return page.number === 1 ? "Live" : `Live ${page.number}`;
     const tab = page.id === activePage ? tableTab : page.state.tableTab;
     return tab?.table.name ?? "Table";
   }
 
   function pageCount(page: Page): string {
+    if (page.live) return page.live.total > 0 ? numberFormat.format(page.live.total) : "";
     const tab = page.id === activePage ? tableTab : page.state.tableTab;
     return typeof tab?.count === "number" ? numberFormat.format(tab.count) : "";
   }
@@ -957,7 +991,7 @@
       return;
     }
     pageRun = overrides.tablePage === true;
-    if (!pageRun && onTablePage) return;
+    if (!pageRun && offQuery) return;
     carriedFilters = pageRun || keyView ? [] : sets.map((set) => (set.filter ? { conditions: set.filter.conditions, matchAny: set.filter.matchAny } : null));
     keyView = null;
     clearResults();
@@ -1020,22 +1054,7 @@
   async function sortBy(column: number, additive: boolean) {
     const set = activeSet;
     if (!set || running || !connection) return;
-    const current = set.sort.find((key) => key.column === column);
-    const next: SortKey | null = !current
-      ? { column, descending: false }
-      : !current.descending
-        ? { column, descending: true }
-        : null;
-    let keys: SortKey[];
-    if (!additive) {
-      keys = next ? [next] : [];
-    } else if (current) {
-      keys = next
-        ? set.sort.map((key) => (key.column === column ? next : key))
-        : set.sort.filter((key) => key.column !== column);
-    } else {
-      keys = [...set.sort, { column, descending: false }];
-    }
+    const keys = nextSortKeys(set.sort, column, additive);
 
     // A table tab sorts the whole table on the server, from its first page.
     if (tableTab) {
@@ -1418,6 +1437,9 @@
   /** Reads a key into the results, up to the row cap unless `unlimited`. */
   async function openKey(name: string, unlimited = false) {
     if (!connection || running) return;
+    // A key shows under an editor: from a Live page, go to a query page first (there always is one).
+    const queryPage = onLivePage ? pages.find((page) => page.kind === "query") : undefined;
+    if (queryPage) switchTo(queryPage.id);
     try {
       const read = await ipc.readKey(connection.id, database, name, unlimited ? null : settings.rowCap);
       clearResults();
@@ -1689,7 +1711,7 @@
   /** Runs a statement from the history in the database it ran in, when it ran here. */
   function runEntry(entry: HistoryEntry) {
     if (!connection || running) return;
-    if (onTablePage) newQueryPage();
+    if (offQuery) newQueryPage();
     const here = entry.connection === connection.title && connection.engine.hasDatabases;
     if (here && entry.database) database = entry.database;
     editor?.insert(entry.statement);
@@ -1698,19 +1720,19 @@
 
   function runSaved(query: SavedQuery) {
     if (!connection || running) return;
-    if (onTablePage) newQueryPage();
+    if (offQuery) newQueryPage();
     editor?.insert(query.sql);
     void startRun({ sql: query.sql, cursor: null, origin: 0 }, false, { record: true });
   }
 
   function insertSql(sql: string) {
-    if (onTablePage) newQueryPage();
+    if (offQuery) newQueryPage();
     editor?.insert(sql);
   }
 
   /** Ctrl+Shift+D: keeps the editor's text, or its selection, as a named query. */
   function saveFromEditor() {
-    if (onTablePage) return;
+    if (offQuery) return;
     const sql = editor?.text().trim() ?? "";
     if (sql === "") {
       note("Nothing to save: the editor is empty");
@@ -1893,6 +1915,19 @@
     ...(connection
       ? [{ id: "new-tab", group: "Start", label: "New query tab", icon: "file" as const, keys: ["Ctrl", "T"], run: newQueryPage }]
       : []),
+    ...(connection && connection.engine.liveTopics.length > 0
+      ? [
+          {
+            id: "new-live",
+            group: "Start",
+            label: "New Live tab",
+            meta: "Listen to channels as events arrive",
+            icon: "radio" as const,
+            keys: ["Ctrl", "Alt", "L"],
+            run: newLivePage,
+          },
+        ]
+      : []),
     { id: "new-connection", group: "Start", label: "New connection…", icon: "plus", keys: ["Ctrl", "N"], run: newConnection },
     { id: "open-file", group: "Start", label: "Open file…", icon: "file", keys: ["Ctrl", "O"], run: () => void openFile() },
     { id: "memory", group: "Start", label: "Open an in-memory database", icon: "database", run: () => void connectTo(":memory:") },
@@ -1982,6 +2017,12 @@
     } else if (ctrl && event.shiftKey && key === "d") {
       event.preventDefault();
       if (!saving) saveFromEditor();
+    } else if (ctrl && event.altKey && key === "l" && workspace) {
+      event.preventDefault();
+      newLivePage();
+    } else if (ctrl && key === "f" && onLivePage) {
+      event.preventDefault();
+      void livePage?.focusFilter();
     } else if (ctrl && key === "f" && (tableTab || (activeSet && !keyValue && !running))) {
       // The editor's own Ctrl+F (search) prevents the default, so it never gets here.
       event.preventDefault();
@@ -1998,7 +2039,10 @@
       detailOpen = !detailOpen;
     } else if (event.key === "F5") {
       event.preventDefault();
-      if (connection && !running && !onTablePage) runFromToolbar("all");
+      // A Live page listens on F5 and stops on Shift+F5; a query page runs its script.
+      if (onLivePage && event.shiftKey) liveSession?.stop();
+      else if (onLivePage) listenLive();
+      else if (connection && !running && !onTablePage) runFromToolbar("all");
     }
   }
 
@@ -2014,10 +2058,12 @@
   }
 
   const workRows = $derived(
-    onTablePage ? "auto auto minmax(0, 1fr)" : ran ? `auto ${editorHeight}px auto minmax(0, 1fr)` : "auto minmax(0, 1fr)",
+    onLivePage ? "auto minmax(0, 1fr)" : onTablePage ? "auto auto minmax(0, 1fr)" : ran ? `auto ${editorHeight}px auto minmax(0, 1fr)` : "auto minmax(0, 1fr)",
   );
   const numberFormat = new Intl.NumberFormat();
   const tableError = $derived(onTablePage ? messages.find((message) => message.kind === "error") : undefined);
+  /** The database the status bar names: where a Live page's listening started, else the one a run uses. */
+  const statusDatabase = $derived(liveSession?.busy ? liveSession.database : database);
   /** A saved connection's colour; none yet (docs/roadmap.md, connection colours), so no stripe shows. */
   const connectionColor: string | null = null;
   /** The saved connection open now, for Edit this connection… */
@@ -2028,8 +2074,8 @@
     return pages.map((page) => ({
       id: page.id,
       title: pageTitle(page),
-      icon: page.kind === "table" ? "table" : "file",
-      count: page.kind === "table" ? pageCount(page) || undefined : undefined,
+      icon: page.kind === "table" ? "table" : page.kind === "live" ? "radio" : "file",
+      count: page.kind === "query" ? undefined : pageCount(page) || undefined,
       dirty: page.file ? pageDirty(page) : undefined,
       tip: page.file?.path,
     }));
@@ -2153,7 +2199,18 @@
         <!-- Pages: tabs on the left, the open page's tools on the right (D15) -->
         <PageTabs tabs={pageTabs} active={activePage} onSelect={switchTo} onClose={closePage} onNew={newQueryPage}>
           {#snippet tools()}
-            {#if onTablePage && tableTab}
+            {#if onLivePage && liveSession}
+              <LiveTools
+                session={liveSession}
+                {detailOpen}
+                onListen={listenLive}
+                onToggleFilters={() => {
+                  if (liveSession?.filtersOpen) liveSession.filtersOpen = false;
+                  else void livePage?.focusFilter();
+                }}
+                onToggleDetail={() => (detailOpen = !detailOpen)}
+              />
+            {:else if onTablePage && tableTab}
               <TableTools
                 editable={tableTab.key.length > 0}
                 {canEdit}
@@ -2187,8 +2244,8 @@
           {/snippet}
         </PageTabs>
 
-        <!-- One editor for every query page; a table page hides it (D17). -->
-        <section class="pb-editor-host" hidden={onTablePage} aria-label="Editor">
+        <!-- One editor for every query page; a table page and a Live page hide it (D17). -->
+        <section class="pb-editor-host" hidden={offQuery} aria-label="Editor">
           <SqlEditor
             bind:this={editor}
             {grammar}
@@ -2199,7 +2256,21 @@
           />
         </section>
 
-        {#if onTablePage}
+        {#if onLivePage && liveSession && connection}
+          <!-- A page's own grid and cursor: made again for each Live page shown. -->
+          {#key liveSession}
+            <LivePage
+              bind:this={livePage}
+              session={liveSession}
+              engine={connection.engine}
+              {database}
+              {detailOpen}
+              onListen={listenLive}
+              onCopy={gridCallbacks.copy}
+              onNote={note}
+            />
+          {/key}
+        {:else if onTablePage}
           <div>
             {#if filtersOpen && tableTab}
               {#key `${tableTab.database}\u0000${tableTab.title}`}
@@ -2347,15 +2418,35 @@
       {:else if elapsedMs !== null}
         <span>{numberFormat.format(elapsedMs)} ms</span>
       {/if}
-      {#if ranCount && !onTablePage}
+      {#if onLivePage && liveSession}
+        {@const live = liveSession}
+        {#if live.status === "listening"}
+          <span class="is-live"><Icon name="radio" size="sm" />Listening</span>
+        {:else if live.status === "starting"}
+          <span class="is-live"><Icon name="loader" size="sm" spin />Starting…</span>
+        {:else if live.status === "stopping"}
+          <span>Stopping…</span>
+        {:else if live.result !== null}
+          <span>Stopped</span>
+        {/if}
+        {#if live.result !== null}
+          <span
+            >{live.filter
+              ? `${numberFormat.format(live.shown)} of ${numberFormat.format(live.total)} events`
+              : `${numberFormat.format(live.total)} ${live.total === 1 ? "event" : "events"}`}</span
+          >
+        {/if}
+        {#if live.sort.length > 0}<span>sorted in Paboable</span>{/if}
+      {/if}
+      {#if ranCount && !offQuery}
         <span class:is-note={ranCount.ran < ranCount.total}>
           {ranCount.ran < ranCount.total
             ? `Ran ${ranCount.ran} of ${ranCount.total} statements`
             : `Ran ${ranCount.ran} ${ranCount.ran === 1 ? "statement" : "statements"}`}
         </span>
       {/if}
-      {#if connection.engine.hasDatabases && database}<span>in {database}</span>{/if}
-      {#if !ran && !onTablePage}<span>No result yet</span>{/if}
+      {#if connection.engine.hasDatabases && statusDatabase}<span>in {statusDatabase}</span>{/if}
+      {#if !ran && !offQuery}<span>No result yet</span>{/if}
       {#if selected && selected.rows.length > 1}
         <span>{numberFormat.format(selectedRows)} rows selected</span>
       {:else if selected && selectedRows * selected.columnCount > 1}

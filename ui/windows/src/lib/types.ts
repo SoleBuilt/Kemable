@@ -31,12 +31,23 @@ export interface EngineInfo {
   targets: TargetKind[];
   defaultPort: number | null;
   sqlGrammar: SqlGrammar | null;
-  live: boolean;
+  /** The kinds of topic a Live tab can listen to; empty for an engine that pushes nothing. */
+  liveTopics: LiveTopicKind[];
   /** The server holds databases the tree lists and a run picks between. */
   hasDatabases: boolean;
   /** The folders a schema's objects fall in, as the engine's own tools show them; the driver decides. */
   treeFolders: TreeFolder[];
 }
+
+/** A channel by its name, or every channel a glob matches (docs/decisions/0020-live-tab.md). */
+export type LiveTopicKind = "channel" | "pattern";
+
+/** What a Live tab reports while it listens; event counts come at most every 50 ms. */
+export type LiveEvent =
+  | { type: "listening"; result: number; columns: ColumnMeta[] }
+  | { type: "events"; total: number; shown: number }
+  | { type: "notice"; text: string }
+  | { type: "finished"; total: number; shown: number; limited: boolean; error: CoreError | null };
 
 /** One folder of the object tree: its words and the kinds of object it holds. */
 export interface TreeFolder {

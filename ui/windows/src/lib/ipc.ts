@@ -33,6 +33,7 @@ import type {
   KeyPage,
   KeyRead,
   KeyScan,
+  LiveEvent,
   ObjectInfo,
   OpenedConnection,
   ResultCounts,
@@ -247,6 +248,19 @@ export const ipc = {
     invoke<SortOutcome>("sort_result", { result, keys }),
 
   cancelRun: (run: number) => invoke<void>("cancel_run", { run }),
+
+  /**
+   * Starts a Live tab listening in `database` and resolves at once to an id
+   * `cancelRun` stops (docs/decisions/0020-live-tab.md). `channels` and
+   * `patterns` are the names as typed; the core reads them. Events arrive on
+   * `onEvent` until one of type `finished`; what was heard is a result set
+   * the grid reads, kept until `releaseResult`.
+   */
+  startLive(conn: number, database: string | null, channels: string, patterns: string, onEvent: (event: LiveEvent) => void) {
+    const channel = new Channel<LiveEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("start_live", { conn, database, channels, patterns, onEvent: channel });
+  },
 
   /** One packed window of display text (lib/grid/window.ts reads it). */
   fetchWindow: (
