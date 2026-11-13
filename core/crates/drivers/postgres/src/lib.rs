@@ -10,6 +10,7 @@ mod connection;
 mod ddl;
 mod decode;
 mod errors;
+mod live;
 mod tls;
 
 use std::sync::Arc;
@@ -19,6 +20,8 @@ use paboable_core::config::ConnectionConfig;
 use paboable_core::connection::Connection;
 use paboable_core::driver::Driver;
 use paboable_core::engine::{DataModel, EngineInfo, TargetKind};
+use paboable_core::live::{LiveTopic, LiveTopicKind};
+use paboable_core::sink::{ExecOutcome, ResultSink};
 use paboable_core::sql::SqlGrammar;
 use paboable_core::{CallOptions, Result};
 
@@ -31,7 +34,7 @@ pub static INFO: EngineInfo = EngineInfo {
     targets: &[TargetKind::Network],
     default_port: Some(5432),
     sql_grammar: Some(SqlGrammar::Postgres),
-    live: true,
+    live_topics: &[LiveTopicKind::Channel],
     has_databases: true,
     tree_folders: paboable_core::engine::SQL_TREE_FOLDERS,
 };
@@ -46,6 +49,16 @@ impl Driver for PostgresDriver {
 
     async fn connect(&self, config: &ConnectionConfig, options: CallOptions) -> Result<Arc<dyn Connection>> {
         Ok(Arc::new(PostgresConnection::connect(config, options).await?))
+    }
+
+    async fn listen(
+        &self,
+        config: &ConnectionConfig,
+        topics: &[LiveTopic],
+        sink: Arc<dyn ResultSink>,
+        options: CallOptions,
+    ) -> Result<ExecOutcome> {
+        live::listen(config, topics, sink.as_ref(), &options).await
     }
 }
 

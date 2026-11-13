@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::catalog::ObjectKind;
+use crate::live::LiveTopicKind;
 use crate::sql::SqlGrammar;
 
 /// How an engine's data is shaped, which decides the tabs a UI opens for it.
@@ -76,8 +77,9 @@ pub struct EngineInfo {
     pub default_port: Option<u16>,
     /// The grammar scripts are split with; `None` for an engine without SQL.
     pub sql_grammar: Option<SqlGrammar>,
-    /// Whether the engine can push changes as they happen (the Live tab).
-    pub live: bool,
+    /// The kinds of topic a Live tab can listen to on this engine
+    /// (`Driver::listen`); empty for an engine that pushes nothing.
+    pub live_topics: &'static [LiveTopicKind],
     /// Whether a server holds several databases a login can list and open.
     /// The UI then shows them at the top of the tree and runs in one of them.
     pub has_databases: bool,

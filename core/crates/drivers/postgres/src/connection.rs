@@ -84,8 +84,15 @@ impl Drop for PostgresConnection {
     }
 }
 
-impl PostgresConnection {
-    pub async fn connect(config: &ConnectionConfig, options: CallOptions) -> Result<Self> {
+/// Where a session goes and how it logs in, read from a connection's config.
+pub(crate) struct SessionSettings {
+    pub(crate) pg: Config,
+    pub(crate) tls: Tls,
+    pub(crate) mode: StatementMode,
+}
+
+impl SessionSettings {
+    pub(crate) fn read(config: &ConnectionConfig, options: &CallOptions) -> Result<Self> {
         let Target::Network {
             host,
             port,
@@ -135,6 +142,17 @@ impl PostgresConnection {
             // Neon reads `endpoint=<id>` here when a client cannot send SNI.
             pg.options(startup);
         }
+        Ok(Self {
+            pg,
+            tls,
+            mode: StatementMode::for_target(host, port, &config.options),
+        })
+    }
+}
+
+impl PostgresConnection {
+    pub async fn connect(config: &ConnectionConfig, options: CallOptions) -> Result<Self> {
+        let SessionSettings { pg, tls, mode } = SessionSettings::read(config, &options)?;
 
         options.check()?;
         let notices = NoticeSlot::default();
@@ -146,7 +164,7 @@ impl PostgresConnection {
             editor,
             catalog,
             tls,
-            mode: StatementMode::for_target(host, port, &config.options),
+            mode,
             version: String::new(),
             database: String::new(),
             notices,

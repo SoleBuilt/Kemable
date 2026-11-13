@@ -63,7 +63,7 @@ pub static INFO: EngineInfo = EngineInfo {
     targets: &[TargetKind::Network],
     default_port: Some(1433),
     sql_grammar: Some(SqlGrammar::SqlServer),
-    live: false,
+    live_topics: &[],
     has_databases: true,
     tree_folders: TREE_FOLDERS,
 };

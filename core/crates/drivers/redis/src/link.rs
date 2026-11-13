@@ -19,10 +19,10 @@ use tokio_rustls::TlsConnector;
 
 use crate::resp::{self, ReadError, Reply};
 
-trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
+pub(crate) trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
 
-type Stream = BufStream<Box<dyn Io>>;
+pub(crate) type Stream = BufStream<Box<dyn Io>>;
 
 /// Where a link goes and how it logs in.
 pub struct Endpoint {
@@ -99,7 +99,8 @@ async fn exchange(stream: &mut Stream, commands: &[Vec<Vec<u8>>]) -> Result<Vec<
     Ok(replies)
 }
 
-async fn connect(endpoint: &Endpoint) -> Result<Stream, DriverError> {
+/// A new connection, logged in and on the endpoint's database.
+pub(crate) async fn connect(endpoint: &Endpoint) -> Result<Stream, DriverError> {
     let tcp = TcpStream::connect((endpoint.host.as_str(), endpoint.port))
         .await
         .map_err(|error| DriverError::new(ErrorCode::Connect, error.to_string()))?;
@@ -142,11 +143,11 @@ async fn connect(endpoint: &Endpoint) -> Result<Stream, DriverError> {
     Ok(stream)
 }
 
-fn lost(error: std::io::Error) -> DriverError {
+pub(crate) fn lost(error: std::io::Error) -> DriverError {
     DriverError::new(ErrorCode::Lost, error.to_string())
 }
 
-fn read_error(error: ReadError) -> DriverError {
+pub(crate) fn read_error(error: ReadError) -> DriverError {
     match error {
         ReadError::Io(error) => lost(error),
         ReadError::Protocol(text) => DriverError::new(ErrorCode::Io, text),

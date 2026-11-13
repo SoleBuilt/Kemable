@@ -6,6 +6,7 @@
 //! `SSCAN`, `LRANGE`, `ZRANGE`, `XRANGE` by 1,000) until the result's row cap.
 
 mod link;
+mod listen;
 mod reply;
 mod resp;
 
@@ -22,6 +23,7 @@ use paboable_core::connection::Connection;
 use paboable_core::driver::Driver;
 use paboable_core::engine::{DataModel, EngineInfo, TargetKind};
 use paboable_core::keys::{KeyDetail, KeyInfo, KeyKind, KeyPage, KeyScan};
+use paboable_core::live::{LiveTopic, LiveTopicKind};
 use paboable_core::sink::{ExecOutcome, ResultSink};
 use paboable_core::value::{Value, ValueKind};
 use paboable_core::{CallOptions, DriverError, ErrorCode, Result};
@@ -38,7 +40,7 @@ pub static INFO: EngineInfo = EngineInfo {
     targets: &[TargetKind::Network],
     default_port: Some(6379),
     sql_grammar: None,
-    live: true,
+    live_topics: &[LiveTopicKind::Channel, LiveTopicKind::Pattern],
     has_databases: true,
     tree_folders: &[],
 };
@@ -71,41 +73,55 @@ impl Driver for RedisDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig, options: CallOptions) -> Result<Arc<dyn Connection>> {
-        let Target::Network {
-            host,
-            port,
-            user,
-            password,
-            database,
-            tls,
-        } = &config.target
-        else {
-            return Err(DriverError::config("Redis is reached over the network"));
-        };
-        if host.trim().is_empty() {
-            return Err(DriverError::config("the host is empty"));
-        }
-        let database = match database.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
-            None => 0,
-            Some(name) => name
-                .parse::<u32>()
-                .map_err(|_| DriverError::config(format!("{name} is not a database number")))?,
-        };
-        let endpoint = Endpoint {
-            host: host.trim().to_owned(),
-            port: port.unwrap_or(6379),
-            user: user.clone(),
-            password: password.clone(),
-            database,
-            tls: tls_config(*tls)?,
-        };
-        let link = Link::open(endpoint, &options).await?;
+        let link = Link::open(endpoint(config)?, &options).await?;
         let version = match link.one(vec![b"INFO".to_vec(), b"server".to_vec()], &options).await? {
             Reply::Bulk(bytes) => info_field(&String::from_utf8_lossy(&bytes), "redis_version"),
             _ => None,
         };
         Ok(Arc::new(RedisConnection { link, version }))
     }
+
+    async fn listen(
+        &self,
+        config: &ConnectionConfig,
+        topics: &[LiveTopic],
+        sink: Arc<dyn ResultSink>,
+        options: CallOptions,
+    ) -> Result<ExecOutcome> {
+        listen::listen(&endpoint(config)?, topics, sink.as_ref(), &options, listen::KEEPALIVE).await
+    }
+}
+
+/// Where a config's link goes and how it logs in.
+fn endpoint(config: &ConnectionConfig) -> Result<Endpoint> {
+    let Target::Network {
+        host,
+        port,
+        user,
+        password,
+        database,
+        tls,
+    } = &config.target
+    else {
+        return Err(DriverError::config("Redis is reached over the network"));
+    };
+    if host.trim().is_empty() {
+        return Err(DriverError::config("the host is empty"));
+    }
+    let database = match database.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
+        None => 0,
+        Some(name) => name
+            .parse::<u32>()
+            .map_err(|_| DriverError::config(format!("{name} is not a database number")))?,
+    };
+    Ok(Endpoint {
+        host: host.trim().to_owned(),
+        port: port.unwrap_or(6379),
+        user: user.clone(),
+        password: password.clone(),
+        database,
+        tls: tls_config(*tls)?,
+    })
 }
 
 /// Redis has no TLS negotiation: a link is plain or TLS from its first byte.
