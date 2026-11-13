@@ -15,7 +15,7 @@
 
 use std::cmp::Ordering;
 
-use paboable_core::value::ValueKind;
+use kemable_core::value::ValueKind;
 
 use crate::store::kind_from_u8;
 

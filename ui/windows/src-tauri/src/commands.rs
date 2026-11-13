@@ -8,27 +8,27 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use paboable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
-use paboable_core::command::split_lines;
-use paboable_core::config::{ConnectionConfig, Secret, Target};
-use paboable_core::engine::{DataModel, EngineInfo};
-use paboable_core::keys::{KeyDetail, KeyPage, KeyScan};
-use paboable_core::registry::DriverRegistry;
-use paboable_core::sink::ResultSink;
-use paboable_core::sql::{
+use kemable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
+use kemable_core::command::split_lines;
+use kemable_core::config::{ConnectionConfig, Secret, Target};
+use kemable_core::engine::{DataModel, EngineInfo};
+use kemable_core::keys::{KeyDetail, KeyPage, KeyScan};
+use kemable_core::registry::DriverRegistry;
+use kemable_core::sink::ResultSink;
+use kemable_core::sql::{
     BrowseQuery, Clause, CompletionItem, Maintenance, NewValue, ObjectAction, ResultFilter, ResultSource, ResultWhere,
     RowEdit, SortColumn, SqlGrammar, action_statements, completion_context, completions, count_statement,
     edit_statement, export_statement, maintenance_tasks, page_statement, readable_name, sorted_statement, split,
     statement_at, view_definition,
 };
-use paboable_core::text_file::{self, LineEnding, TextEncoding, TextFile};
-use paboable_core::value::Value;
-use paboable_core::{CallOptions, DriverError};
-use paboable_storage::SavedConnection;
-use paboable_storage::history::{HistoryEntry, HistoryQuery};
-use paboable_storage::profiles::CredentialProfile;
-use paboable_storage::queries::SavedQuery;
-use paboable_store::{MAX_COPY_CELLS, ResultStore, RowSpan, SortKey, WindowRequest};
+use kemable_core::text_file::{self, LineEnding, TextEncoding, TextFile};
+use kemable_core::value::Value;
+use kemable_core::{CallOptions, DriverError};
+use kemable_storage::SavedConnection;
+use kemable_storage::history::{HistoryEntry, HistoryQuery};
+use kemable_storage::profiles::CredentialProfile;
+use kemable_storage::queries::SavedQuery;
+use kemable_store::{MAX_COPY_CELLS, ResultStore, RowSpan, SortKey, WindowRequest};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::{Channel, Response};
@@ -64,7 +64,7 @@ pub async fn engines(state: State<'_, Arc<AppState>>) -> CommandResult<Vec<Engin
 /// Reads a pasted connection URL into a config the connect form shows.
 #[tauri::command]
 pub async fn parse_connection_url(url: String) -> CommandResult<ConnectionConfig> {
-    paboable_core::connection_url::parse(&url)
+    kemable_core::connection_url::parse(&url)
 }
 
 /// Opens a connection as typed. `profile_id` signs it in with a credential
@@ -192,7 +192,7 @@ pub async fn delete_saved(library: State<'_, Library>, id: String) -> CommandRes
 const MAX_SCRIPT_BYTES: u64 = 64 * 1024 * 1024;
 
 fn file_error(what: &str, path: &str, error: impl std::fmt::Display) -> DriverError {
-    DriverError::new(paboable_core::ErrorCode::Io, format!("{what} {path}: {error}"))
+    DriverError::new(kemable_core::ErrorCode::Io, format!("{what} {path}: {error}"))
 }
 
 /// Reads a `.sql` file for a query page (`docs/decisions/0016-sql-files.md`):
@@ -227,7 +227,7 @@ pub async fn write_text_file(
     tauri::async_runtime::spawn_blocking(move || {
         let bytes = text_file::encode(&text, encoding, line_ending);
         let target = Path::new(&path);
-        let temporary = target.with_extension("paboable-save.tmp");
+        let temporary = target.with_extension("kemable-save.tmp");
         std::fs::write(&temporary, bytes).map_err(|error| file_error("cannot write", &path, error))?;
         std::fs::rename(&temporary, target).map_err(|error| {
             let _ = std::fs::remove_file(&temporary);
@@ -739,7 +739,7 @@ pub async fn list_indexes(
     conn: u64,
     database: Option<String>,
     table: TableRef,
-) -> CommandResult<Vec<paboable_core::catalog::IndexInfo>> {
+) -> CommandResult<Vec<kemable_core::catalog::IndexInfo>> {
     let session = state.server(conn)?.session(database.as_deref()).await?;
     session.list_indexes(&table, metadata_options()).await
 }
@@ -765,7 +765,7 @@ pub async fn export_table(
     conn: u64,
     database: Option<String>,
     query: BrowseQuery,
-    options: paboable_core::export::ExportOptions,
+    options: kemable_core::export::ExportOptions,
     path: String,
     on_event: Channel<crate::jobs::JobEvent>,
 ) -> CommandResult<u64> {
@@ -819,7 +819,7 @@ pub async fn import_plan(
     options: crate::jobs::CsvOptions,
     target: crate::jobs::ImportTarget,
 ) -> CommandResult<crate::jobs::ImportPlan> {
-    use paboable_core::import::{CsvReader, create_statement};
+    use kemable_core::import::{CsvReader, create_statement};
     let server = state.server(conn)?;
     let grammar = grammar_of(&server)?;
     let columns = match &target {
@@ -923,7 +923,7 @@ pub async fn generate_plan(
     let grammar = grammar_of(&server)?;
     let session = server.session(database.as_deref()).await?;
     let columns = session.fetch_columns(&table, metadata_options()).await?;
-    let start = match paboable_core::generate::counted_key(&columns) {
+    let start = match kemable_core::generate::counted_key(&columns) {
         Some(key) => crate::jobs::key_start(&session, grammar, &table, &key.name).await?,
         None => 1,
     };
@@ -992,7 +992,7 @@ pub(crate) fn source_of(state: &AppState, result: u64) -> Option<ResultSource> {
     let origin = state.origin(result)?;
     let grammar = origin.grammar?;
     let statement = origin.part.as_deref().unwrap_or(&origin.statement);
-    paboable_core::sql::result_source(statement, grammar).map(|mut source| {
+    kemable_core::sql::result_source(statement, grammar).map(|mut source| {
         source.database = source.database.or(origin.database);
         source
     })
@@ -1051,7 +1051,7 @@ pub async fn result_counts(state: State<'_, Arc<AppState>>, result: u64) -> Comm
 }
 
 /// A result's filter as a `WHERE` for the connection's engine, to copy;
-/// Paboable never runs it.
+/// Kemable never runs it.
 #[tauri::command]
 pub async fn result_where(
     state: State<'_, Arc<AppState>>,
@@ -1071,7 +1071,7 @@ pub async fn result_where(
         .iter()
         .map(|column| column.name.clone())
         .collect();
-    paboable_core::sql::result_where(grammar, &names, &filters, match_any)
+    kemable_core::sql::result_where(grammar, &names, &filters, match_any)
 }
 
 /// The query history, newest first, filtered by text and connection.
@@ -1136,7 +1136,7 @@ pub async fn start_live(
     on_event: Channel<crate::live::LiveEvent>,
 ) -> CommandResult<u64> {
     let server = state.server(conn)?;
-    let topics = paboable_core::live::topics(&channels, &patterns);
+    let topics = kemable_core::live::topics(&channels, &patterns);
     if topics.is_empty() {
         return Err(DriverError::config("no channel or pattern to listen to"));
     }
@@ -1679,30 +1679,6 @@ pub async fn write_prefs(folder: State<'_, DataFolder>, prefs: serde_json::Value
     .await
 }
 
-/// Moves what an older version kept in the WebView's storage into files, once:
-/// each connection's pages, then the preferences, whose file says the move is done.
-#[tauri::command]
-pub async fn import_local_storage(
-    folder: State<'_, DataFolder>,
-    prefs: serde_json::Value,
-    pages: serde_json::Map<String, serde_json::Value>,
-) -> CommandResult<()> {
-    let folder = folder.inner().clone();
-    in_background(move || {
-        for (key, kept) in pages {
-            if folder.pages(&key).is_none() {
-                folder
-                    .write_pages(&key, kept)
-                    .map_err(|error| data::io_error("cannot keep the pages", error))?;
-            }
-        }
-        folder
-            .write_prefs(&prefs)
-            .map_err(|error| data::io_error("cannot keep the settings", error))
-    })
-    .await
-}
-
 /// Opens the data folder in Explorer.
 #[tauri::command]
 pub async fn open_data_folder(folder: State<'_, DataFolder>) -> CommandResult<()> {
@@ -1716,7 +1692,7 @@ pub async fn open_data_folder(folder: State<'_, DataFolder>) -> CommandResult<()
 // --- The terms (docs/decisions/0019-data-folder.md) ---------------------------
 
 /// Where the terms and the privacy policy are read. For now CapCut's pages stand in,
-/// until Paboable's own site has them.
+/// until Kemable's own site has them.
 const TERMS_OF_SERVICE: &str = "https://www.capcut.com/clause/terms-of-service?store_region=vn&lang=vi";
 const PRIVACY_POLICY: &str = "https://www.capcut.com/clause/privacy-policy?store_region=vn&lang=vi";
 
@@ -1729,7 +1705,7 @@ pub async fn open_terms(which: String) -> CommandResult<()> {
         "privacy" => PRIVACY_POLICY,
         _ => {
             return Err(DriverError::new(
-                paboable_core::ErrorCode::ConfigInvalid,
+                kemable_core::ErrorCode::ConfigInvalid,
                 format!("no page named {which}"),
             ));
         }

@@ -4,7 +4,7 @@
 //! A `.sql` file may be UTF-8, with or without a byte order mark, or UTF-16
 //! (SSMS's older default), with CRLF or LF line endings. The editor works on
 //! text with `\n` line endings; a save writes the encoding and the endings the
-//! file was read with, so a file saved from Paboable differs from the one
+//! file was read with, so a file saved from Kemable differs from the one
 //! opened only where the user typed.
 
 use serde::{Deserialize, Serialize};

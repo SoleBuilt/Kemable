@@ -7,8 +7,8 @@
 //! `pg_get_functiondef`), so the text follows its version's own rules; the
 //! code here only adds the keywords around them and quotes names and comments.
 
-use paboable_core::catalog::ObjectKind;
-use paboable_core::sql::{SqlGrammar, quote_name};
+use kemable_core::catalog::ObjectKind;
+use kemable_core::sql::{SqlGrammar, quote_name};
 
 /// One relation by schema, name and the `relkind`s its `ObjectKind` covers.
 /// An empty schema means the session's current one.

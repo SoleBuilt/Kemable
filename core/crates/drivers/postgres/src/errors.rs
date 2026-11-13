@@ -2,7 +2,7 @@
 
 use std::error::Error as _;
 
-use paboable_core::{DriverError, ErrorCode};
+use kemable_core::{DriverError, ErrorCode};
 use tokio_postgres::error::{DbError, ErrorPosition};
 
 /// What the call was doing when it failed: a failure to reach the server

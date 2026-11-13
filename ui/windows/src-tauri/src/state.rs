@@ -3,13 +3,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use paboable_core::config::{ConnectionConfig, Target};
-use paboable_core::connection::Connection;
-use paboable_core::driver::Driver;
-use paboable_core::engine::EngineInfo;
-use paboable_core::registry::DriverRegistry;
-use paboable_core::{CallOptions, DriverError, Result};
-use paboable_store::ResultStore;
+use kemable_core::config::{ConnectionConfig, Target};
+use kemable_core::connection::Connection;
+use kemable_core::driver::Driver;
+use kemable_core::engine::EngineInfo;
+use kemable_core::registry::DriverRegistry;
+use kemable_core::{CallOptions, DriverError, Result};
+use kemable_store::ResultStore;
 use tokio_util::sync::CancellationToken;
 
 use crate::catalog::CatalogCache;
@@ -22,7 +22,7 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct AppState {
     pub registry: DriverRegistry,
     /// The query history, opened in the app's folder at startup.
-    pub history: std::sync::OnceLock<Arc<paboable_storage::history::QueryHistory>>,
+    pub history: std::sync::OnceLock<Arc<kemable_storage::history::QueryHistory>>,
     ids: AtomicU64,
     servers: Mutex<HashMap<u64, Arc<OpenServer>>>,
     results: Mutex<HashMap<u64, ResultEntry>>,
@@ -40,14 +40,14 @@ type ResultEntry = (Arc<ResultStore>, Option<ResultOrigin>);
 pub struct ResultOrigin {
     pub database: Option<String>,
     /// `None` for a console's command, which only the core sorts.
-    pub grammar: Option<paboable_core::sql::SqlGrammar>,
+    pub grammar: Option<kemable_core::sql::SqlGrammar>,
     pub statement: String,
     /// The run held this one statement and nothing else, so running it again
     /// alone means the same thing.
     pub alone: bool,
     pub row_limit: Option<u64>,
     /// The statement inside a SQL Server batch that made this set
-    /// (`paboable_core::sql::batch_queries`), for "Open <table> to edit".
+    /// (`kemable_core::sql::batch_queries`), for "Open <table> to edit".
     pub part: Option<String>,
 }
 
@@ -129,7 +129,7 @@ impl OpenServer {
     }
 
     /// Closes the app's own session on `database`, so a `DROP DATABASE` is
-    /// not refused because Paboable itself is still connected to it. The home
+    /// not refused because Kemable itself is still connected to it. The home
     /// session stays: the tree and the database list go through it.
     pub async fn close_session(&self, database: &str) {
         if database == self.home {

@@ -1,19 +1,19 @@
 //! The driver against a small RESP2 server in the test (enough of Redis for
 //! login, scans and each kind of key), and against a real Redis when
-//! `$PABOABLE_REDIS_URL` is set.
+//! `$KEMABLE_REDIS_URL` is set.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
-use paboable_core::driver::Driver;
-use paboable_core::keys::{KeyKind, KeyScan};
-use paboable_core::sink::ResultSink;
-use paboable_core::value::Value;
-use paboable_core::{CallOptions, ErrorCode};
-use paboable_store::ResultStore;
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+use kemable_core::driver::Driver;
+use kemable_core::keys::{KeyKind, KeyScan};
+use kemable_core::sink::ResultSink;
+use kemable_core::value::Value;
+use kemable_core::{CallOptions, ErrorCode};
+use kemable_store::ResultStore;
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -564,15 +564,15 @@ fn a_stream_reads_on_from_the_id_after_the_last() {
 }
 
 #[tokio::test]
-#[ignore = "needs Redis at $PABOABLE_REDIS_URL"]
+#[ignore = "needs Redis at $KEMABLE_REDIS_URL"]
 async fn a_real_server_scans_and_reads_every_kind() {
-    let url = std::env::var("PABOABLE_REDIS_URL").expect("PABOABLE_REDIS_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_REDIS_URL").expect("KEMABLE_REDIS_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let connection = RedisDriver
         .connect(&config, options())
         .await
         .expect("the server accepts the login");
-    let prefix = format!("paboable:test:{}:", std::process::id());
+    let prefix = format!("kemable:test:{}:", std::process::id());
     let script = [
         format!("SET {prefix}s \"xin chào\" PX 60000"),
         format!("HSET {prefix}h a 1 b 2"),

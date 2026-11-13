@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use paboable_core::DriverError;
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::format::{hex_preview, write_display};
-use paboable_core::sql::ResultFilter;
-use paboable_core::value::{Value, ValueKind};
+use kemable_core::DriverError;
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::format::{hex_preview, write_display};
+use kemable_core::sql::ResultFilter;
+use kemable_core::value::{Value, ValueKind};
 
 use crate::filter::{RowFilter, Scratch};
 use crate::order::{
@@ -59,7 +59,7 @@ impl CellValue {
     /// The value again, as far as a SQL literal needs it: numbers, booleans
     /// and decimals come back as themselves; kinds the store keeps only as text
     /// (UUIDs, dates, times) come back as that text, which a literal writes the
-    /// same way (`paboable_core::sql::value_literal`).
+    /// same way (`kemable_core::sql::value_literal`).
     pub fn into_value(self) -> Value {
         match self {
             Self::Null => Value::Null,
@@ -418,7 +418,7 @@ impl ResultStore {
     /// sorts them by the sort already set. No filters shows every row again,
     /// still sorted. Rows arriving later are tested as they arrive. Refused
     /// with `filter.raw` or `filter.invalid`, the filter in place unchanged
-    /// (`paboable_core::sql::ResultFilter::check`).
+    /// (`kemable_core::sql::ResultFilter::check`).
     pub fn filter(&self, filters: &[ResultFilter], match_any: bool) -> Result<(), DriverError> {
         let filter = RowFilter::compile(filters, match_any, self.columns.len())?;
         self.arrange(Some(filter.map(Arc::new)), None);

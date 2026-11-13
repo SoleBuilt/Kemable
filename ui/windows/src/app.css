@@ -2,7 +2,7 @@
 @import "./components.css";
 
 /*
- * Tokens of the Paboable design system (docs/decisions/0012-design-system.md).
+ * Tokens of the Kemable design system (docs/decisions/0012-design-system.md).
  * Every component, the canvas grid and the editor read these, so a theme is one
  * block here (.claude/rules/ui-theme.md). Settings sets data-theme on <html>;
  * without it the system's scheme picks light or dark.

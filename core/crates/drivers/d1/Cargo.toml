@@ -1,5 +1,5 @@
 [package]
-name = "paboable-driver-d1"
+name = "kemable-driver-d1"
 description = "Cloudflare D1 through its REST API, over reqwest with rustls."
 version.workspace = true
 edition.workspace = true
@@ -8,7 +8,7 @@ publish.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-paboable-core.workspace = true
+kemable-core.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 rustls-platform-verifier.workspace = true
@@ -16,7 +16,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-paboable-store.workspace = true
+kemable-store.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
 tokio-util.workspace = true
 

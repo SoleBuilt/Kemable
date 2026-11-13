@@ -15,8 +15,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use paboable_core::config::TlsMode;
-use paboable_core::{DriverError, ErrorCode};
+use kemable_core::config::TlsMode;
+use kemable_core::{DriverError, ErrorCode};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
 use rustls::{ClientConfig, DigitallySignedStruct, SignatureScheme};

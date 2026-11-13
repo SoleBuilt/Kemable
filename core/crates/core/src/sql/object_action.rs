@@ -108,7 +108,7 @@ pub fn action_statements(grammar: SqlGrammar, object: &ObjectInfo, action: &Obje
                 (ObjectKind::Function | ObjectKind::TableFunction, SqlGrammar::SqlServer) => "FUNCTION",
                 (ObjectKind::Index, SqlGrammar::Sqlite) => "INDEX",
                 (ObjectKind::Trigger, SqlGrammar::Sqlite) => "TRIGGER",
-                _ => return Err(DriverError::unsupported("Paboable cannot drop this kind of object yet")),
+                _ => return Err(DriverError::unsupported("Kemable cannot drop this kind of object yet")),
             };
             let tail = if *cascade && grammar == SqlGrammar::Postgres {
                 " CASCADE"
@@ -166,7 +166,7 @@ fn rename(grammar: SqlGrammar, object: &ObjectInfo, name: &str, new: &str) -> Re
                 // A routine is named with its argument types, which the tree does not hold.
                 _ => {
                     return Err(DriverError::unsupported(
-                        "Paboable cannot rename this kind of object yet",
+                        "Kemable cannot rename this kind of object yet",
                     ));
                 }
             };
@@ -177,7 +177,7 @@ fn rename(grammar: SqlGrammar, object: &ObjectInfo, name: &str, new: &str) -> Re
         }
         SqlGrammar::SqlServer => {
             if !matches!(object.kind, ObjectKind::Table | ObjectKind::View) {
-                return Err(DriverError::unsupported("Paboable renames tables and views only"));
+                return Err(DriverError::unsupported("Kemable renames tables and views only"));
             }
             // sp_rename takes the new name as it is, not bracketed: brackets would become part of it.
             Ok(vec![format!(
@@ -208,7 +208,7 @@ fn comment(grammar: SqlGrammar, object: &ObjectInfo, name: &str, text: &str) -> 
                 ObjectKind::Sequence => "SEQUENCE",
                 _ => {
                     return Err(DriverError::unsupported(
-                        "Paboable cannot comment on this kind of object yet",
+                        "Kemable cannot comment on this kind of object yet",
                     ));
                 }
             };
@@ -228,7 +228,7 @@ fn comment(grammar: SqlGrammar, object: &ObjectInfo, name: &str, text: &str) -> 
                 ObjectKind::Sequence => "SEQUENCE",
                 _ => {
                     return Err(DriverError::unsupported(
-                        "Paboable cannot comment on this kind of object yet",
+                        "Kemable cannot comment on this kind of object yet",
                     ));
                 }
             };

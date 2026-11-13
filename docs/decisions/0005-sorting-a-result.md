@@ -17,7 +17,7 @@ The two ways to sort, compared (2026-11-09):
 |---|---|---|
 | Rows | The latest: a row inserted since shows up | The ones on screen |
 | A result cut at the cap | Correct over every row | Only the rows loaded |
-| Text order | The database's collation, as a hand-written `ORDER BY` gives | Paboable's rules (below) |
+| Text order | The database's collation, as a hand-written `ORDER BY` gives | Kemable's rules (below) |
 | Cost | The statement's whole cost again, on the server | In memory, in the core |
 | Statements that cannot run again | Impossible: `EXEC`, `INSERT ... RETURNING`, scripts, `SHOW`, `EXPLAIN`, temp tables gone | Always possible |
 
@@ -38,7 +38,7 @@ Paging, filters and the count are in `docs/decisions/0006-table-browsing.md`: th
 
 ### A query result: run again when the column can be named, else sort the rows held
 
-`paboable_core::sql::sorted_statement(statement, grammar, columns, key)` returns the statement to run again, or `None`:
+`kemable_core::sql::sorted_statement(statement, grammar, columns, key)` returns the statement to run again, or `None`:
 
 1. **Only a statement that can run again**: one statement, a plain `SELECT` or `WITH ... SELECT`. Not `SELECT ... INTO`, not a directive, not `EXEC`, `SHOW`, `EXPLAIN`, DML with `RETURNING`/`OUTPUT`, nor anything in a script of several statements. A SQL Server batch needs no `;` between statements, so one holding two `SELECT`s is several statements too (`batch_statement_count`, added 2026-11-11): appending `ORDER BY` to it would sort only its last `SELECT`. Its results are sorted in the core.
 2. **Name the column** when its name is unique among the result's columns (case folded) and its select item is an unqualified column, an alias, or part of a bare `*`.
@@ -51,7 +51,7 @@ When `sorted_statement` gives `None`, the core sorts the rows the result holds: 
 
 ### Order of the rows held
 
-The one ordering for every UI, in the core (`paboable_store::order`, which reads the store's cells directly):
+The one ordering for every UI, in the core (`kemable_store::order`, which reads the store's cells directly):
 
 - NULL first ascending, last descending (descending is the comparison reversed). Equal values keep their arrival order: the sort is stable.
 - **How it sorts** (amended 2026-11-13). One sort column at a time (`RowSort` in `core/crates/store/src/store.rs`; the keys in `order.rs`, Sort keys). Each row's cell in the first sort column is read once into a key, bytes whose plain order is the order here: the cell's class, then the number or the time as eight bytes, or the start of a text with each run of digits written so that it orders by value. The rows are sorted by key alone, which reads no cell: keys of numbers, dates, times and booleans are dealt out by a radix sort, least significant byte first, skipping the bytes every key shares; a text's key is its first 31 bytes, and keys are compared. Rows whose keys are the same form a run, and each run is settled by itself. When the key was the whole cell, the cells are equal, and the run is sorted by the next sort column in the same way, a radix sort again for numbers and times. When they are texts alike past the key's width, the run is keyed again from what follows the start all its texts share, less the digits that start ends in, since a number is compared whole (`item12` and `item123` share `item12`, and are ordered by 12 against 123); texts that are the same throughout go on to the next column. A run of fewer than 32 rows, and what keys cannot say (a column that mixes integers with decimals, bytes, numbers of more digits than a key holds), is settled by a stable sort that compares cells. Equal keys leave each step in the order they came, which keeps the whole sort stable. Measured on 2,000,000 rows (release, `two_million_rows_sort_by_a_number_a_text_and_a_time`), against the sort before it, which compared cells every time, timed in the same run: one column of numbers 0.12 s (1.6 s), of times 0.12 s (3.6 s), of text 0.32 s (10.4 s); a group of 100 values then a number 0.24 to 0.30 s (9.0 s), a group then a text 0.54 to 0.60 s (15.2 s), a text whose first 31 bytes are the same in every row 0.71 to 0.73 s (14.5 s). The cases left to the comparison of cells have not been timed.

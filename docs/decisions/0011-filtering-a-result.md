@@ -17,9 +17,9 @@ There are two places a query result could be filtered:
 | Adding to the statement's own `WHERE` | Needs the statement parsed, and an aggregate or an alias belongs in `HAVING` or an outer query instead | Not needed |
 | Statements that cannot run again (`EXEC`, `INSERT ... RETURNING`, scripts) | Impossible | Always possible |
 | Cost | The statement's whole cost again, for every change to the filter | In memory, in the core |
-| Who owns the SQL | Paboable changes the user's statement | The statement stays exactly as the user wrote it |
+| Who owns the SQL | Kemable changes the user's statement | The statement stays exactly as the user wrote it |
 
-The user's statement is theirs. Paboable does not change it.
+The user's statement is theirs. Kemable does not change it.
 
 ## Decision
 
@@ -55,7 +55,7 @@ The user's statement is theirs. Paboable does not change it.
 
 - The statement stays the user's: no wrapping and no rewriting means no SQL Server refusals, no wrong `HAVING`, no statement that cannot run again.
 - A filter in the core is right for every statement, costs no round trip, and filters the same way in every UI.
-- Showing the `WHERE` gives the server-side filter to anyone who wants it, written correctly for the engine, without Paboable running SQL the user did not write.
+- Showing the `WHERE` gives the server-side filter to anyone who wants it, written correctly for the engine, without Kemable running SQL the user did not write.
 - A filter that survives a re-run matches how the user works: change the SQL, run, keep looking at the same slice.
 - Sorting the rows held while a filter is on keeps one rule for what the grid shows: the filtered rows, in an order the user can read, without a run that would load a different set under the same filter.
 

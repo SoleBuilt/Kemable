@@ -16,17 +16,17 @@ mod tests;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use paboable_core::catalog::{
+use kemable_core::catalog::{
     ColumnInfo, ColumnMeta, DatabaseInfo, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef,
 };
-use paboable_core::config::{ConnectionConfig, Target};
-use paboable_core::connection::Connection;
-use paboable_core::driver::Driver;
-use paboable_core::engine::{DataModel, EngineInfo, TargetKind};
-use paboable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
-use paboable_core::sql::{SqlGrammar, quote_ident};
-use paboable_core::value::{Value, ValueKind};
-use paboable_core::{CallOptions, DriverError, ErrorCode, Result};
+use kemable_core::config::{ConnectionConfig, Target};
+use kemable_core::connection::Connection;
+use kemable_core::driver::Driver;
+use kemable_core::engine::{DataModel, EngineInfo, TargetKind};
+use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
+use kemable_core::sql::{SqlGrammar, quote_ident};
+use kemable_core::value::{Value, ValueKind};
+use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use serde_json::Value as Json;
 
 use crate::api::{Api, CLOUDFLARE_API, RawResult};
@@ -40,12 +40,12 @@ pub static INFO: EngineInfo = EngineInfo {
     sql_grammar: Some(SqlGrammar::Sqlite),
     live_topics: &[],
     has_databases: true,
-    tree_folders: paboable_core::engine::SQL_TREE_FOLDERS,
+    tree_folders: kemable_core::engine::SQL_TREE_FOLDERS,
 };
 
 /// Fails, and with it the batch, unless the statement before it changed one row:
 /// `json` refuses text that is not JSON.
-const ROW_GUARD: &str = "SELECT CASE WHEN changes() = 1 THEN 1 ELSE json('paboable: the row is gone') END";
+const ROW_GUARD: &str = "SELECT CASE WHEN changes() = 1 THEN 1 ELSE json('kemable: the row is gone') END";
 /// What SQLite says when the guard fails.
 const ROW_GUARD_ERROR: &str = "malformed JSON";
 

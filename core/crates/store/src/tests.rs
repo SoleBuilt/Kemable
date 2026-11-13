@@ -1,10 +1,10 @@
 //! A filter on the rows held, with the sort, windows, copies and row reads
 //! that go through it (`docs/decisions/0011-filtering-a-result.md`).
 
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::error::ErrorCode;
-use paboable_core::sql::{FilterOp, ResultFilter};
-use paboable_core::value::{Value, ValueKind};
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::error::ErrorCode;
+use kemable_core::sql::{FilterOp, ResultFilter};
+use kemable_core::value::{Value, ValueKind};
 
 use crate::{CellRange, CellValue, ResultStore, RowSpan, SortKey, WindowReader, WindowRequest};
 
@@ -544,7 +544,7 @@ fn a_filter_reads_across_chunks() {
 }
 
 #[test]
-#[ignore = "a timing to read by hand: cargo test -p paboable-store --release -- --ignored --nocapture"]
+#[ignore = "a timing to read by hand: cargo test -p kemable-store --release -- --ignored --nocapture"]
 fn a_million_rows_filter_and_sort_in_time() {
     let store = ResultStore::new(vec![column("n", ValueKind::Int), column("name", ValueKind::Text)], None);
     let values: Vec<Value> = (0..1_000_000i64)
@@ -574,7 +574,7 @@ fn a_million_rows_filter_and_sort_in_time() {
 }
 
 #[test]
-#[ignore = "a timing to read by hand: cargo test -p paboable-store --release -- --ignored --nocapture"]
+#[ignore = "a timing to read by hand: cargo test -p kemable-store --release -- --ignored --nocapture"]
 fn two_million_rows_sort_by_a_number_a_text_and_a_time() {
     let store = ResultStore::new(
         vec![

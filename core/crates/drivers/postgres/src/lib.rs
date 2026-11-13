@@ -16,14 +16,14 @@ mod tls;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use paboable_core::config::ConnectionConfig;
-use paboable_core::connection::Connection;
-use paboable_core::driver::Driver;
-use paboable_core::engine::{DataModel, EngineInfo, TargetKind};
-use paboable_core::live::{LiveTopic, LiveTopicKind};
-use paboable_core::sink::{ExecOutcome, ResultSink};
-use paboable_core::sql::SqlGrammar;
-use paboable_core::{CallOptions, Result};
+use kemable_core::config::ConnectionConfig;
+use kemable_core::connection::Connection;
+use kemable_core::driver::Driver;
+use kemable_core::engine::{DataModel, EngineInfo, TargetKind};
+use kemable_core::live::{LiveTopic, LiveTopicKind};
+use kemable_core::sink::{ExecOutcome, ResultSink};
+use kemable_core::sql::SqlGrammar;
+use kemable_core::{CallOptions, Result};
 
 pub use connection::{PostgresConnection, StatementMode};
 
@@ -36,7 +36,7 @@ pub static INFO: EngineInfo = EngineInfo {
     sql_grammar: Some(SqlGrammar::Postgres),
     live_topics: &[LiveTopicKind::Channel],
     has_databases: true,
-    tree_folders: paboable_core::engine::SQL_TREE_FOLDERS,
+    tree_folders: kemable_core::engine::SQL_TREE_FOLDERS,
 };
 
 pub struct PostgresDriver;

@@ -1,4 +1,4 @@
-# Paboable
+# Kemable
 
 A fast, light database client. One Rust core does all the work; each operating system gets its own UI under `ui/`. Windows comes first (Tauri 2, Svelte 5, TypeScript); `ui/apple` and `ui/linux` come later.
 

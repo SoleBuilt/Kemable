@@ -1980,6 +1980,135 @@ dependencies = [
 ]
 
 [[package]]
+name = "kemable-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "kemable-driver-d1"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kemable-core",
+ "kemable-store",
+ "reqwest",
+ "rustls",
+ "rustls-platform-verifier",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "kemable-driver-mssql"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "kemable-core",
+ "kemable-store",
+ "rustls",
+ "tiberius",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "kemable-driver-postgres"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "fallible-iterator 0.2.0",
+ "futures-util",
+ "kemable-core",
+ "kemable-store",
+ "postgres-protocol",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
+ "tokio",
+ "tokio-postgres",
+ "tokio-postgres-rustls",
+]
+
+[[package]]
+name = "kemable-driver-redis"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kemable-core",
+ "kemable-store",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+]
+
+[[package]]
+name = "kemable-driver-sqlite"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kemable-core",
+ "kemable-store",
+ "rusqlite",
+ "tokio",
+]
+
+[[package]]
+name = "kemable-storage"
+version = "0.1.0"
+dependencies = [
+ "kemable-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "kemable-store"
+version = "0.1.0"
+dependencies = [
+ "kemable-core",
+]
+
+[[package]]
+name = "kemable-windows"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kemable-core",
+ "kemable-driver-d1",
+ "kemable-driver-mssql",
+ "kemable-driver-postgres",
+ "kemable-driver-redis",
+ "kemable-driver-sqlite",
+ "kemable-storage",
+ "kemable-store",
+ "keyring",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tokio",
+ "tokio-util",
+ "window-vibrancy",
+]
+
+[[package]]
 name = "keyboard-types"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2493,135 +2622,6 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
-
-[[package]]
-name = "paboable-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "paboable-driver-d1"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "paboable-core",
- "paboable-store",
- "reqwest",
- "rustls",
- "rustls-platform-verifier",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "paboable-driver-mssql"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures-util",
- "paboable-core",
- "paboable-store",
- "rustls",
- "tiberius",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "paboable-driver-postgres"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "fallible-iterator 0.2.0",
- "futures-util",
- "paboable-core",
- "paboable-store",
- "postgres-protocol",
- "rustls",
- "rustls-pki-types",
- "rustls-platform-verifier",
- "tokio",
- "tokio-postgres",
- "tokio-postgres-rustls",
-]
-
-[[package]]
-name = "paboable-driver-redis"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "paboable-core",
- "paboable-store",
- "rustls",
- "rustls-pki-types",
- "rustls-platform-verifier",
- "tokio",
- "tokio-rustls",
- "tokio-util",
-]
-
-[[package]]
-name = "paboable-driver-sqlite"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "paboable-core",
- "paboable-store",
- "rusqlite",
- "tokio",
-]
-
-[[package]]
-name = "paboable-storage"
-version = "0.1.0"
-dependencies = [
- "paboable-core",
- "rusqlite",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "paboable-store"
-version = "0.1.0"
-dependencies = [
- "paboable-core",
-]
-
-[[package]]
-name = "paboable-windows"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "keyring",
- "paboable-core",
- "paboable-driver-d1",
- "paboable-driver-mssql",
- "paboable-driver-postgres",
- "paboable-driver-redis",
- "paboable-driver-sqlite",
- "paboable-storage",
- "paboable-store",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tokio",
- "tokio-util",
- "window-vibrancy",
-]
 
 [[package]]
 name = "pango"

@@ -1,7 +1,7 @@
 //! Redis (and servers that speak its protocol, such as Valkey and Upstash)
 //! over a small RESP2 client of its own (`docs/decisions/0008-key-value-engines.md`).
 //!
-//! The console runs one command per line (`paboable_core::command`); keys are
+//! The console runs one command per line (`kemable_core::command`); keys are
 //! found with `SCAN`, never `KEYS`, and a key is read in steps (`HSCAN`,
 //! `SSCAN`, `LRANGE`, `ZRANGE`, `XRANGE` by 1,000) until the result's row cap.
 
@@ -16,17 +16,17 @@ mod tests;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use paboable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
-use paboable_core::command::parse_args;
-use paboable_core::config::{ConnectionConfig, Target, TlsMode};
-use paboable_core::connection::Connection;
-use paboable_core::driver::Driver;
-use paboable_core::engine::{DataModel, EngineInfo, TargetKind};
-use paboable_core::keys::{KeyDetail, KeyInfo, KeyKind, KeyPage, KeyScan};
-use paboable_core::live::{LiveTopic, LiveTopicKind};
-use paboable_core::sink::{ExecOutcome, ResultSink};
-use paboable_core::value::{Value, ValueKind};
-use paboable_core::{CallOptions, DriverError, ErrorCode, Result};
+use kemable_core::catalog::{ColumnInfo, ColumnMeta, DatabaseInfo, ObjectInfo, SchemaInfo, TableRef};
+use kemable_core::command::parse_args;
+use kemable_core::config::{ConnectionConfig, Target, TlsMode};
+use kemable_core::connection::Connection;
+use kemable_core::driver::Driver;
+use kemable_core::engine::{DataModel, EngineInfo, TargetKind};
+use kemable_core::keys::{KeyDetail, KeyInfo, KeyKind, KeyPage, KeyScan};
+use kemable_core::live::{LiveTopic, LiveTopicKind};
+use kemable_core::sink::{ExecOutcome, ResultSink};
+use kemable_core::value::{Value, ValueKind};
+use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use rustls::ClientConfig;
 
 use crate::link::{Endpoint, Link, query_error};

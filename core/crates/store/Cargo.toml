@@ -1,5 +1,5 @@
 [package]
-name = "paboable-store"
+name = "kemable-store"
 description = "Columnar result sets and the packed windows a grid reads."
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
-paboable-core.workspace = true
+kemable-core.workspace = true
 
 [lints]
 workspace = true

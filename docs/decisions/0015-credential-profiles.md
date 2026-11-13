@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-11-11
-- **Follows**: the screens "Dialog · credential profiles" and "New connection · credentials from a profile" in the Paboable Prototype, approved 2026-11-11.
+- **Follows**: the screens "Dialog · credential profiles" and "New connection · credentials from a profile" in the Kemable Prototype, approved 2026-11-11.
 
 ## Context
 
@@ -10,7 +10,7 @@ Many saved connections sign in with the same login: a read-only user on every re
 
 ## Decision
 
-- **A profile is a name, a user and a password.** `paboable_storage::profiles` keeps the name and the user in `profiles.json` beside `connections.json`, written the same way. The password goes to the `SecretVault` under `profile/<id>/password` (Windows Credential Manager, target `profile/<id>/password.Paboable`). Names are required and unique ignoring case, since the connect form picks a profile by name.
+- **A profile is a name, a user and a password.** `kemable_storage::profiles` keeps the name and the user in `profiles.json` beside `connections.json`, written the same way. The password goes to the `SecretVault` under `profile/<id>/password` (Windows Credential Manager, target `profile/<id>/password.Kemable`). Names are required and unique ignoring case, since the connect form picks a profile by name.
 - **A saved connection may name a profile** (`SavedConnection::profile_id`). It then keeps no secret of its own: saving it removes its kept password and turns off Keep the password. The profile's user is copied into its config, so the list and the form still show who it signs in as.
 - **The core signs in.** `ConnectionLibrary::resolve` fills the user and password from the profile, so a changed profile reaches every connection that uses it the next time it connects. `connect` and `test_connection` take a `profile_id` for a connection not saved.
 - **Deleting a profile** (`ConnectionLibrary::delete_profile`) removes its password and unlinks the connections that used it. They keep its user and ask for a password from then on.

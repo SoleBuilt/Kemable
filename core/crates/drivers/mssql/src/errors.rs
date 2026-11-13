@@ -1,6 +1,6 @@
 //! tiberius errors to `DriverError` codes.
 
-use paboable_core::{DriverError, ErrorCode};
+use kemable_core::{DriverError, ErrorCode};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Phase {

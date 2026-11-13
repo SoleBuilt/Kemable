@@ -9,7 +9,7 @@
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use paboable_core::{DriverError, ErrorCode, Result};
+use kemable_core::{DriverError, ErrorCode, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 

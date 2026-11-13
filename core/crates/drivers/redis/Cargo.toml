@@ -1,5 +1,5 @@
 [package]
-name = "paboable-driver-redis"
+name = "kemable-driver-redis"
 description = "Redis over its own RESP2 client on tokio, with TLS through rustls."
 version.workspace = true
 edition.workspace = true
@@ -8,7 +8,7 @@ publish.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-paboable-core.workspace = true
+kemable-core.workspace = true
 rustls.workspace = true
 rustls-pki-types.workspace = true
 rustls-platform-verifier.workspace = true
@@ -16,7 +16,7 @@ tokio = { workspace = true, features = ["net", "io-util"] }
 tokio-rustls.workspace = true
 
 [dev-dependencies]
-paboable-store.workspace = true
+kemable-store.workspace = true
 tokio-util.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
 

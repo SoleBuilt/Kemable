@@ -10,10 +10,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use paboable_core::CallOptions;
-use paboable_core::catalog::{ColumnInfo, ObjectInfo, SchemaInfo, TableRef};
-use paboable_core::connection::Connection;
-use paboable_core::sql::{CatalogView, CompletionContext};
+use kemable_core::CallOptions;
+use kemable_core::catalog::{ColumnInfo, ObjectInfo, SchemaInfo, TableRef};
+use kemable_core::connection::Connection;
+use kemable_core::sql::{CatalogView, CompletionContext};
 
 /// Completion waits for the server no longer than this: a list that comes
 /// late is a list the user typed past.

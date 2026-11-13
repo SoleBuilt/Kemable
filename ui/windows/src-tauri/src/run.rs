@@ -6,17 +6,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::command::select_database;
-use paboable_core::connection::Connection;
-use paboable_core::sink::ResultSink;
-use paboable_core::sql::{
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::command::select_database;
+use kemable_core::connection::Connection;
+use kemable_core::sink::ResultSink;
+use kemable_core::sql::{
     DatabaseChange, SqlGrammar, StatementKind, StatementSpan, batch_queries, database_change, may_change_schema,
     split_after_created_databases,
 };
-use paboable_core::value::Value;
-use paboable_core::{CallOptions, DriverError};
-use paboable_store::ResultStore;
+use kemable_core::value::Value;
+use kemable_core::{CallOptions, DriverError};
+use kemable_store::ResultStore;
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
@@ -114,7 +114,7 @@ struct RunSink {
     /// Rows the current statement returned, or affected, for the history.
     rows: Mutex<Option<i64>>,
     /// The statements of the current SQL Server batch that each make one set
-    /// (`paboable_core::sql::batch_queries`), and how many sets it made so far.
+    /// (`kemable_core::sql::batch_queries`), and how many sets it made so far.
     parts: Mutex<Option<Vec<Range<usize>>>>,
     sets_here: AtomicUsize,
     /// The ids of the sets the current statement made, to forget their parts.
@@ -445,7 +445,7 @@ fn directive(run: &Run, text: &str, database: &mut Option<String>) -> Result<Opt
             Ok(Some(name))
         }
         _ => Err(DriverError::unsupported(format!(
-            "{text} is a psql command Paboable does not run"
+            "{text} is a psql command Kemable does not run"
         ))),
     }
 }
@@ -461,7 +461,7 @@ fn record(
     rows: Option<i64>,
     error: Option<&DriverError>,
 ) {
-    use paboable_storage::history::{HistoryEntry, Outcome};
+    use kemable_storage::history::{HistoryEntry, Outcome};
     let Some(history) = state.history.get().cloned() else {
         return;
     };
@@ -479,7 +479,7 @@ fn record(
         rows,
         outcome: match error {
             None => Outcome::Succeeded,
-            Some(error) if error.code == paboable_core::ErrorCode::Cancelled => Outcome::Cancelled,
+            Some(error) if error.code == kemable_core::ErrorCode::Cancelled => Outcome::Cancelled,
             Some(_) => Outcome::Failed,
         },
         error: error.map(|error| error.message.clone()),

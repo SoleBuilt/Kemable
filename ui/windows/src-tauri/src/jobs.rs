@@ -7,18 +7,18 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use paboable_core::catalog::{ColumnInfo, ColumnMeta, TableRef};
-use paboable_core::connection::Connection;
-use paboable_core::generate;
-use paboable_core::import::{
+use kemable_core::catalog::{ColumnInfo, ColumnMeta, TableRef};
+use kemable_core::connection::Connection;
+use kemable_core::generate;
+use kemable_core::import::{
     CsvReader, NewColumn, ROWS_PER_INSERT, ValueShape, create_statement, detect_delimiter, field_literal, infer_shape,
     insert_statement, match_columns, transaction,
 };
-use paboable_core::sink::ResultSink;
-use paboable_core::sql::SqlGrammar;
-use paboable_core::text_file;
-use paboable_core::value::Value;
-use paboable_core::{CallOptions, DriverError, ErrorCode};
+use kemable_core::sink::ResultSink;
+use kemable_core::sql::SqlGrammar;
+use kemable_core::text_file;
+use kemable_core::value::Value;
+use kemable_core::{CallOptions, DriverError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
@@ -221,7 +221,7 @@ pub fn preview(text: &str, delimiter: Option<char>, header: bool, grammar: SqlGr
         .collect();
     let types = shapes
         .iter()
-        .map(|shape| paboable_core::import::column_type(grammar, *shape).to_owned())
+        .map(|shape| kemable_core::import::column_type(grammar, *shape).to_owned())
         .collect();
     CsvPreview {
         types,
@@ -426,8 +426,8 @@ pub async fn key_start(
 ) -> Result<i64, DriverError> {
     let sql = format!(
         "SELECT MAX({}) FROM {}",
-        paboable_core::sql::quote_name(grammar, key),
-        paboable_core::sql::table_name(grammar, table)
+        kemable_core::sql::quote_name(grammar, key),
+        kemable_core::sql::table_name(grammar, table)
     );
     let sink = Arc::new(Scalar::default());
     let shared: Arc<dyn ResultSink> = sink.clone();

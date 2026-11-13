@@ -20,7 +20,7 @@
 
 <header class={["pb-toolbar", "pb-toolbar--center", "pb-titlebar", conn && "has-conn"]} style:--conn={conn ? `var(--conn-${conn})` : undefined} data-tauri-drag-region>
   <div class="pb-tool-left" data-tauri-drag-region>
-    <img class="pb-logo" src={logo} alt="Paboable" draggable="false" data-tauri-drag-region />
+    <img class="pb-logo" src={logo} alt="Kemable" draggable="false" data-tauri-drag-region />
     {@render left?.()}
   </div>
   {@render center?.()}

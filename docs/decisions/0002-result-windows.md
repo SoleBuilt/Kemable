@@ -10,7 +10,7 @@ A query can return millions of rows while more are still arriving. The Windows U
 ## Decision
 
 - The core keeps each result set in a `ResultStore`: columnar chunks of 65,536 rows, each cell a kind byte, a raw `i64`, a null bit and its exact display text (or a binary value's bytes).
-- The core writes the display text (`paboable_core::format`). The UI adds only what depends on words or locale: the NULL placeholder, alignment, colours.
+- The core writes the display text (`kemable_core::format`). The UI adds only what depends on words or locale: the NULL placeholder, alignment, colours.
 - A grid asks for one window: first row, row count, first column, column count, character cap. It gets one buffer in the layout `core/crates/store/src/window.rs` documents, sent as raw bytes through `tauri::ipc::Response`, read in TypeScript by `ui/windows/src/lib/grid/window.ts` with typed-array views and no copy.
 - Drivers append at wire speed. The UI learns the row count from events sent at most every 50 ms, and fetches the windows it shows.
 - The full value of a cell, for copy and the detail view, comes from a separate call.

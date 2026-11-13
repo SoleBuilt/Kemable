@@ -19,7 +19,7 @@ A table tab shows one page of a table. Changing a cell, adding a row or deleting
 
 ### The statements are the core's
 
-`paboable_core::sql::edit_statement(grammar, table, edit)` writes one statement per row: `UPDATE ... SET <changed columns> WHERE <key>`, `DELETE ... WHERE <key>`, `INSERT ... (<set columns>) VALUES (...)` (`DEFAULT VALUES` when none is set). They run deletes first, then updates, then inserts, so a key a delete frees can be taken by the rest.
+`kemable_core::sql::edit_statement(grammar, table, edit)` writes one statement per row: `UPDATE ... SET <changed columns> WHERE <key>`, `DELETE ... WHERE <key>`, `INSERT ... (<set columns>) VALUES (...)` (`DEFAULT VALUES` when none is set). They run deletes first, then updates, then inserts, so a key a delete frees can be taken by the rest.
 
 - **The key's values are the page's own**, read from the result set and written exactly (`sql::value_literal`): numbers bare, bytes in each engine's form (`'\x..'::bytea`, `0x..`, `X'..'`), booleans as `TRUE` or `1`, everything else as quoted text the engine reads back to the same value. `CellValue::into_value` turns a stored cell back into the value its literal needs.
 - **A typed value is text the server converts** to the column's type, as a filter's is (`sql::typed_literal`): quoted with its quotes doubled, `N'...'` on SQL Server, a plain number bare on SQLite. A value that does not fit the column fails the save with the server's error.

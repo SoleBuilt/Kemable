@@ -1,7 +1,7 @@
 ---
 name: verify
 description: >-
-  Check that Paboable builds, lints and passes its tests after a change, and read what failed.
+  Check that Kemable builds, lints and passes its tests after a change, and read what failed.
   Use before saying any change is done, when the user asks to "verify", "check", "chạy test",
   "kiểm tra lại", or when a build, clippy, svelte-check or test failure needs explaining.
 ---

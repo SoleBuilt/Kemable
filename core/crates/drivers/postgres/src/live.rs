@@ -6,13 +6,13 @@
 use std::future::poll_fn;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::config::ConnectionConfig;
-use paboable_core::live::{LiveTopic, LiveTopicKind};
-use paboable_core::sink::{ExecOutcome, ResultSink};
-use paboable_core::sql::quote_ident;
-use paboable_core::value::{Value, ValueKind};
-use paboable_core::{CallOptions, DriverError, ErrorCode, Result};
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::config::ConnectionConfig;
+use kemable_core::live::{LiveTopic, LiveTopicKind};
+use kemable_core::sink::{ExecOutcome, ResultSink};
+use kemable_core::sql::quote_ident;
+use kemable_core::value::{Value, ValueKind};
+use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tokio::task::JoinHandle;
@@ -184,8 +184,8 @@ where
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use paboable_core::config::{Secret, Target, TlsMode};
-    use paboable_core::driver::Driver;
+    use kemable_core::config::{Secret, Target, TlsMode};
+    use kemable_core::driver::Driver;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::mpsc::UnboundedReceiver;
@@ -436,11 +436,11 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+    #[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
     async fn a_real_server_delivers_a_notify_to_the_listener() {
-        let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
-        let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
-        let channel = format!("Paboable Live {}", std::process::id());
+        let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+        let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
+        let channel = format!("Kemable Live {}", std::process::id());
         let (heard, mut arrivals) = Heard::new(1);
         let sink: Arc<dyn ResultSink> = heard.clone();
         let listening = {

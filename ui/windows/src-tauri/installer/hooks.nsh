@@ -1,4 +1,4 @@
-; Paboable's additions to Tauri's NSIS installer (docs/decisions/0019-data-folder.md).
+; Kemable's additions to Tauri's NSIS installer (docs/decisions/0019-data-folder.md).
 ; The terms are asked in the app, not here (src/lib/shell/TermsDialog.svelte).
 
 !macro NSIS_HOOK_POSTINSTALL

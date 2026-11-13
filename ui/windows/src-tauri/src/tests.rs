@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use paboable_core::CallOptions;
-use paboable_core::registry::DriverRegistry;
-use paboable_core::sql::{SqlGrammar, split};
-use paboable_driver_mssql::MssqlDriver;
-use paboable_driver_postgres::PostgresDriver;
+use kemable_core::CallOptions;
+use kemable_core::registry::DriverRegistry;
+use kemable_core::sql::{SqlGrammar, split};
+use kemable_driver_mssql::MssqlDriver;
+use kemable_driver_postgres::PostgresDriver;
 use serde_json::Value as Json;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio_util::sync::CancellationToken;
@@ -53,10 +53,10 @@ fn of_type<'a>(events: &'a [Json], kind: &str) -> Vec<&'a Json> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn a_script_runs_on_in_the_database_it_creates() {
-    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
     let driver = state
         .registry
@@ -69,7 +69,7 @@ async fn a_script_runs_on_in_the_database_it_creates() {
         .expect("the server accepts the connection");
     let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
     let home = server.home.clone();
-    let created = format!("paboable_follow_{}", std::process::id());
+    let created = format!("kemable_follow_{}", std::process::id());
 
     let script = format!(
         "CREATE DATABASE {upper};\n\
@@ -108,10 +108,10 @@ async fn a_script_runs_on_in_the_database_it_creates() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_sql_server_script_follows_create_database_and_use() {
-    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
     let driver = state.registry.get("mssql").cloned().expect("the driver is registered");
     let first = driver
@@ -119,7 +119,7 @@ async fn a_sql_server_script_follows_create_database_and_use() {
         .await
         .expect("the server accepts the connection");
     let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
-    let created = format!("paboable_follow_{}", std::process::id());
+    let created = format!("kemable_follow_{}", std::process::id());
 
     // GO splits the batches; the table lands in the new database, then
     // USE master moves back and the drop is not refused by our own session.
@@ -154,10 +154,10 @@ async fn a_sql_server_script_follows_create_database_and_use() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_sql_server_batch_that_creates_a_database_runs_the_rest_in_it() {
-    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
     let driver = state.registry.get("mssql").cloned().expect("the driver is registered");
     let first = driver
@@ -165,7 +165,7 @@ async fn a_sql_server_batch_that_creates_a_database_runs_the_rest_in_it() {
         .await
         .expect("the server accepts the connection");
     let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
-    let created = format!("paboable_batch_{}", std::process::id());
+    let created = format!("kemable_batch_{}", std::process::id());
 
     // One batch, no GO, as a selection run with Ctrl+Enter sends it.
     let script = format!(
@@ -207,11 +207,11 @@ fn first_rows(state: &AppState, events: &[Json]) -> Vec<Vec<Option<String>>> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn a_sorted_statement_runs_on_postgres_and_orders_before_the_limit() {
-    use paboable_core::sql::{SortColumn, sorted_statement};
-    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    use kemable_core::sql::{SortColumn, sorted_statement};
+    let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
     let driver = state.registry.get("postgres").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
@@ -241,11 +241,11 @@ async fn a_sorted_statement_runs_on_postgres_and_orders_before_the_limit() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_sorted_statement_runs_on_sql_server_with_top_and_option() {
-    use paboable_core::sql::{SortColumn, sorted_statement};
-    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    use kemable_core::sql::{SortColumn, sorted_statement};
+    let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
     let driver = state.registry.get("mssql").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
@@ -272,10 +272,10 @@ async fn a_sorted_statement_runs_on_sql_server_with_top_and_option() {
 /// writes (docs/decisions/0006-table-browsing.md). The expected rows are
 /// worked out here, so a wrong page or count on any engine fails.
 async fn browse_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, grammar: SqlGrammar) {
-    use paboable_core::catalog::TableRef;
-    use paboable_core::sql::{BrowseQuery, BrowseSort, Filter, FilterOp, count_statement, page_statement};
+    use kemable_core::catalog::TableRef;
+    use kemable_core::sql::{BrowseQuery, BrowseSort, Filter, FilterOp, count_statement, page_statement};
 
-    let name = format!("paboable_browse_{}", std::process::id());
+    let name = format!("kemable_browse_{}", std::process::id());
     let code = |id: u32| {
         if id == 7 {
             "50%_off".to_owned()
@@ -378,8 +378,8 @@ async fn browse_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, grammar:
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_table_tab_pages_and_filters_on_sqlite() {
-    use paboable_core::config::{ConnectionConfig, Target};
-    use paboable_driver_sqlite::SqliteDriver;
+    use kemable_core::config::{ConnectionConfig, Target};
+    use kemable_driver_sqlite::SqliteDriver;
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
     let driver = state.registry.get("sqlite").cloned().unwrap();
     let config = ConnectionConfig {
@@ -397,10 +397,10 @@ async fn a_table_tab_pages_and_filters_on_sqlite() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn a_table_tab_pages_and_filters_on_postgres() {
-    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
     let driver = state.registry.get("postgres").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
@@ -410,10 +410,10 @@ async fn a_table_tab_pages_and_filters_on_postgres() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_table_tab_pages_and_filters_on_sql_server() {
-    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
     let driver = state.registry.get("mssql").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
@@ -425,7 +425,7 @@ async fn a_table_tab_pages_and_filters_on_sql_server() {
 /// Completion read through the app's catalog cache from a real catalog
 /// (docs/decisions/0007-autocomplete.md).
 async fn completion_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, grammar: SqlGrammar, schema: &str) {
-    use paboable_core::sql::{completion_context, completions};
+    use kemable_core::sql::{completion_context, completions};
 
     let suffix = std::process::id();
     let orders = format!("pc_orders_{suffix}");
@@ -505,8 +505,8 @@ async fn completion_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, gram
 
 #[tokio::test(flavor = "multi_thread")]
 async fn completion_reads_the_sqlite_catalog() {
-    use paboable_core::config::{ConnectionConfig, Target};
-    use paboable_driver_sqlite::SqliteDriver;
+    use kemable_core::config::{ConnectionConfig, Target};
+    use kemable_driver_sqlite::SqliteDriver;
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
     let driver = state.registry.get("sqlite").cloned().unwrap();
     let config = ConnectionConfig {
@@ -524,10 +524,10 @@ async fn completion_reads_the_sqlite_catalog() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn completion_reads_the_postgres_catalog() {
-    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
     let driver = state.registry.get("postgres").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
@@ -537,10 +537,10 @@ async fn completion_reads_the_postgres_catalog() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn completion_reads_the_sql_server_catalog() {
-    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
     let driver = state.registry.get("mssql").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
@@ -554,11 +554,11 @@ async fn completion_reads_the_sql_server_catalog() {
 /// (docs/decisions/0010-editing-rows.md).
 async fn edit_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, grammar: SqlGrammar) {
     use crate::commands::{CellEdit, EditRequest, RowUpdate, edit_statements};
-    use paboable_core::ErrorCode;
-    use paboable_core::catalog::TableRef;
-    use paboable_core::sql::NewValue;
+    use kemable_core::ErrorCode;
+    use kemable_core::catalog::TableRef;
+    use kemable_core::sql::NewValue;
 
-    let name = format!("paboable_edit_{}", std::process::id());
+    let name = format!("kemable_edit_{}", std::process::id());
     let text_type = if grammar == SqlGrammar::SqlServer {
         "nvarchar(50)"
     } else {
@@ -678,8 +678,8 @@ async fn edit_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, grammar: S
 
 #[tokio::test(flavor = "multi_thread")]
 async fn edits_save_on_sqlite() {
-    use paboable_core::config::{ConnectionConfig, Target};
-    use paboable_driver_sqlite::SqliteDriver;
+    use kemable_core::config::{ConnectionConfig, Target};
+    use kemable_driver_sqlite::SqliteDriver;
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
     let driver = state.registry.get("sqlite").cloned().unwrap();
     let config = ConnectionConfig {
@@ -697,10 +697,10 @@ async fn edits_save_on_sqlite() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn edits_save_on_postgres() {
-    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
     let driver = state.registry.get("postgres").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
@@ -710,10 +710,10 @@ async fn edits_save_on_postgres() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn edits_save_on_sql_server() {
-    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
     let driver = state.registry.get("mssql").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
@@ -724,8 +724,8 @@ async fn edits_save_on_sql_server() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_test_connection_reports_the_server_and_keeps_nothing_open() {
-    use paboable_core::config::{ConnectionConfig, Target};
-    use paboable_driver_sqlite::SqliteDriver;
+    use kemable_core::config::{ConnectionConfig, Target};
+    use kemable_driver_sqlite::SqliteDriver;
     let state = AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver)));
     let config = ConnectionConfig {
         engine: "sqlite".into(),
@@ -749,8 +749,8 @@ async fn a_test_connection_reports_the_server_and_keeps_nothing_open() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_test_connection_fails_with_the_drivers_code() {
-    use paboable_core::ErrorCode;
-    use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+    use kemable_core::ErrorCode;
+    use kemable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
     let state = AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver)));
     let mut config = ConnectionConfig {
         engine: "postgres".into(),
@@ -779,9 +779,9 @@ async fn a_test_connection_fails_with_the_drivers_code() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_forms_database_list_says_why_it_has_none() {
-    use paboable_core::ErrorCode;
-    use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
-    use paboable_driver_sqlite::SqliteDriver;
+    use kemable_core::ErrorCode;
+    use kemable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+    use kemable_driver_sqlite::SqliteDriver;
     let state = AppState::new(
         DriverRegistry::new()
             .with(Arc::new(PostgresDriver))
@@ -823,8 +823,8 @@ async fn the_forms_database_list_says_why_it_has_none() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_script_file_saves_back_in_the_encoding_it_was_read_in() {
-    use paboable_core::text_file::{LineEnding, TextEncoding};
-    let folder = std::env::temp_dir().join(format!("paboable-script-{}", std::process::id()));
+    use kemable_core::text_file::{LineEnding, TextEncoding};
+    let folder = std::env::temp_dir().join(format!("kemable-script-{}", std::process::id()));
     std::fs::create_dir_all(&folder).unwrap();
     let path = folder.join("tạo bảng.sql");
     let path_text = path.to_string_lossy().into_owned();
@@ -861,21 +861,21 @@ async fn a_script_file_saves_back_in_the_encoding_it_was_read_in() {
         .collect();
     assert_eq!(written, expected);
     assert!(
-        !folder.join("tạo bảng.paboable-save.tmp").exists(),
+        !folder.join("tạo bảng.kemable-save.tmp").exists(),
         "no temporary file is left"
     );
 
     let missing = crate::commands::read_text_file(folder.join("gone.sql").to_string_lossy().into_owned())
         .await
         .unwrap_err();
-    assert_eq!(missing.code, paboable_core::ErrorCode::Io);
+    assert_eq!(missing.code, kemable_core::ErrorCode::Io);
     let _ = std::fs::remove_dir_all(&folder);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_result_names_its_table_and_brings_its_where_as_filters() {
-    use paboable_core::config::{ConnectionConfig, Target};
-    use paboable_driver_sqlite::SqliteDriver;
+    use kemable_core::config::{ConnectionConfig, Target};
+    use kemable_driver_sqlite::SqliteDriver;
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
     let driver = state.registry.get("sqlite").cloned().unwrap();
     let config = ConnectionConfig {
@@ -918,8 +918,8 @@ async fn a_result_names_its_table_and_brings_its_where_as_filters() {
 
 /// A SQLite file in the temp folder, removed at the end, as one open server.
 async fn sqlite_server(state: &Arc<AppState>, name: &str) -> (Arc<OpenServer>, std::path::PathBuf) {
-    use paboable_core::config::{ConnectionConfig, Target};
-    let folder = std::env::temp_dir().join(format!("paboable-jobs-{name}-{}", std::process::id()));
+    use kemable_core::config::{ConnectionConfig, Target};
+    let folder = std::env::temp_dir().join(format!("kemable-jobs-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).unwrap();
     let driver = state.registry.get("sqlite").cloned().unwrap();
@@ -954,7 +954,7 @@ fn job_channel() -> (Channel<crate::jobs::JobEvent>, Arc<Mutex<Vec<Json>>>) {
 /// The rows of a SQLite table numbered from 1 with no gaps: one past the last rowid, less one.
 async fn count(server: &Arc<OpenServer>, table: &str) -> i64 {
     let session = server.session(None).await.unwrap();
-    let table = paboable_core::catalog::TableRef {
+    let table = kemable_core::catalog::TableRef {
         schema: None,
         name: table.into(),
     };
@@ -966,10 +966,10 @@ async fn count(server: &Arc<OpenServer>, table: &str) -> i64 {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn import_generate_and_export_move_rows_and_a_cancel_leaves_nothing() {
-    use paboable_core::catalog::TableRef;
-    use paboable_core::export::{ExportFormat, ExportOptions};
-    use paboable_core::import::NewColumn;
-    use paboable_driver_sqlite::SqliteDriver;
+    use kemable_core::catalog::TableRef;
+    use kemable_core::export::{ExportFormat, ExportOptions};
+    use kemable_core::import::NewColumn;
+    use kemable_driver_sqlite::SqliteDriver;
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
     let (server, folder) = sqlite_server(&state, "all").await;
     run_script(
@@ -1192,7 +1192,7 @@ async fn import_generate_and_export_move_rows_and_a_cancel_leaves_nothing() {
 // --- The data folder (docs/decisions/0019-data-folder.md) -------------------
 
 fn data_folder(name: &str) -> crate::data::DataFolder {
-    let path = std::env::temp_dir().join(format!("paboable-data-{name}-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!("kemable-data-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).unwrap();
     crate::data::DataFolder { path, beside_app: true }
@@ -1266,25 +1266,14 @@ fn a_new_data_folder_takes_what_the_old_one_kept_once_and_leaves_it_there() {
 }
 
 #[test]
-fn the_old_webview_storage_is_read_once_then_the_new_folder_is_used() {
+fn the_startup_script_carries_the_preferences_and_the_folder() {
     let folder = data_folder("webview");
-    let old = folder.path.join("old-EBWebView");
-    // No older version: the new folder from the start.
-    assert_eq!(
-        crate::data::webview_for_launch(&folder, &old),
-        (Some(folder.webview()), false)
-    );
-    // An older version's storage, not moved yet: this launch reads it.
-    std::fs::create_dir_all(&old).unwrap();
-    assert_eq!(crate::data::webview_for_launch(&folder, &old), (None, true));
-    // Moved: the preferences file says so.
-    folder.write_prefs(&serde_json::json!({})).unwrap();
-    assert_eq!(
-        crate::data::webview_for_launch(&folder, &old),
-        (Some(folder.webview()), false)
-    );
-    let script = folder.startup_script(false);
-    assert!(script.starts_with("window.__PABOABLE__ = {"), "{script}");
+    folder
+        .write_prefs(&serde_json::json!({ "settings": { "theme": "dark" } }))
+        .unwrap();
+    let script = folder.startup_script();
+    assert!(script.starts_with("window.__KEMABLE__ = {"), "{script}");
+    assert!(script.contains("\"theme\":\"dark\""), "{script}");
     assert!(script.contains("\"besideApp\":true"), "{script}");
     let _ = std::fs::remove_dir_all(&folder.path);
 }
@@ -1315,12 +1304,12 @@ fn a_window_is_on_screen_when_any_corner_is() {
 
 #[tokio::test]
 async fn the_connect_form_keeps_a_connection_only_once_it_connects() {
-    use paboable_core::config::{ConnectionConfig, Target};
-    use paboable_storage::SavedConnection;
+    use kemable_core::config::{ConnectionConfig, Target};
+    use kemable_storage::SavedConnection;
     let state = Arc::new(AppState::new(
-        DriverRegistry::new().with(Arc::new(paboable_driver_sqlite::SqliteDriver)),
+        DriverRegistry::new().with(Arc::new(kemable_driver_sqlite::SqliteDriver)),
     ));
-    let folder = std::env::temp_dir().join(format!("paboable-keep-{}", std::process::id()));
+    let folder = std::env::temp_dir().join(format!("kemable-keep-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).unwrap();
     let config = |path: std::path::PathBuf| ConnectionConfig {
@@ -1359,7 +1348,7 @@ async fn the_connect_form_keeps_a_connection_only_once_it_connects() {
 
     // Keeping fails: the connection does not stay open behind the error.
     let failed = crate::commands::open_then_keep(&state, config(folder.join("a.db")), "x".into(), || {
-        Err(paboable_core::DriverError::config("a saved connection needs a name"))
+        Err(kemable_core::DriverError::config("a saved connection needs a name"))
     })
     .await;
     assert!(failed.is_err());
@@ -1384,29 +1373,29 @@ struct Listener {
 }
 
 #[async_trait::async_trait]
-impl paboable_core::driver::Driver for Listener {
-    fn info(&self) -> &'static paboable_core::engine::EngineInfo {
-        &paboable_driver_sqlite::INFO
+impl kemable_core::driver::Driver for Listener {
+    fn info(&self) -> &'static kemable_core::engine::EngineInfo {
+        &kemable_driver_sqlite::INFO
     }
 
     async fn connect(
         &self,
-        _config: &paboable_core::config::ConnectionConfig,
+        _config: &kemable_core::config::ConnectionConfig,
         _options: CallOptions,
-    ) -> paboable_core::Result<Arc<dyn paboable_core::connection::Connection>> {
-        Err(paboable_core::DriverError::unsupported("this driver only listens"))
+    ) -> kemable_core::Result<Arc<dyn kemable_core::connection::Connection>> {
+        Err(kemable_core::DriverError::unsupported("this driver only listens"))
     }
 
     async fn listen(
         &self,
-        _config: &paboable_core::config::ConnectionConfig,
-        topics: &[paboable_core::live::LiveTopic],
-        sink: Arc<dyn paboable_core::sink::ResultSink>,
+        _config: &kemable_core::config::ConnectionConfig,
+        topics: &[kemable_core::live::LiveTopic],
+        sink: Arc<dyn kemable_core::sink::ResultSink>,
         options: CallOptions,
-    ) -> paboable_core::Result<paboable_core::sink::ExecOutcome> {
-        use paboable_core::value::{Value, ValueKind};
+    ) -> kemable_core::Result<kemable_core::sink::ExecOutcome> {
+        use kemable_core::value::{Value, ValueKind};
         sink.notice(&format!("listening to {}", topics[0].name));
-        sink.begin_set(vec![paboable_core::catalog::ColumnMeta {
+        sink.begin_set(vec![kemable_core::catalog::ColumnMeta {
             name: "n".into(),
             type_name: String::new(),
             kind: ValueKind::Int,
@@ -1414,12 +1403,12 @@ impl paboable_core::driver::Driver for Listener {
         for n in 0..self.events {
             if !sink.push_rows(&[Value::Int(n)]) {
                 sink.end_set();
-                return Ok(paboable_core::sink::ExecOutcome { limited: true });
+                return Ok(kemable_core::sink::ExecOutcome { limited: true });
             }
         }
         if self.then_lost {
             sink.end_set();
-            return Err(paboable_core::DriverError::new(paboable_core::ErrorCode::Lost, "gone"));
+            return Err(kemable_core::DriverError::new(kemable_core::ErrorCode::Lost, "gone"));
         }
         options.stopped().await;
         sink.end_set();
@@ -1457,9 +1446,9 @@ impl LiveTab {
 
 /// A Live tab on `listener`, as `start_live` starts one, keeping `max_events`.
 async fn live_tab(listener: Listener, max_events: u64) -> LiveTab {
-    use paboable_core::config::{ConnectionConfig, Target};
+    use kemable_core::config::{ConnectionConfig, Target};
     let state = Arc::new(AppState::new(
-        DriverRegistry::new().with(Arc::new(paboable_driver_sqlite::SqliteDriver)),
+        DriverRegistry::new().with(Arc::new(kemable_driver_sqlite::SqliteDriver)),
     ));
     let config = ConnectionConfig {
         engine: "sqlite".into(),
@@ -1486,7 +1475,7 @@ async fn live_tab(listener: Listener, max_events: u64) -> LiveTab {
         id: run,
         server: Arc::clone(&server),
         database: None,
-        topics: paboable_core::live::topics("orders", ""),
+        topics: kemable_core::live::topics("orders", ""),
         max_events,
         cancel,
         channel,
@@ -1580,9 +1569,9 @@ async fn closing_a_connection_stops_its_live_tabs() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_link_beside_the_sessions_goes_to_the_database_asked_for() {
-    use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+    use kemable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
     let state = Arc::new(AppState::new(
-        DriverRegistry::new().with(Arc::new(paboable_driver_sqlite::SqliteDriver)),
+        DriverRegistry::new().with(Arc::new(kemable_driver_sqlite::SqliteDriver)),
     ));
     let (server, folder) = sqlite_server(&state, "config-for").await;
     // SQLite has no databases: a name is not put into its config.
@@ -1643,10 +1632,10 @@ async fn run_capped(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &st
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn a_live_tab_keeps_hearing_notify_after_a_filter_and_a_sort() {
-    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
-    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
     let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
     let driver = state.registry.get("postgres").cloned().unwrap();
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
@@ -1665,7 +1654,7 @@ async fn a_live_tab_keeps_hearing_notify_after_a_filter_and_a_sort() {
         id,
         server: Arc::clone(&server),
         database: None,
-        topics: paboable_core::live::topics("orders", ""),
+        topics: kemable_core::live::topics("orders", ""),
         max_events: crate::live::MAX_EVENTS,
         cancel,
         channel,
@@ -1706,9 +1695,9 @@ async fn a_live_tab_keeps_hearing_notify_after_a_filter_and_a_sort() {
 
     store
         .filter(
-            &[paboable_core::sql::ResultFilter {
+            &[kemable_core::sql::ResultFilter {
                 column: 2,
-                op: paboable_core::sql::FilterOp::Contains,
+                op: kemable_core::sql::FilterOp::Contains,
                 value: "99".into(),
                 second: String::new(),
             }],
@@ -1724,7 +1713,7 @@ async fn a_live_tab_keeps_hearing_notify_after_a_filter_and_a_sort() {
         "the newest match is last"
     );
 
-    store.sort(&[paboable_store::SortKey {
+    store.sort(&[kemable_store::SortKey {
         column: 0,
         descending: false,
     }]);

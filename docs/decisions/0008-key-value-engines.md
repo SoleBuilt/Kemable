@@ -21,16 +21,16 @@ Since a key is a result set, the grid, copy, the row detail, the core's sort and
 
 ### The console runs one command per line
 
-`paboable_core::command` splits console text: one command per line; empty lines and lines starting with `#` or `//` are skipped; words split as `redis-cli` splits them (`"..."` with `\n`, `\xHH` and the like, `'...'` with `\'`). The run sends each line as it sends a SQL statement, through the same events, Stop, history and row cap.
+`kemable_core::command` splits console text: one command per line; empty lines and lines starting with `#` or `//` are skipped; words split as `redis-cli` splits them (`"..."` with `\n`, `\xHH` and the like, `'...'` with `\'`). The run sends each line as it sends a SQL statement, through the same events, Stop, history and row cap.
 
 - **`SELECT n` is a directive**, as psql's `\c` is: the run switches to database `n` (the session for it), and the toolbar follows. Sent to the server, it would change the database of a session the app keeps for another one.
 - **Refused**: `SUBSCRIBE`, `PSUBSCRIBE`, `SSUBSCRIBE`, `MONITOR` (they turn the connection into a stream; the Live tab will take them), `SYNC`, `PSYNC`, `HELLO`, `RESET`, `QUIT`, `AUTH` (the connection logs in from its saved settings).
 - **Replies take a shape** by command: `OK` is Done; `HGETALL` and `CONFIG GET` are `field, value`; `WITHSCORES` replies are `member, score`; a `SCAN` family reply shows its items and puts the next cursor in Messages; `XRANGE` is `id, fields`; any other array is one row per element. The table is in `core/crates/drivers/redis/src/reply.rs`.
 - The history keeps no password: a line with `AUTH`, `requirepass`, `masterauth` or `ACL SETUSER` is stored as the withheld placeholder.
 
-### The client is Paboable's own RESP2
+### The client is Kemable's own RESP2
 
-`paboable-driver-redis` speaks RESP2 over tokio, with TLS through rustls, ring and the Windows trust store, as the PostgreSQL driver does. A link is one connection; commands on it go one exchange at a time. A cancel or a deadline drops the link, since its reply may still be on the way and closing the socket is what stops `BLPOP` and the like on the server; the next call opens a new link, logged in and on its database again.
+`kemable-driver-redis` speaks RESP2 over tokio, with TLS through rustls, ring and the Windows trust store, as the PostgreSQL driver does. A link is one connection; commands on it go one exchange at a time. A cancel or a deadline drops the link, since its reply may still be on the way and closing the socket is what stops `BLPOP` and the like on the server; the next call opens a new link, logged in and on its database again.
 
 - **TLS** is off or on with the certificate checked (`rediss://`): Redis has no negotiation, so "prefer" means off.
 - **Login**: `AUTH password` or `AUTH user password` (ACL). A refused login is `driver.auth` with the server's word (`WRONGPASS`) as the engine code; any other error reply is `driver.query` with its first word (`WRONGTYPE`, `ERR`).
@@ -47,7 +47,7 @@ Since a key is a result set, the grid, copy, the row detail, the core's sort and
 - No Redis Cluster or Sentinel: a cluster node answers `MOVED` for keys it does not hold, shown as the error it is.
 - RESP3-only features (client-side caching, push messages) are not used; every Redis since 2.6 and Valkey speak RESP2.
 - Key names that are not UTF-8 show with replacement characters, and such a key cannot be opened from the list; the console can still reach it with `\xHH`.
-- No Redis server was at hand when this was written: the driver's tests run against a small RESP2 server in the test that answers what the driver sends (login, `SCAN`, each kind of key, a blocking command), and one test against a real Redis is ignored until `$PABOABLE_REDIS_URL` is set.
+- No Redis server was at hand when this was written: the driver's tests run against a small RESP2 server in the test that answers what the driver sends (login, `SCAN`, each kind of key, a blocking command), and one test against a real Redis is ignored until `$KEMABLE_REDIS_URL` is set.
 - Editing a value is not here: the console's commands do it (`HSET`, `EXPIRE`, `DEL`), and Phase 2's row editing decides the rest.
 
 ## Alternatives considered

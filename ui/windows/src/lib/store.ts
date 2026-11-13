@@ -1,7 +1,7 @@
 // What the app remembers between launches (docs/decisions/0019-data-folder.md).
 // The Rust side keeps it in the data folder; before the UI's first line runs it
 // puts the preferences, and the pages of files opened with no connection, on
-// `window.__PABOABLE__`, so they read at once, as storage in the WebView did.
+// `window.__KEMABLE__`, so they read at once, as storage in the WebView did.
 // A change is held here and written a moment later, off the UI thread; closing
 // the window waits for what is not written yet (`flushStore`).
 import { ipc } from "./ipc";
@@ -15,70 +15,24 @@ export interface DataFolderInfo {
 interface Startup {
   prefs: Record<string, unknown> | null;
   pagesWithout: unknown;
-  /** An older version kept all this in the WebView's storage: move it into files, once. */
-  importLocalStorage: boolean;
   folder: DataFolderInfo | null;
 }
 
 declare global {
   interface Window {
-    __PABOABLE__?: Startup;
+    __KEMABLE__?: Startup;
   }
 }
 
-const startup: Startup = window.__PABOABLE__ ?? { prefs: null, pagesWithout: null, importLocalStorage: false, folder: null };
+const startup: Startup = window.__KEMABLE__ ?? { prefs: null, pagesWithout: null, folder: null };
 
 export const dataFolder: DataFolderInfo | null = startup.folder;
 
-// --- Moving an older version's storage ----------------------------------------
-
-/** The keys an older version kept in the WebView's storage, and the preference each became. */
-const OLD_KEYS: Record<string, string> = {
-  "paboable.settings": "settings",
-  "paboable.pageSize": "pageSize",
-  "paboable.treeScope": "treeScope",
-  "paboable.recentFiles": "recentFiles",
-};
-
-function readOld(key: string): unknown {
-  try {
-    const text = localStorage.getItem(key);
-    if (text === null) return undefined;
-    // The page size and the tree's scope were kept as bare text.
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      return text;
-    }
-  } catch {
-    return undefined;
-  }
-}
-
-function fromOldStorage(): { prefs: Record<string, unknown>; pages: Record<string, unknown> } {
-  const prefs: Record<string, unknown> = {};
-  for (const [old, name] of Object.entries(OLD_KEYS)) {
-    const value = readOld(old);
-    if (value !== undefined) prefs[name] = value;
-  }
-  const pages = readOld("paboable.pages");
-  return { prefs, pages: typeof pages === "object" && pages !== null ? (pages as Record<string, unknown>) : {} };
-}
-
-const moved = startup.importLocalStorage ? fromOldStorage() : null;
-
-let prefs: Record<string, unknown> = moved?.prefs ?? startup.prefs ?? {};
-
-/** Resolves once what an older version kept is in files; a page read waits for it. */
-export const ready: Promise<void> = moved
-  ? ipc.importLocalStorage(moved.prefs, moved.pages).catch(() => {
-      // The next launch tries again; this one goes on with what it read.
-    })
-  : Promise.resolve();
+let prefs: Record<string, unknown> = startup.prefs ?? {};
 
 /** The pages of files opened with no connection, as kept. */
 export function pagesWithoutConnection(): unknown {
-  return moved ? moved.pages.none : startup.pagesWithout;
+  return startup.pagesWithout;
 }
 
 // --- Preferences ----------------------------------------------------------------
@@ -101,7 +55,6 @@ async function flushPrefs(): Promise<void> {
   if (prefsTimer === undefined) return;
   clearTimeout(prefsTimer);
   prefsTimer = undefined;
-  await ready;
   await ipc.writePrefs(prefs).catch(() => {
     // A folder that cannot be written keeps the preferences until the app closes.
   });

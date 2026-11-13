@@ -1,19 +1,19 @@
 //! The driver against a small HTTP server in the test that answers as
 //! Cloudflare's API documents (`/d1/database` and `/raw`), and against the
-//! real API when `$PABOABLE_D1_ACCOUNT`, `$PABOABLE_D1_TOKEN` and
-//! `$PABOABLE_D1_DATABASE` are set.
+//! real API when `$KEMABLE_D1_ACCOUNT`, `$KEMABLE_D1_TOKEN` and
+//! `$KEMABLE_D1_DATABASE` are set.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use paboable_core::catalog::{ColumnMeta, ObjectKind, TableRef};
-use paboable_core::config::{ConnectionConfig, Secret, Target};
-use paboable_core::driver::Driver;
-use paboable_core::sink::ResultSink;
-use paboable_core::value::{Value, ValueKind};
-use paboable_core::{CallOptions, ErrorCode};
-use paboable_store::ResultStore;
+use kemable_core::catalog::{ColumnMeta, ObjectKind, TableRef};
+use kemable_core::config::{ConnectionConfig, Secret, Target};
+use kemable_core::driver::Driver;
+use kemable_core::sink::ResultSink;
+use kemable_core::value::{Value, ValueKind};
+use kemable_core::{CallOptions, ErrorCode};
+use kemable_store::ResultStore;
 use serde_json::{Value as Json, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -509,11 +509,11 @@ fn json_values_map_to_sqlites_kinds() {
 }
 
 #[tokio::test]
-#[ignore = "needs D1 at $PABOABLE_D1_ACCOUNT, $PABOABLE_D1_TOKEN and $PABOABLE_D1_DATABASE"]
+#[ignore = "needs D1 at $KEMABLE_D1_ACCOUNT, $KEMABLE_D1_TOKEN and $KEMABLE_D1_DATABASE"]
 async fn the_real_api_runs_a_round_trip() {
-    let account = std::env::var("PABOABLE_D1_ACCOUNT").expect("PABOABLE_D1_ACCOUNT is set");
-    let token = std::env::var("PABOABLE_D1_TOKEN").expect("PABOABLE_D1_TOKEN is set");
-    let database = std::env::var("PABOABLE_D1_DATABASE").expect("PABOABLE_D1_DATABASE is set");
+    let account = std::env::var("KEMABLE_D1_ACCOUNT").expect("KEMABLE_D1_ACCOUNT is set");
+    let token = std::env::var("KEMABLE_D1_TOKEN").expect("KEMABLE_D1_TOKEN is set");
+    let database = std::env::var("KEMABLE_D1_DATABASE").expect("KEMABLE_D1_DATABASE is set");
     let config = ConnectionConfig {
         engine: "d1".into(),
         target: Target::Http {
@@ -526,7 +526,7 @@ async fn the_real_api_runs_a_round_trip() {
         .connect(&config, options())
         .await
         .expect("the token is accepted");
-    let table = format!("paboable_test_{}", std::process::id());
+    let table = format!("kemable_test_{}", std::process::id());
     for statement in [
         format!("create table {table} (id integer primary key, name text, photo blob, price real)"),
         format!("insert into {table} (name, photo, price) values ('xin chào', x'00ff', 1.5)"),

@@ -11,13 +11,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use paboable_core::catalog::{ColumnMeta, TableRef};
-use paboable_core::connection::Connection;
-use paboable_core::export::{ExportOptions, ExportWriter};
-use paboable_core::sink::ResultSink;
-use paboable_core::sql::SqlGrammar;
-use paboable_core::value::Value;
-use paboable_core::{CallOptions, DriverError, ErrorCode};
+use kemable_core::catalog::{ColumnMeta, TableRef};
+use kemable_core::connection::Connection;
+use kemable_core::export::{ExportOptions, ExportWriter};
+use kemable_core::sink::ResultSink;
+use kemable_core::sql::SqlGrammar;
+use kemable_core::value::Value;
+use kemable_core::{CallOptions, DriverError, ErrorCode};
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
 

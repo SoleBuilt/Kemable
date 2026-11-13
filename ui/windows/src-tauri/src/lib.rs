@@ -18,12 +18,12 @@ mod tests;
 
 use std::sync::Arc;
 
-use paboable_core::registry::DriverRegistry;
-use paboable_driver_d1::D1Driver;
-use paboable_driver_mssql::MssqlDriver;
-use paboable_driver_postgres::PostgresDriver;
-use paboable_driver_redis::RedisDriver;
-use paboable_driver_sqlite::SqliteDriver;
+use kemable_core::registry::DriverRegistry;
+use kemable_driver_d1::D1Driver;
+use kemable_driver_mssql::MssqlDriver;
+use kemable_driver_postgres::PostgresDriver;
+use kemable_driver_redis::RedisDriver;
+use kemable_driver_sqlite::SqliteDriver;
 use tauri::Manager;
 
 use crate::data::DataFolder;
@@ -46,21 +46,19 @@ pub fn run() {
         .manage(state)
         .setup(|app| {
             // Everything the app remembers is in one folder: `data` beside the app when
-            // the installer made it, else %APPDATA%\<identifier>: paboable.app installed,
-            // dev.paboable.app from `pnpm tauri dev` (ADR 0019).
+            // the installer made it, else %APPDATA%\<identifier>: kemable.app installed,
+            // dev.kemable.app from `pnpm tauri dev` (ADR 0019).
             let profile = app.path().app_data_dir()?;
             let folder = DataFolder::find(profile.clone());
             folder.carry_over(&profile);
             std::fs::create_dir_all(&folder.path)?;
-            let old_webview = app.path().app_local_data_dir()?.join("EBWebView");
-            let (webview, import_local_storage) = data::webview_for_launch(&folder, &old_webview);
             app.manage(Library::in_folder(&folder.path));
             // Without a history the app still runs; the History tab says so.
-            if let Ok(history) = paboable_storage::history::QueryHistory::open(&folder.path) {
+            if let Ok(history) = kemable_storage::history::QueryHistory::open(&folder.path) {
                 let _ = app.state::<Arc<AppState>>().history.set(Arc::new(history));
             }
             app.manage(folder.clone());
-            window::open(app, &folder, webview, import_local_storage)?;
+            window::open(app, &folder)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -128,13 +126,12 @@ pub fn run() {
             commands::read_pages,
             commands::write_pages,
             commands::write_prefs,
-            commands::import_local_storage,
             commands::open_data_folder,
             commands::open_terms,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {
-        eprintln!("Paboable could not start: {error}");
+        eprintln!("Kemable could not start: {error}");
         std::process::exit(1);
     }
 }

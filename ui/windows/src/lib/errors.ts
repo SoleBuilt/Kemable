@@ -18,7 +18,7 @@ const TITLES: Record<string, string> = {
   "filter.raw": "A SQL condition can filter a table, not a query result",
   "filter.invalid": "This filter needs a column of the result and a value",
   "file.not_text": "This file is not UTF-8 or UTF-16 text",
-  internal: "Something went wrong inside Paboable",
+  internal: "Something went wrong inside Kemable",
 };
 
 export function errorTitle(error: CoreError): string {

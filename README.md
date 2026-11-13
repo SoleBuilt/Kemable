@@ -1,4 +1,4 @@
-# Paboable
+# Kemable
 
 Database client nhanh, nhẹ, mượt. Core Rust làm toàn bộ việc nặng, mỗi hệ điều hành có UI riêng trong `ui/`. Hiện chỉ có bản Windows (Tauri 2, Svelte 5, TypeScript).
 

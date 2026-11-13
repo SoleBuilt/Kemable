@@ -8,7 +8,7 @@
 </script>
 
 <div class="pb-where">
-  <span class="pb-where-label" data-tip-start="" data-tip="For your own SQL; Paboable filters the rows held and never runs it">To filter on the server</span>
+  <span class="pb-where-label" data-tip-start="" data-tip="For your own SQL; Kemable filters the rows held and never runs it">To filter on the server</span>
   <span class="pb-where-sql">{where.sql}</span>
   {#if where.leftOut.length > 0}
     <Badge size="sm" tone="warning" tip="A column whose name is empty or shared cannot be named in SQL" tipAt="end">{where.leftOut.length} left out</Badge>

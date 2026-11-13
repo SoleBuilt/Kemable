@@ -1,4 +1,4 @@
-# Paboable core
+# Kemable core
 
 The Rust crates every UI builds on: the domain types and the driver contract, one crate per engine, and the columnar result store. None has a GUI or a platform dependency. The root `AGENTS.md` holds the rules every folder shares; `ARCHITECTURE.md` beside this file holds the design.
 
@@ -8,7 +8,7 @@ The Rust crates every UI builds on: the domain types and the driver contract, on
 2. **Every target builds.** The crates build for Windows, macOS and Linux. Platform code goes behind `cfg` with the other platforms' answer beside it.
 3. **One-directional crates.** `ARCHITECTURE.md`, Dependency rules. Drivers never depend on each other.
 4. **Every call has a deadline and a cancel.** A connection method takes `CallOptions` and stops the work on the server when it fires, not only the future.
-5. **Exact values.** Drivers map engine types to `Value` without formatting; `paboable_core::format` writes the display text. Nothing rounds.
+5. **Exact values.** Drivers map engine types to `Value` without formatting; `kemable_core::format` writes the display text. Nothing rounds.
 6. **Errors carry a code.** `DriverError::code` is stable; `message` is the engine's text for the detail view.
 
 ## Map
@@ -21,7 +21,7 @@ The Rust crates every UI builds on: the domain types and the driver contract, on
 ## Commands
 
 ```bash
-cargo test -p paboable-core -p paboable-store -p paboable-driver-sqlite
+cargo test -p kemable-core -p kemable-store -p kemable-driver-sqlite
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 ```

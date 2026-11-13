@@ -1,4 +1,4 @@
--- Demo data for trying Paboable on PostgreSQL: a small Vietnamese online shop.
+-- Demo data for trying Kemable on PostgreSQL: a small Vietnamese online shop.
 --
 --   10 categories, 70 products, 150 customers, 3,000 orders, 10,000 order lines, 8,000 payments.
 --

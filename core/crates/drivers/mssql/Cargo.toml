@@ -1,5 +1,5 @@
 [package]
-name = "paboable-driver-mssql"
+name = "kemable-driver-mssql"
 description = "SQL Server through tiberius, with Windows integrated login."
 version.workspace = true
 edition.workspace = true
@@ -9,7 +9,7 @@ publish.workspace = true
 [dependencies]
 async-trait.workspace = true
 futures-util.workspace = true
-paboable-core.workspace = true
+kemable-core.workspace = true
 rustls.workspace = true
 tiberius.workspace = true
 tokio = { workspace = true, features = ["net"] }
@@ -19,7 +19,7 @@ tokio-util = { workspace = true, features = ["compat"] }
 tiberius = { workspace = true, features = ["winauth"] }
 
 [dev-dependencies]
-paboable-store.workspace = true
+kemable-store.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [lints]

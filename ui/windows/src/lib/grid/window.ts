@@ -5,7 +5,7 @@ const MAGIC = 0x31574250; // "PBW1" little-endian
 const FLAG_FINISHED = 1;
 const FLAG_LIMITED = 2;
 
-/** Kind bytes, as `paboable_core::value::ValueKind` numbers them. */
+/** Kind bytes, as `kemable_core::value::ValueKind` numbers them. */
 export const Kind = {
   Null: 0,
   Bool: 1,

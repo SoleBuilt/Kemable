@@ -1,5 +1,5 @@
 /*
- * Paboable components: the rules of the design system's components
+ * Kemable components: the rules of the design system's components
  * (docs/decisions/0012-design-system.md), shared with its component cards.
  * Only tokens here: no colour value.
  */
@@ -379,7 +379,7 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-gh .pb-corner:hover, .pb-gr .pb-gc.gut:hover { background: var(--hover); }
 .pb-gh .pb-corner.is-on { background: var(--selection); }
 
-/* The filter's WHERE, for the user's own SQL: shown and copied, never run by Paboable */
+/* The filter's WHERE, for the user's own SQL: shown and copied, never run by Kemable */
 .pb-where { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-2) 0 var(--space-3); border-bottom: 1px solid var(--line); background: var(--canvas); }
 .pb-where-label { color: var(--fg-muted); font-size: 12px; white-space: nowrap; }
 .pb-where-sql { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12px; color: var(--fg); }

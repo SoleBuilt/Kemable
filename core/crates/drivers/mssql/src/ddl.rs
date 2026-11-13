@@ -7,7 +7,7 @@
 
 use std::fmt::Write;
 
-use paboable_core::sql::{SqlGrammar, quote_name, typed_literal};
+use kemable_core::sql::{SqlGrammar, quote_name, typed_literal};
 
 /// What goes between two batches of a script.
 pub(crate) const BATCH_BREAK: &str = "\nGO\n";

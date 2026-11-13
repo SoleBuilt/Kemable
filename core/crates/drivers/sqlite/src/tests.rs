@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use paboable_store::{ResultStore, WindowReader, WindowRequest};
+use kemable_store::{ResultStore, WindowReader, WindowRequest};
 
 use super::*;
 
@@ -171,7 +171,7 @@ async fn the_catalog_lists_tables_and_columns() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn opening_a_file_that_is_not_a_database_fails_to_connect() {
-    let dir = std::env::temp_dir().join(format!("paboable-sqlite-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kemable-sqlite-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("not-a-db.sqlite");
     std::fs::write(
@@ -257,7 +257,7 @@ async fn edits_are_saved_together_or_not_at_all() {
 
 #[tokio::test]
 async fn a_tables_ddl_is_its_create_statement_with_its_indexes_and_triggers() {
-    use paboable_core::catalog::{ObjectInfo, ObjectKind};
+    use kemable_core::catalog::{ObjectInfo, ObjectKind};
     let connection = memory().await;
     for statement in [
         "create table \"khách hàng\" (id integer primary key, tên text not null)",
@@ -307,13 +307,13 @@ async fn a_tables_ddl_is_its_create_statement_with_its_indexes_and_triggers() {
             .await
             .unwrap_err()
             .code,
-        paboable_core::ErrorCode::NotFound
+        kemable_core::ErrorCode::NotFound
     );
 }
 
 #[tokio::test]
 async fn indexes_list_the_key_first_with_their_columns_order_and_filter() {
-    use paboable_core::catalog::{ColumnInfo, TableRef};
+    use kemable_core::catalog::{ColumnInfo, TableRef};
     let connection = memory().await;
     for statement in [
         "create table hàng (mã text primary key, tên text not null, giá real, ghi_chú text)",

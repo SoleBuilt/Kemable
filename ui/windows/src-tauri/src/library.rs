@@ -4,14 +4,14 @@
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use paboable_core::config::Secret;
-use paboable_core::{DriverError, ErrorCode, Result};
-use paboable_storage::queries::SavedQueries;
-use paboable_storage::{ConnectionLibrary, SecretVault};
+use kemable_core::config::Secret;
+use kemable_core::{DriverError, ErrorCode, Result};
+use kemable_storage::queries::SavedQueries;
+use kemable_storage::{ConnectionLibrary, SecretVault};
 
-/// The name Credential Manager lists Paboable's secrets under ("Generic
-/// Credentials", target `<key>.Paboable`).
-const SERVICE: &str = "Paboable";
+/// The name Credential Manager lists Kemable's secrets under ("Generic
+/// Credentials", target `<key>.Kemable`).
+const SERVICE: &str = "Kemable";
 
 /// Windows Credential Manager, through keyring's native backend.
 pub struct CredentialVault;
@@ -88,7 +88,7 @@ mod tests {
     #[ignore = "writes to and removes from Windows Credential Manager"]
     fn the_vault_keeps_reads_and_forgets_a_secret() {
         let vault = CredentialVault;
-        let key = format!("paboable-test/{}/password", std::process::id());
+        let key = format!("kemable-test/{}/password", std::process::id());
         vault.set(&key, &Secret::new("mật khẩu ✓")).unwrap();
         assert_eq!(
             vault

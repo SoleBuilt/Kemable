@@ -8,8 +8,8 @@
 
 use std::sync::Arc;
 
-use paboable_core::config::Secret;
-use paboable_core::{CallOptions, DriverError, ErrorCode};
+use kemable_core::config::Secret;
+use kemable_core::{CallOptions, DriverError, ErrorCode};
 use rustls::ClientConfig;
 use rustls_pki_types::ServerName;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufStream};

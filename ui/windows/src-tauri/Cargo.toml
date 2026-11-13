@@ -1,5 +1,5 @@
 [package]
-name = "paboable-windows"
+name = "kemable-windows"
 description = "The Windows app: Tauri commands over the shared core."
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [lib]
-name = "paboable_windows_lib"
+name = "kemable_windows_lib"
 crate-type = ["rlib"]
 
 [build-dependencies]
@@ -15,14 +15,14 @@ tauri-build.workspace = true
 
 [dependencies]
 keyring.workspace = true
-paboable-core.workspace = true
-paboable-driver-d1.workspace = true
-paboable-driver-mssql.workspace = true
-paboable-driver-postgres.workspace = true
-paboable-driver-redis.workspace = true
-paboable-driver-sqlite.workspace = true
-paboable-store.workspace = true
-paboable-storage.workspace = true
+kemable-core.workspace = true
+kemable-driver-d1.workspace = true
+kemable-driver-mssql.workspace = true
+kemable-driver-postgres.workspace = true
+kemable-driver-redis.workspace = true
+kemable-driver-sqlite.workspace = true
+kemable-store.workspace = true
+kemable-storage.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true

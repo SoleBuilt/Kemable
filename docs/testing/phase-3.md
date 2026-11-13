@@ -53,7 +53,7 @@ Tab Live nghe trên một kết nối riêng tới server, mỗi sự kiện là
 - [x] Bấm **Clear** trong hàng filter.
   **Đúng:** hiện lại mọi sự kiện.
 - [x] Bấm tiêu đề cột `payload` một lần, hai lần, ba lần.
-  **Đúng:** tăng dần, giảm dần, rồi về thứ tự nhận; khi đang sort status bar ghi "sorted in Paboable" và grid không tự cuộn theo dòng mới.
+  **Đúng:** tăng dần, giảm dần, rồi về thứ tự nhận; khi đang sort status bar ghi "sorted in Kemable" và grid không tự cuộn theo dòng mới.
 - [ ] Bấm tiêu đề cột `received` hai lần (giảm dần, mũi tên chỉ xuống), rồi gửi `NOTIFY orders, 'mới nhất';`.
   **Đúng:** trong vòng nửa giây, dòng `mới nhất` lên **đầu** grid. Một lần bấm (tăng dần) thì dòng mới nằm **cuối**.
 - [ ] Bấm một ô, nhấn **Ctrl+Alt+I**.
@@ -67,7 +67,7 @@ Tab Live nghe trên một kết nối riêng tới server, mỗi sự kiện là
   **Đúng:** status bar ghi **Stopped**; các sự kiện vẫn còn để xem; ô Channels gõ lại được; Listen sáng, Stop mờ.
 - [ ] Ở tab query chạy `NOTIFY orders, 'sau khi dừng';`.
   **Đúng:** tab Live không thêm dòng.
-- [ ] Ở tab query chạy `select count(*) from pg_stat_activity where application_name = 'Paboable' and query ilike 'listen%';` trước và sau khi Stop.
+- [ ] Ở tab query chạy `select count(*) from pg_stat_activity where application_name = 'Kemable' and query ilike 'listen%';` trước và sau khi Stop.
   **Đúng:** đang nghe thì là 1, sau Stop là 0: kết nối nghe đã đóng trên server.
 - [ ] Sửa ô Channels thành `orders, jobs` rồi **Listen**.
   **Đúng:** danh sách cũ còn nguyên cho tới khi server nhận xong lệnh nghe, rồi được thay bằng danh sách mới trống; `NOTIFY jobs, 'a';` và `NOTIFY orders, 'b';` đều hiện.
@@ -196,9 +196,9 @@ Script viết không có dấu `;` vẫn chạy được từng câu, khi các c
 
 ---
 
-## 5. Sort trong Paboable với kết quả lớn
+## 5. Sort trong Kemable với kết quả lớn
 
-Thử trên bản release (`pnpm tauri build` rồi chạy app đã cài, hoặc `target/release/paboable-windows.exe`): bản `pnpm tauri dev` không tối ưu code nên chậm hơn nhiều lần, thời gian ở đó không nói lên điều gì.
+Thử trên bản release (`pnpm tauri build` rồi chạy app đã cài, hoặc `target/release/kemable-windows.exe`): bản `pnpm tauri dev` không tối ưu code nên chậm hơn nhiều lần, thời gian ở đó không nói lên điều gì.
 
 - [ ] Mở **In memory** (SQLite), đặt Limit là **No limit**, chạy:
   ```sql
@@ -206,10 +206,10 @@ Thử trên bản release (`pnpm tauri build` rồi chạy app đã cài, hoặc
   select x * 7919 % 2000003 as n, 'khách ' || (x * 7919 % 2000003) as ten from c
   ```
   **Đúng:** 2.000.000 dòng, các số ở cột `n` không theo thứ tự.
-- [ ] Bấm **Filter**, lọc `n` **is at least** `0`, Apply. Bộ lọc này giữ mọi dòng; nó chỉ để buộc Paboable tự sort các dòng đang giữ thay vì chạy lại câu lệnh với `ORDER BY` (ADR 0005, ADR 0011).
+- [ ] Bấm **Filter**, lọc `n` **is at least** `0`, Apply. Bộ lọc này giữ mọi dòng; nó chỉ để buộc Kemable tự sort các dòng đang giữ thay vì chạy lại câu lệnh với `ORDER BY` (ADR 0005, ADR 0011).
   **Đúng:** status bar ghi `2,000,000 of 2,000,000 rows held`.
 - [ ] Bấm tiêu đề cột `n`.
-  **Đúng:** sort xong gần như tức thì (dưới nửa giây), status bar ghi "sorted in Paboable"; trong lúc sort grid vẫn cuộn được. Dòng đầu là `0`.
+  **Đúng:** sort xong gần như tức thì (dưới nửa giây), status bar ghi "sorted in Kemable"; trong lúc sort grid vẫn cuộn được. Dòng đầu là `0`.
 - [ ] Bấm tiêu đề cột `ten`.
   **Đúng:** xong trong khoảng nửa giây; `khách 2` đứng trước `khách 10`, vì số nằm trong chữ được so theo giá trị.
 - [ ] Bấm lại cùng tiêu đề (giảm dần), rồi giữ **Shift** bấm thêm tiêu đề `n`.
@@ -222,10 +222,10 @@ Thử trên bản release (`pnpm tauri build` rồi chạy app đã cài, hoặc
 Hai test của phần nghe cần server thật (thay mật khẩu):
 
 ```bash
-set PABOABLE_POSTGRES_URL=postgres://postgres:<mật khẩu>@localhost:5432/postgres?sslmode=disable
-cargo test -p paboable-driver-postgres live -- --ignored
-set PABOABLE_REDIS_URL=redis://localhost:6379
-cargo test -p paboable-driver-redis listen -- --ignored
+set KEMABLE_POSTGRES_URL=postgres://postgres:<mật khẩu>@localhost:5432/postgres?sslmode=disable
+cargo test -p kemable-driver-postgres live -- --ignored
+set KEMABLE_REDIS_URL=redis://localhost:6379
+cargo test -p kemable-driver-redis listen -- --ignored
 ```
 
 Mỗi test mở một người nghe, gửi một `NOTIFY` hoặc `PUBLISH` tới khi người nghe nhận được, rồi dừng.

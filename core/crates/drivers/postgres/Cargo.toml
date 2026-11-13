@@ -1,5 +1,5 @@
 [package]
-name = "paboable-driver-postgres"
+name = "kemable-driver-postgres"
 description = "PostgreSQL through tokio-postgres, for PostgreSQL, Neon and Supabase."
 version.workspace = true
 edition.workspace = true
@@ -10,7 +10,7 @@ publish.workspace = true
 async-trait.workspace = true
 fallible-iterator.workspace = true
 futures-util.workspace = true
-paboable-core.workspace = true
+kemable-core.workspace = true
 postgres-protocol.workspace = true
 rustls.workspace = true
 rustls-pki-types.workspace = true
@@ -21,7 +21,7 @@ tokio-postgres-rustls.workspace = true
 
 [dev-dependencies]
 bytes = "1"
-paboable-store.workspace = true
+kemable-store.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
 
 [lints]

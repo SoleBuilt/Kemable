@@ -1,6 +1,6 @@
 // `pnpm tauri <command>`: the Tauri CLI, with `src-tauri/tauri.dev.conf.json` laid
-// over `tauri.conf.json` for `dev`. A development build is `dev.paboable.app`, an
-// installed one `paboable.app`, so their data folders and Windows' records of them
+// over `tauri.conf.json` for `dev`. A development build is `dev.kemable.app`, an
+// installed one `kemable.app`, so their data folders and Windows' records of them
 // never mix (docs/decisions/0019-data-folder.md).
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";

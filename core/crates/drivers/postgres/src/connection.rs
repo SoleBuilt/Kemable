@@ -6,15 +6,15 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use paboable_core::catalog::{
+use kemable_core::catalog::{
     ColumnInfo, ColumnMeta, DatabaseInfo, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef,
 };
-use paboable_core::config::{ConnectionConfig, Target};
-use paboable_core::connection::Connection;
-use paboable_core::engine::EngineInfo;
-use paboable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
-use paboable_core::value::Value;
-use paboable_core::{CallOptions, DriverError, ErrorCode, Result};
+use kemable_core::config::{ConnectionConfig, Target};
+use kemable_core::connection::Connection;
+use kemable_core::engine::EngineInfo;
+use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
+use kemable_core::value::Value;
+use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::task::JoinHandle;
 use tokio_postgres::types::{ToSql, Type};
@@ -121,12 +121,7 @@ impl SessionSettings {
             .port(port)
             .user(user)
             .dbname(database)
-            .application_name(
-                config
-                    .options
-                    .get("application_name")
-                    .map_or("Paboable", String::as_str),
-            )
+            .application_name(config.options.get("application_name").map_or("Kemable", String::as_str))
             .ssl_mode(ssl_mode)
             .connect_timeout(
                 options

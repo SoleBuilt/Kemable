@@ -12,7 +12,7 @@ Opening a table from the tree ran `select * from t` up to the row cap. On a larg
 
 ### The statements are the core's
 
-`paboable_core::sql::page_statement(grammar, query)` and `count_statement(grammar, query)` write them from a `BrowseQuery`: the table, its filters, how they combine (all or any), the sort, the primary key, the offset and the page size.
+`kemable_core::sql::page_statement(grammar, query)` and `count_statement(grammar, query)` write them from a `BrowseQuery`: the table, its filters, how they combine (all or any), the sort, the primary key, the offset and the page size.
 
 - **Names** (table, schema, columns) come from the catalog and are quoted for the grammar.
 - **Values** are literals with their quotes doubled (`N'...'` on SQL Server), so no value can end its literal. On SQLite, a value that is a plain number (no leading zero, no exponent) is written bare, because SQLite compares by the literal's type; PostgreSQL and SQL Server convert a quoted literal to the column's type and refuse one that does not fit.

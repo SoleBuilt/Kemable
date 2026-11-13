@@ -2438,7 +2438,7 @@
               : `${numberFormat.format(live.total)} ${live.total === 1 ? "event" : "events"}`}</span
           >
         {/if}
-        {#if live.sort.length > 0}<span>sorted in Paboable</span>{/if}
+        {#if live.sort.length > 0}<span>sorted in Kemable</span>{/if}
       {/if}
       {#if ranCount && !offQuery}
         <span class:is-note={ranCount.ran < ranCount.total}>
@@ -2474,7 +2474,7 @@
             <Button variant="link" disabled={running} onclick={fetchAll}>Fetch all</Button>
           {/if}
           {#if activeSet.sortedBy === "server"}<span>sorted by the server</span>{/if}
-          {#if activeSet.sortedBy === "core"}<span>sorted in Paboable</span>{/if}
+          {#if activeSet.sortedBy === "core"}<span>sorted in Kemable</span>{/if}
         {/if}
       {/if}
       {#if hasEdits}<Badge dot>Unsaved changes</Badge>{/if}
@@ -2482,7 +2482,7 @@
     {/if}
     {#snippet end()}
       {#if !connection}
-        <span>Paboable</span>
+        <span>Kemable</span>
       {:else if onTablePage && tableTab}
         <Pager
           bind:this={pager}

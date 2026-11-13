@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use paboable_core::{DriverError, ErrorCode};
+use kemable_core::{DriverError, ErrorCode};
 use serde::Serialize;
 use serde_json::{Value as Json, json};
 
@@ -124,27 +124,14 @@ impl DataFolder {
     }
 
     /// The script the window runs before the UI's own: the preferences and the
-    /// pages of files opened with no connection, so the first paint has them,
-    /// and whether this launch reads the WebView's old storage once.
-    pub fn startup_script(&self, import_local_storage: bool) -> String {
+    /// pages of files opened with no connection, so the first paint has them.
+    pub fn startup_script(&self) -> String {
         let startup = json!({
             "prefs": self.prefs(),
             "pagesWithout": self.pages(NO_CONNECTION),
-            "importLocalStorage": import_local_storage,
             "folder": self,
         });
-        format!("window.__PABOABLE__ = {startup};")
-    }
-}
-
-/// The WebView's folder for this launch, and whether the UI should move what it
-/// kept in the WebView's storage into files. Before an older version's storage
-/// is moved, the WebView keeps using the old folder (`old`) so the UI can read it.
-pub fn webview_for_launch(folder: &DataFolder, old: &Path) -> (Option<PathBuf>, bool) {
-    if folder.prefs().is_none() && old.is_dir() {
-        (None, true)
-    } else {
-        (Some(folder.webview()), false)
+        format!("window.__KEMABLE__ = {startup};")
     }
 }
 
@@ -156,7 +143,7 @@ fn beside_app() -> Option<PathBuf> {
 
 /// An installer run for every user may leave the folder read-only for this one.
 fn writable(folder: &Path) -> bool {
-    let probe = folder.join(".paboable-write-test");
+    let probe = folder.join(".kemable-write-test");
     let written = fs::write(&probe, b"").is_ok();
     let _ = fs::remove_file(&probe);
     written

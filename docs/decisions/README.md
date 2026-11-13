@@ -49,3 +49,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0019 | [One data folder, beside the app where it was installed; an installer that asks where](0019-data-folder.md) |
 | 0020 | [A Live tab listens on a link of its own, and what it hears is a result set](0020-live-tab.md) |
 | 0021 | [A blank line ends a statement when the next line starts a new one](0021-blank-line-ends-a-statement.md) |
+| 0022 | [The app is Kemable, and starts with no data from Paboable](0022-rename-to-kemable.md) |

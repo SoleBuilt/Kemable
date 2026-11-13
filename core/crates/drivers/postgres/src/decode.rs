@@ -9,9 +9,9 @@
 use std::fmt::Write as _;
 
 use fallible_iterator::FallibleIterator;
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::format;
-use paboable_core::value::{Value, ValueKind};
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::format;
+use kemable_core::value::{Value, ValueKind};
 use postgres_protocol::types as wire;
 use tokio_postgres::types::{FromSql, Kind, Type};
 

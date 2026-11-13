@@ -10,11 +10,11 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::live::{LiveTopic, LiveTopicKind};
-use paboable_core::sink::{ExecOutcome, ResultSink};
-use paboable_core::value::{Value, ValueKind};
-use paboable_core::{CallOptions, DriverError, ErrorCode, Result};
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::live::{LiveTopic, LiveTopicKind};
+use kemable_core::sink::{ExecOutcome, ResultSink};
+use kemable_core::value::{Value, ValueKind};
+use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::time::{Instant, interval_at};
 
@@ -221,7 +221,7 @@ fn columns() -> Vec<ColumnMeta> {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use paboable_core::config::Secret;
+    use kemable_core::config::Secret;
     use tokio::io::BufReader;
     use tokio::net::TcpListener;
     use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -621,15 +621,15 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore = "needs Redis at $PABOABLE_REDIS_URL"]
+    #[ignore = "needs Redis at $KEMABLE_REDIS_URL"]
     async fn a_real_server_delivers_a_publish_to_the_listener() {
-        use paboable_core::driver::Driver;
+        use kemable_core::driver::Driver;
 
         use crate::RedisDriver;
 
-        let url = std::env::var("PABOABLE_REDIS_URL").expect("PABOABLE_REDIS_URL is set");
-        let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
-        let name = format!("paboable:live:{}", std::process::id());
+        let url = std::env::var("KEMABLE_REDIS_URL").expect("KEMABLE_REDIS_URL is set");
+        let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
+        let name = format!("kemable:live:{}", std::process::id());
         let (heard, mut arrivals) = Heard::new(1);
         let sink: Arc<dyn ResultSink> = heard.clone();
         let listening = {

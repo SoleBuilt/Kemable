@@ -46,7 +46,7 @@ reqwest 0.13 with `rustls-no-provider`: the driver hands it the same rustls conf
 - No transactions across statements, as the API offers none.
 - Every statement is a round trip to Cloudflare: a script of many small statements is slow. Running a script as one batch request is a later change.
 - Large results cost a full download before the first row shows.
-- No D1 account was at hand when this was written: the driver's tests run against an HTTP server in the test that answers as the API documents, and one test against the real API is ignored until `$PABOABLE_D1_ACCOUNT`, `$PABOABLE_D1_TOKEN` and `$PABOABLE_D1_DATABASE` are set.
+- No D1 account was at hand when this was written: the driver's tests run against an HTTP server in the test that answers as the API documents, and one test against the real API is ignored until `$KEMABLE_D1_ACCOUNT`, `$KEMABLE_D1_TOKEN` and `$KEMABLE_D1_DATABASE` are set.
 
 ## Alternatives considered
 

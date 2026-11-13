@@ -140,7 +140,7 @@ Máy hiện chưa có Redis. Cách có một server để thử, chọn một:
 - **Upstash** (Redis trên cloud, gói free): lấy URL `rediss://default:<mật khẩu>@<tên>.upstash.io:6379`.
 - Docker hoặc WSL nếu sau này cài: `docker run -p 6379:6379 redis:7`.
 
-Khi đã có server, chạy luôn test live: `set PABOABLE_REDIS_URL=redis://localhost:6379` rồi `cargo test -p paboable-driver-redis -- --ignored`.
+Khi đã có server, chạy luôn test live: `set KEMABLE_REDIS_URL=redis://localhost:6379` rồi `cargo test -p kemable-driver-redis -- --ignored`.
 
 Dữ liệu thử: kết nối xong, dán vào editor và **Run all** (F5):
 
@@ -167,7 +167,7 @@ Redis 7 từ chối `DEBUG` nếu chưa bật `enable-debug-command`; khi đó b
 - [ ] Bấm từng key: `greeting`, `user:1`, `queue:jobs`, `tags`, `leaderboard`, `events`.
   **Đúng:** thanh trên kết quả ghi tên key, loại, độ dài (bytes/fields/items/members/entries), "no expiry" hoặc "expires in ..."; grid: string là 1 dòng `value`; hash `field, value`; list `index, value`; set `member`; sorted set `member, score` (số); stream `id, fields` (JSON).
 - [ ] Bấm tiêu đề cột `score` của `leaderboard`.
-  **Đúng:** sort trong app (status bar ghi "sorted in Paboable").
+  **Đúng:** sort trong app (status bar ghi "sorted in Kemable").
 - [ ] Tạo một list lớn: `DEBUG POPULATE` không tạo list, nên chạy trong editor một vòng `RPUSH big 1 2 3 ...` vài lần, hoặc dùng Limit nhỏ (1.000) rồi mở một hash/list lớn hơn 1.000 phần tử.
   **Đúng:** dừng ở row cap, có **Fetch all**; bấm thì đọc hết.
 - [ ] Chạy `SELECT 1` rồi `SET only_in_1 x` trong cùng một script; sau đó chọn lại database `0` ở toolbar.
@@ -187,20 +187,20 @@ Redis 7 từ chối `DEBUG` nếu chưa bật `enable-debug-command`; khi đó b
 
 Cần một tài khoản Cloudflare (gói free đủ dùng) và một database D1:
 
-1. Dashboard Cloudflare → **Storage & Databases → D1** → **Create**, đặt tên ví dụ `paboable-test`.
+1. Dashboard Cloudflare → **Storage & Databases → D1** → **Create**, đặt tên ví dụ `kemable-test`.
 2. **Account ID**: ở trang tổng quan của tài khoản (cột phải), hoặc trong URL dashboard (`dash.cloudflare.com/<account id>/...`).
 3. **API token**: My Profile → API Tokens → **Create Token** → Custom token, quyền **Account · D1 · Edit**.
 4. Chạy luôn test live (thay giá trị):
    ```bash
-   set PABOABLE_D1_ACCOUNT=<account id>
-   set PABOABLE_D1_TOKEN=<token>
-   set PABOABLE_D1_DATABASE=paboable-test
-   cargo test -p paboable-driver-d1 -- --ignored
+   set KEMABLE_D1_ACCOUNT=<account id>
+   set KEMABLE_D1_TOKEN=<token>
+   set KEMABLE_D1_DATABASE=kemable-test
+   cargo test -p kemable-driver-d1 -- --ignored
    ```
 
 - [ ] Bấm **D1…**, nhập Account ID, API token, để trống Database, Name `D1 test`, giữ tick lưu token, **Connect**.
   **Đúng:** sidebar liệt kê các database D1 của tài khoản; chạy một câu khi chưa chọn database thì báo cần chọn database (Ctrl+K). Token sai báo "Access denied" kèm mã `10000`.
-- [ ] Chọn `paboable-test` (Ctrl+K hoặc ở cây), chạy:
+- [ ] Chọn `kemable-test` (Ctrl+K hoặc ở cây), chạy:
   ```sql
   create table items (id integer primary key, name text, price real, photo blob);
   insert into items (name, price, photo) values ('xin chào', 1.5, x'00ff'), ('b', 2, null);

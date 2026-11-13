@@ -21,72 +21,72 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 ## 1. Kết nối
 
 ### 1.1 SQLite
-- [ ] Ở màn Welcome bấm **Open an in-memory database**, gõ `select 1 as one, 'xin chào' as greeting;`, nhấn **Ctrl+Enter**.
+- [x] Ở màn Welcome bấm **Open an in-memory database**, gõ `select 1 as one, 'xin chào' as greeting;`, nhấn **Ctrl+Enter**.
   **Đúng:** grid hiện 1 dòng, chữ tiếng Việt hiển thị đúng; combobox kết nối trên toolbar ghi tên kết nối và "SQLite 3.x".
-- [ ] Bấm **Open file…** (Ctrl+O), chọn một file `.db` hoặc `.sqlite` có sẵn.
+- [x] Bấm **Open file…** (Ctrl+O), chọn một file `.db` hoặc `.sqlite` có sẵn.
   **Đúng:** sidebar hiện schema `main` và các bảng; double-click một bảng thì bảng mở trên một tab riêng.
 
 ### 1.2 PostgreSQL
-- [ ] Bấm **New connection…** (Ctrl+N), Engine chọn **PostgreSQL**, dán URL `postgres://postgres:<mật khẩu>@localhost:5432/postgres` vào ô URL.
+- [x] Bấm **New connection…** (Ctrl+N), Engine chọn **PostgreSQL**, dán URL `postgres://postgres:<mật khẩu>@localhost:5432/postgres` vào ô URL.
   **Đúng:** Host, Port, User, Password tự điền; ô Database để trống cũng được.
-- [ ] Nhập Name `Local PG`, giữ tick **Save this connection** và **Keep the password…**, bấm **Connect**.
+- [x] Nhập Name `Local PG`, giữ tick **Save this connection** và **Keep the password…**, bấm **Connect**.
   **Đúng:** kết nối thành công; sidebar hiện **tất cả database** (`demo_sales`, `postgres`), database đang dùng in đậm, có chấm xanh.
-- [ ] Mở `demo_sales` → `public`.
+- [x] Mở `demo_sales` → `public`.
   **Đúng:** 6 bảng `categories, customers, order_items, orders, payments, products` cùng các sequence.
-- [ ] Thử sai mật khẩu.
+- [x] Thử sai mật khẩu.
   **Đúng:** hộp thoại báo "Access denied" và dòng lỗi của Postgres, không treo.
-- [ ] Điền Host, User, Password (hoặc chọn profile), bấm ô **Database** (ở dưới Encryption).
+- [x] Điền Host, User, Password (hoặc chọn profile), bấm ô **Database** (ở dưới Encryption).
   **Đúng:** dòng "Reading the databases…" rồi hiện **Default** và các database login được thấy. Chọn một cái: ô hiện tên đó. Mở lại ô mà không đổi gì: không đọc lại.
-- [ ] Trong ô tìm của **Database**, gõ một tên không có trong danh sách, Enter.
+- [x] Trong ô tìm của **Database**, gõ một tên không có trong danh sách, Enter.
   **Đúng:** dòng đầu là `Use "<tên>"`; chọn xong ô hiện tên đó. Đổi Password sai rồi mở lại ô: hiện dòng lỗi đăng nhập, vẫn gõ tên được.
-- [ ] Mở một bảng hơn 100 cột, bấm **Filter**, mở ô chọn cột.
+- [x] Mở một bảng hơn 100 cột, bấm **Filter**, mở ô chọn cột.
   **Đúng:** danh sách cao tối đa khoảng 11 dòng rồi có thanh cuộn dọc; ô tìm luôn ở trên cùng; cột đang chọn nằm trong tầm nhìn khi mở.
-- [ ] Thu nhỏ cửa sổ cho form chạm mép dưới, mở ô **Database**.
+- [x] Thu nhỏ cửa sổ cho form chạm mép dưới, mở ô **Database**.
   **Đúng:** danh sách mở lên trên (hoặc cuộn được bên trong), không bị cắt ở mép cửa sổ.
 
 ### 1.3 SQL Server
-- [ ] **New connection…**, Engine **SQL Server**, Host `localhost`, Sign in with **Windows account**, Name `Local MSSQL`, bấm **Connect**.
+- [x] **New connection…**, Engine **SQL Server**, Host `localhost`, Sign in with **Windows account**, Name `Local MSSQL`, bấm **Connect**.
   **Đúng:** sidebar hiện `master`, `model`, `msdb`, `tempdb` (và database của bạn nếu có); database người dùng đứng trước database hệ thống.
-- [ ] Nếu có instance `SERVERAPP`: Host `localhost\SERVERAPP`, để trống Port.
+- [x] Nếu có instance `SERVERAPP`: Host `localhost\SERVERAPP`, để trống Port.
   **Đúng:** kết nối qua SQL Server Browser.
 
 ### 1.4 Connection đã lưu
-- [ ] Bấm combobox kết nối trên toolbar, chọn **Disconnect**.
+- [x] Bấm combobox kết nối trên toolbar, chọn **Disconnect**.
   **Đúng:** về màn Welcome, không có sidebar.
-- [ ] Nhấn **Ctrl+K**.
+- [x] Nhấn **Ctrl+K**.
   **Đúng:** nhóm **Saved connections** có `Local PG` và `Local MSSQL`.
-- [ ] Chọn `Local PG`, Enter.
+- [x] Chọn `Local PG`, Enter.
   **Đúng:** kết nối ngay, không hỏi mật khẩu.
-- [ ] Mở **Windows Credential Manager** → **Windows Credentials** → **Generic Credentials**.
-  **Đúng:** có mục tên kiểu `connection/<id>/password.Paboable`.
+- [x] Mở **Windows Credential Manager** → **Windows Credentials** → **Generic Credentials**.
+  **Đúng:** có mục tên kiểu `connection/<id>/password.Kemable`.
 - [ ] Mở `connections.json` trong thư mục dữ liệu (Settings › Data › **Open**) bằng Notepad.
   **Đúng:** có connection nhưng **không có mật khẩu**.
-- [ ] Bấm combobox kết nối → **Edit this connection…**, đổi tên, bỏ tick **Keep the password…**, bấm **Save**.
+- [x] Bấm combobox kết nối → **Edit this connection…**, đổi tên, bỏ tick **Keep the password…**, bấm **Save**.
   **Đúng:** mục trong Credential Manager biến mất; mở connection đó từ Ctrl+K thì app hỏi mật khẩu.
-- [ ] Trong **New connection…**, combobox **Saved connection** chọn một connection, bấm **Delete…**, rồi xác nhận.
+- [x] Trong **New connection…**, combobox **Saved connection** chọn một connection, bấm **Delete…**, rồi xác nhận.
   **Đúng:** connection biến mất khỏi danh sách và khỏi Ctrl+K.
-- [ ] Mở một connection đã lưu để sửa, ở **Colour** chọn màu đỏ (bấm chấm màu, hoặc Tab tới rồi dùng ← →), bấm **Save**. Nhấn **Ctrl+K**.
+- [x] Mở một connection đã lưu để sửa, ở **Colour** chọn màu đỏ (bấm chấm màu, hoặc Tab tới rồi dùng ← →), bấm **Save**. Nhấn **Ctrl+K**.
   **Đúng:** connection đó có chấm đỏ trước tên; connection chưa chọn màu có chấm xám. Ô **Saved connection** trong form cũng hiện chấm cùng màu. Kiểm tra cả theme sáng và tối.
 
 ### 1.5 Test connection
-- [ ] **New connection…**, PostgreSQL, điền host, user, mật khẩu đúng, bấm **Test**.
+- [x] **New connection…**, PostgreSQL, điền host, user, mật khẩu đúng, bấm **Test**.
   **Đúng:** nút đổi thành "Testing…", rồi hiện khung xanh **Connected** với phiên bản server và "this login sees N databases". Không có kết nối nào mở (toolbar vẫn như cũ), không có gì được lưu.
-- [ ] Sửa một chữ trong Host.
+- [x] Sửa một chữ trong Host.
   **Đúng:** khung xanh biến mất (kết quả cũ không còn đúng).
-- [ ] Đổi mật khẩu sai, bấm **Test**.
+- [x] Đổi mật khẩu sai, bấm **Test**.
   **Đúng:** khung đỏ báo sai đăng nhập, kèm thông báo của server.
-- [ ] Đổi Port thành `1`, bấm **Test**.
+- [x] Đổi Port thành `1`, bấm **Test**.
   **Đúng:** khung đỏ báo không kết nối được, trong vài giây.
-- [ ] Chọn một Saved connection có giữ mật khẩu, để trống ô Password, bấm **Test**.
+- [x] Chọn một Saved connection có giữ mật khẩu, để trống ô Password, bấm **Test**.
   **Đúng:** **Connected**: Test dùng mật khẩu trong Windows Credential Manager như Connect.
-- [ ] Làm lại với SQL Server (Windows account) và Redis.
+- [x] Làm lại với SQL Server (Windows account) và Redis.
   **Đúng:** **Connected** với phiên bản; Redis không có số database.
 
 ### 1.6 Credential profiles
-- [ ] Ctrl+K, gõ `profile`, chọn **Credential profiles…**.
+- [x] Ctrl+K, gõ `profile`, chọn **Credential profiles…**.
   **Đúng:** hộp thoại rộng, bên trái danh sách (lần đầu: "No profiles yet"), bên phải trống "Make a profile to fill this in."
-- [ ] Bấm **New profile**, đặt Name `app-reader`, User và Password của một login PostgreSQL thật, bấm **Save** (hoặc Enter).
-  **Đúng:** khung xanh **Saved**; danh sách ghi "app_reader · not used". Mở Windows Credential Manager › Windows Credentials: có `profile/<id>/password.Paboable`. Mở `profiles.json` trong thư mục dữ liệu (Settings › Data › **Open**): có tên và user, không có mật khẩu.
+- [x] Bấm **New profile**, đặt Name `app-reader`, User và Password của một login PostgreSQL thật, bấm **Save** (hoặc Enter).
+  **Đúng:** khung xanh **Saved**; danh sách ghi "app_reader · not used". Mở Windows Credential Manager › Windows Credentials: có `profile/<id>/password.Kemable`. Mở `profiles.json` trong thư mục dữ liệu (Settings › Data › **Open**): có tên và user, không có mật khẩu.
 - [ ] Tạo thêm profile tên `APP-READER` rồi Save.
   **Đúng:** khung đỏ báo tên đã có (không phân biệt hoa thường), không lưu.
 - [ ] **New connection…**, PostgreSQL, điền Host, ở **Credentials** chọn **From a profile**, chọn `app-reader`, bấm **Test**, rồi **Connect** với **Save this connection** bật.
@@ -95,87 +95,87 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** phần **Used by** có connection vừa lưu; danh sách ghi "used by 1".
 - [ ] Đổi Password của profile thành mật khẩu sai, Save, rồi mở connection đã lưu từ Ctrl+K.
   **Đúng:** báo sai đăng nhập (connection dùng mật khẩu mới của profile). Đổi lại mật khẩu đúng, Save: mở được, không hỏi mật khẩu.
-- [ ] Trong connect form, chọn **Type them here**, gõ User và Password, bấm **Save these as a profile…**.
+- [x] Trong connect form, chọn **Type them here**, gõ User và Password, bấm **Save these as a profile…**.
   **Đúng:** form chuyển sang **From a profile** với profile mới tên theo user (thêm `-2` nếu trùng), khung xanh "Saved as the profile …".
-- [ ] Trong ô chọn Profile, chọn **Manage profiles…**.
+- [x] Trong ô chọn Profile, chọn **Manage profiles…**.
   **Đúng:** Credential profiles mở đè lên connect form. Esc chỉ đóng Credential profiles, connect form vẫn còn; profile vừa sửa hiện đúng trong ô chọn.
 - [ ] Trong Credential profiles, chọn `app-reader`, bấm **Delete** (hoặc phím Delete trong danh sách).
   **Đúng:** khung vàng "Delete app-reader? 1 connection uses it…" với Delete và Keep. Bấm Delete: profile biến mất, mục trong Credential Manager bị xoá; mở connection đã lưu thì hỏi mật khẩu.
 - [ ] Bấm **Duplicate** trên một profile.
   **Đúng:** thêm `<tên>-copy` cùng user, chưa lưu ("not saved"); phải gõ mật khẩu rồi Save.
-- [ ] Kiểm tra cả hai hộp thoại ở theme sáng và tối.
+- [x] Kiểm tra cả hai hộp thoại ở theme sáng và tối.
   **Đúng:** chữ đọc rõ, danh sách bên trái có nền canvas, đường kẻ giữa hai cột.
-- [ ] Thu cửa sổ app thấp hơn connect form (kéo cạnh dưới lên), rồi mở connect form (New connection, chọn SQL Server).
+- [x] Thu cửa sổ app thấp hơn connect form (kéo cạnh dưới lên), rồi mở connect form (New connection, chọn SQL Server).
   **Đúng:** form cao tối đa 80% cửa sổ, tiêu đề và hàng nút luôn thấy; chỉ phần giữa form cuộn, cửa sổ phía sau không có thanh cuộn. Thanh cuộn mỏng, chỉ hiện khi rê chuột vào form; khi nó hiện, các ô nhập không hẹp lại hay xê dịch.
 
 ---
 
 ## 2. Chạy query
 
-- [ ] Gõ 3 câu trên 3 dòng, đặt con trỏ ở câu giữa, nhấn **Ctrl+Enter**.
+- [x] Gõ 3 câu trên 3 dòng, đặt con trỏ ở câu giữa, nhấn **Ctrl+Enter**.
   **Đúng:** chỉ câu giữa chạy, câu đó được tô sáng rồi mờ dần; status bar ghi "Ran 1 of 3 statements".
-- [ ] Nhấn **Ctrl+Shift+Enter** (hoặc **F5**).
+- [x] Nhấn **Ctrl+Shift+Enter** (hoặc **F5**).
   **Đúng:** cả 3 câu chạy, có 3 tab Result.
-- [ ] Bôi đen một phần rồi Ctrl+Enter.
+- [x] Bôi đen một phần rồi Ctrl+Enter.
   **Đúng:** chỉ phần bôi đen chạy.
-- [ ] Postgres: `select pg_sleep(30);`, bấm **■ Stop** sau 1–2 giây.
+- [x] Postgres: `select pg_sleep(30);`, bấm **■ Stop** sau 1–2 giây.
   **Đúng:** dừng ngay; Messages báo "Stopped"; chạy `select 1` tiếp được.
-- [ ] SQL Server: `waitfor delay '00:00:30'`, bấm **■ Stop**.
+- [x] SQL Server: `waitfor delay '00:00:30'`, bấm **■ Stop**.
   **Đúng:** như trên.
-- [ ] Gõ sai cú pháp, ví dụ `select * frm customers`.
+- [x] Gõ sai cú pháp, ví dụ `select * frm customers`.
   **Đúng:** tab Messages báo "The query failed" kèm lỗi của database.
-- [ ] Postgres: `do $$ begin raise notice 'xin chào'; end $$;`
+- [x] Postgres: `do $$ begin raise notice 'xin chào'; end $$;`
   **Đúng:** Messages có dòng `xin chào`.
-- [ ] SQL Server: script có `GO`:
+- [x] SQL Server: script có `GO`:
   ```sql
   select 1 as a
   GO
   select 2 as b
   ```
   **Đúng:** 2 tab Result.
-- [ ] F5 và Ctrl+R **không** tải lại cả trang (app không mất kết nối).
+- [x] F5 và Ctrl+R **không** tải lại cả trang (app không mất kết nối).
 
 ---
 
 ## 3. Database và sidebar
 
-- [ ] Bấm combobox database trên toolbar (cạnh kết nối), gõ để lọc, ↑↓ rồi Enter.
+- [x] Bấm combobox database trên toolbar (cạnh kết nối), gõ để lọc, ↑↓ rồi Enter.
   **Đúng:** editor chuyển sang database đó; status bar ghi "in <database>"; nhánh của database đó trên sidebar mở ra.
-- [ ] Double-click một database trên sidebar.
+- [x] Double-click một database trên sidebar.
   **Đúng:** giống như trên.
-- [ ] Double-click một bảng thuộc database khác database đang dùng.
+- [x] Double-click một bảng thuộc database khác database đang dùng.
   **Đúng:** bảng mở trên tab riêng, đọc từ database của nó.
-- [ ] Gõ vào ô **Filter** của sidebar.
+- [x] Gõ vào ô **Filter** của sidebar.
   **Đúng:** chỉ còn các bảng có tên khớp.
-- [ ] Chạy `create table thu_refresh (x int);` rồi xem sidebar.
+- [x] Chạy `create table thu_refresh (x int);` rồi xem sidebar.
   **Đúng:** bảng mới tự hiện. Nhấn **Ctrl+R** hoặc nút ↻ cũng làm mới được.
-- [ ] Thu hẹp sidebar, bấm chọn một bảng có tên dài hơn sidebar, rồi cuộn ngang sidebar.
+- [x] Thu hẹp sidebar, bấm chọn một bảng có tên dài hơn sidebar, rồi cuộn ngang sidebar.
   **Đúng:** nền chọn phủ hết tên bảng cả khi cuộn ngang, không bị cắt ở mép sidebar.
-- [ ] Chọn một bảng, nhấn **Ctrl+C**, qua editor nhấn **Ctrl+V**. Làm lại với một database.
+- [x] Chọn một bảng, nhấn **Ctrl+C**, qua editor nhấn **Ctrl+V**. Làm lại với một database.
   **Đúng:** dán ra đúng tên; status bar ghi "Copied the name". **Ctrl+Enter** trên một bảng mở nó ở tab mới.
-- [ ] Bấm nút cây (bên trái nút ↻ trên header OBJECTS).
+- [x] Bấm nút cây (bên trái nút ↻ trên header OBJECTS).
   **Đúng:** nút đổi sang trạng thái bấm; cây chỉ còn database đang dùng, bắt đầu từ các schema (không có dòng database). Đổi database ở toolbar: cây đổi theo. Bấm lại: về lại tất cả database. Mở lại app: nhớ lựa chọn.
-- [ ] Mở một database có hàng nghìn bảng (ví dụ database Business Central), cuộn nhanh xuống cuối và cuộn ngang.
+- [x] Mở một database có hàng nghìn bảng (ví dụ database Business Central), cuộn nhanh xuống cuối và cuộn ngang.
   **Đúng:** cây hiện ngay khi mở, cuộn mượt, không có khoảng trống; dòng chọn vẫn phủ hết tên khi cuộn ngang.
 - [ ] SQL Server: một database có stored procedure và function.
   **Đúng:** có các thư mục **Stored Procedures**, **Table-valued Functions**, **Scalar-valued Functions** (đóng sẵn), mỗi thư mục đúng loại của nó.
-- [ ] Chuột phải vào chỗ trống của sidebar, vào editor, vào status bar.
+- [x] Chuột phải vào chỗ trống của sidebar, vào editor, vào status bar.
   **Đúng:** không hiện menu của trình duyệt (Back, Print, Inspect, Emoji…). Chuột phải vào bảng hoặc database trên cây vẫn hiện menu của app.
 
 ### 3.0b Menu chuột phải trên bảng (ADR 0017)
-- [ ] Chuột phải một bảng › **Show Structure**.
+- [x] Chuột phải một bảng › **Show Structure**.
   **Đúng:** hộp thoại có danh sách cột (tên, kiểu, null, default, khoá) và nút **DDL**; Copy DDL và Open in editor dùng được.
-- [ ] **Show DDL** và **Copy DDL** trên một bảng có khoá chính, khoá ngoại, index, default, cột identity; trên một view; với SQL Server thêm procedure và function.
+- [x] **Show DDL** và **Copy DDL** trên một bảng có khoá chính, khoá ngoại, index, default, cột identity; trên một view; với SQL Server thêm procedure và function.
   **Đúng:** tab query mới có câu CREATE đầy đủ (SQL Server có các dòng `GO`). Chạy DDL đó dưới tên khác ở một database thử thì tạo được bảng giống hệt.
-- [ ] Chuột phải một view › **Edit View Definition**.
+- [x] Chuột phải một view › **Edit View Definition**.
   **Đúng:** tab query có `CREATE OR REPLACE VIEW` (PostgreSQL) / `CREATE OR ALTER VIEW` (SQL Server) / `DROP VIEW … ; CREATE VIEW …` (SQLite); sửa rồi chạy được.
-- [ ] Chọn một bảng thử, nhấn **F2** (hoặc **Rename…**), gõ tên mới.
+- [x] Chọn một bảng thử, nhấn **F2** (hoặc **Rename…**), gõ tên mới.
   **Đúng:** hộp thoại hiện câu lệnh sẽ chạy (SQL Server là `EXEC sp_rename …`), bấm Rename: cây làm mới với tên mới, status bar báo.
-- [ ] **Edit Comment…** trên bảng (PostgreSQL, SQL Server).
+- [x] **Edit Comment…** trên bảng (PostgreSQL, SQL Server).
   **Đúng:** ô đã có comment hiện tại; lưu xong Show DDL thấy comment. SQLite không có mục này.
-- [ ] **Maintenance…** trên bảng.
+- [x] **Maintenance…** trên bảng.
   **Đúng:** danh sách việc đúng của engine (PostgreSQL: Vacuum, Analyze, Reindex…; SQL Server: Update statistics, Rebuild…; SQLite: Analyze, Reindex, Vacuum); câu lệnh hiện trước, Run chạy xong báo ở status bar.
-- [ ] Bảng thử: **Alt+Del** (Truncate), rồi **Del** (Drop).
+- [x] Bảng thử: **Alt+Del** (Truncate), rồi **Del** (Drop).
   **Đúng:** cả hai hỏi bằng hộp thoại có câu lệnh và nút đỏ; Cancel không làm gì. PostgreSQL có ô CASCADE. SQLite Truncate là `DELETE FROM`.
 
 ### 3.0c Export, Import, Generate Rows (ADR 0018)
@@ -201,13 +201,13 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** 5 dòng xem trước hợp kiểu cột (email ở cột email, ngày ở cột ngày, chuỗi không dài quá cột); cột identity/tính toán không có trong câu INSERT; khoá số nguyên đếm tiếp từ giá trị lớn nhất; xong có thêm đúng 1000 dòng.
 
 ### 3.1 Script tạo database
-- [ ] Postgres, Run all:
+- [x] Postgres, Run all:
   ```sql
   CREATE DATABASE thu_tu_dong;
   create table bang_thu (id int);
   ```
   **Đúng:** Messages có "Switched to thu_tu_dong…"; `bang_thu` nằm trong `thu_tu_dong`, không nằm trong `postgres`.
-- [ ] Từ database `postgres`, chạy `DROP DATABASE thu_tu_dong;`.
+- [x] Từ database `postgres`, chạy `DROP DATABASE thu_tu_dong;`.
   **Đúng:** xóa được, không báo "being accessed by other users".
 - [ ] SQL Server: thử tương tự với `CREATE DATABASE thu` / `GO` / `create table …` / `GO` / `use master` / `GO` / `drop database thu`.
 
@@ -216,96 +216,96 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 ## 4. Grid
 
 ### 4.1 Cuộn và hiển thị
-- [ ] Chạy trên SQLite in memory:
+- [x] Chạy trên SQLite in memory:
   ```sql
   with recursive c(x) as (select 1 union all select x + 1 from c limit 2000000)
   select x, x * 2 as doubled, 'row ' || x as label from c
   ```
   **Đúng:** cuộn bằng chuột, thanh cuộn và phím đều mượt trong lúc dữ liệu còn đang tới; số cột nằm bên phải, chữ bên trái, NULL màu nhạt.
-- [ ] Kéo mép phải tiêu đề cột để đổi độ rộng.
+- [x] Kéo mép phải tiêu đề cột để đổi độ rộng.
 
 ### 4.2 Chọn vùng
-- [ ] Click một ô, rồi Shift+click ô khác.
+- [x] Click một ô, rồi Shift+click ô khác.
   **Đúng:** vùng chữ nhật được tô; status bar ghi "N × M selected".
 - [ ] Kéo chuột chọn vùng, kéo ra ngoài mép dưới.
   **Đúng:** grid tự cuộn.
-- [ ] Click số dòng ở cột bên trái, kéo qua nhiều dòng.
+- [x] Click số dòng ở cột bên trái, kéo qua nhiều dòng.
   **Đúng:** chọn cả dòng.
 - [ ] Ctrl+click tiêu đề cột, Ctrl+Shift+click tiêu đề cột khác.
   **Đúng:** chọn cả cột hoặc nhiều cột.
-- [ ] Click ô góc trên trái, hoặc Ctrl+A.
+- [x] Click ô góc trên trái, hoặc Ctrl+A.
   **Đúng:** chọn tất cả.
 - [ ] Shift + mũi tên hoặc Page Down mở rộng vùng chọn; Esc thu về một ô.
-- [ ] Click dòng 2, rồi **Ctrl+click** số dòng 5 và một ô ở dòng 9.
+- [x] Click dòng 2, rồi **Ctrl+click** số dòng 5 và một ô ở dòng 9.
   **Đúng:** dòng 2, 5, 9 được tô cả dòng, các dòng giữa thì không; status bar ghi "3 rows selected".
-- [ ] **Ctrl+click** lại dòng 5.
+- [x] **Ctrl+click** lại dòng 5.
   **Đúng:** dòng 5 bỏ chọn, dòng 2 và 9 vẫn chọn; con trỏ ô nằm ở dòng 5.
-- [ ] Sau đó **Shift+click** dòng 12.
+- [x] Sau đó **Shift+click** dòng 12.
   **Đúng:** thêm dòng 5 đến 12, dòng 2 vẫn chọn.
-- [ ] Click thường một ô.
+- [x] Click thường một ô.
   **Đúng:** các dòng đã chọn bỏ hết, chỉ còn ô đó.
 
 ### 4.3 Copy
-- [ ] Chọn vùng 3×3, **Ctrl+C**, dán vào Excel.
+- [x] Chọn vùng 3×3, **Ctrl+C**, dán vào Excel.
   **Đúng:** đúng 3×3 ô; NULL thành ô trống; status bar báo "Copied 9 cells".
-- [ ] **Ctrl+Shift+C** rồi dán.
+- [x] **Ctrl+Shift+C** rồi dán.
   **Đúng:** có thêm dòng tên cột.
-- [ ] Ctrl+click chọn dòng 2, 5, 9 rồi **Ctrl+C**, dán vào Excel.
+- [x] Ctrl+click chọn dòng 2, 5, 9 rồi **Ctrl+C**, dán vào Excel.
   **Đúng:** 3 dòng liền nhau theo thứ tự 2, 5, 9, đủ mọi cột.
-- [ ] Trên tab bảng có khóa chính, Ctrl+click chọn 2 dòng cách nhau, nhấn **Delete**.
+- [x] Trên tab bảng có khóa chính, Ctrl+click chọn 2 dòng cách nhau, nhấn **Delete**.
   **Đúng:** chỉ 2 dòng đó bị gạch để xóa; nhấn Delete lần nữa thì bỏ gạch.
-- [ ] Copy một ô chứa xuống dòng hoặc dấu `"` (ví dụ từ `select 'a"b' || chr(10) || 'c'` trên Postgres) rồi dán vào Excel.
+- [x] Copy một ô chứa xuống dòng hoặc dấu `"` (ví dụ từ `select 'a"b' || chr(10) || 'c'` trên Postgres) rồi dán vào Excel.
   **Đúng:** nằm gọn trong một ô.
 
 ### 4.4 Row detail
-- [ ] Bấm **Row detail** (hoặc Ctrl+Alt+I).
+- [X] Bấm **Row detail** (hoặc Ctrl+Alt+I).
   **Đúng:** panel bên phải hiện mọi trường của dòng đang chọn với giá trị đầy đủ.
-- [ ] Đi bằng ↑↓.
+- [x] Đi bằng ↑↓.
   **Đúng:** panel cập nhật theo dòng.
 - [ ] Chọn ô JSON (ví dụ `select '{"a":[1,2]}'::jsonb`).
   **Đúng:** JSON được thụt lề cho dễ đọc; nút **Copy** chép giá trị đầy đủ.
-- [ ] Click một trường trong panel.
+- [x] Click một trường trong panel.
   **Đúng:** con trỏ trong grid nhảy tới cột đó.
 
 ---
 
 ## 5. Sort
 
-- [ ] Double-click bảng `orders`, bấm tiêu đề `total_amount` ba lần.
+- [x] Double-click bảng `orders`, bấm tiêu đề `total_amount` ba lần.
   **Đúng:** lần 1 ▲ tăng dần, lần 2 ▼ giảm dần, lần 3 bỏ sort; status bar ghi "sorted by the server"; đây là query chạy lại nên dữ liệu là mới nhất.
 - [ ] Shift+click thêm cột `status`.
   **Đúng:** tiêu đề hiện ▲1 và ▲2.
-- [ ] Chạy `select * from customers limit 5`, rồi sort theo `full_name`.
+- [x] Chạy `select * from customers limit 5`, rồi sort theo `full_name`.
   **Đúng:** ra **5 tên đứng đầu bảng chữ cái của cả bảng**, không phải 5 dòng cũ xếp lại (ADR 0005).
-- [ ] Chạy `select * from customers; select 1;` (Run all), rồi sort Result 1.
-  **Đúng:** status bar ghi "sorted in Paboable"; không có query nào chạy lại.
-- [ ] Đặt Limit **1,000**, chạy `select * from order_items` trong một script hai câu (để không chạy lại được), rồi sort.
+- [x] Chạy `select * from customers; select 1;` (Run all), rồi sort Result 1.
+  **Đúng:** status bar ghi "sorted in Kemable"; không có query nào chạy lại.
+- [x] Đặt Limit **1,000**, chạy `select * from order_items` trong một script hai câu (để không chạy lại được), rồi sort.
   **Đúng:** status bar báo chỉ sort những dòng đã tải.
-- [ ] Ctrl+click tiêu đề vẫn là chọn cột, không sort.
+- [x] Ctrl+click tiêu đề vẫn là chọn cột, không sort.
 
 ---
 
 ## 6. Row cap
 
-- [ ] Chọn **Limit 1,000** ở bên phải thanh tab, chạy `select * from order_items` (10.000 dòng).
+- [x] Chọn **Limit 1,000** ở bên phải thanh tab, chạy `select * from order_items` (10.000 dòng).
   **Đúng:** dừng ở 1.000; status bar ghi "Stopped at 1,000 rows" và có nút **Fetch all**.
-- [ ] Bấm **Fetch all**.
+- [x] Bấm **Fetch all**.
   **Đúng:** đủ 10.000 dòng.
-- [ ] Đặt con trỏ trên câu đó, nhấn **Ctrl+Alt+Enter**.
+- [x] Đặt con trỏ trên câu đó, nhấn **Ctrl+Alt+Enter**.
   **Đúng:** chạy không giới hạn.
-- [ ] Đóng rồi mở lại app.
+- [x] Đóng rồi mở lại app.
   **Đúng:** Limit vẫn là lựa chọn cũ.
 
 ---
 
 ## 7. Giao diện chung
 
-- [ ] Chuyển Windows sang **Dark mode** (Settings › Personalization › Colors).
+- [x] Chuyển Windows sang **Dark mode** (Settings › Personalization › Colors).
   **Đúng:** app đổi theo: grid, editor và sidebar đều tối, chữ đọc rõ.
-- [ ] Gõ tiếng Việt bằng Unikey/EVKey trong editor và ô Filter.
+- [x] Gõ tiếng Việt bằng Unikey/EVKey trong editor và ô Filter.
   **Đúng:** bỏ dấu bình thường.
-- [ ] Kéo thanh chia giữa editor và kết quả, giữa sidebar và editor.
-- [ ] Rê chuột lên các nút có tooltip ở: thanh tab trang (Copy SQL, Export của tab bảng), thanh Result (tab Result, Row detail), nút Refresh của sidebar, nút đóng và nút Test của connect form.
+- [x] Kéo thanh chia giữa editor và kết quả, giữa sidebar và editor.
+- [x] Rê chuột lên các nút có tooltip ở: thanh tab trang (Copy SQL, Export của tab bảng), thanh Result (tab Result, Row detail), nút Refresh của sidebar, nút đóng và nút Test của connect form.
   **Đúng:** tooltip hiện đủ cả khung, không bị cắt thành một đường kẻ đen; tooltip của sidebar được tràn ra ngoài sidebar. Rời chuột thì tooltip tắt ngay.
 
 ---
@@ -315,7 +315,7 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 Đối chiếu với prototype đã chốt: https://claude.ai/artifact/MGBUywSGe5pUwerFj3W8xz.
 
 ### 8.1 Welcome và Ctrl+K
-- [ ] Mở app khi chưa có kết nối.
+- [x] Mở app khi chưa có kết nối.
   **Đúng:** không có sidebar; giữa màn có **New connection…**, **Open file…**, **Open an in-memory database**; toolbar chỉ có ô Search.
 - [ ] Nhấn **Ctrl+K**, gõ vài chữ, dùng ↑↓ rồi Enter; Esc để đóng.
   **Đúng:** bảng lệnh có nhóm Start, Saved connections, Settings; **Profile…** bị mờ (Later).
@@ -344,7 +344,7 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Ở script đó, xoá `*` của câu đầu, để con trỏ sau `select ` và nhấn **Ctrl+Space**.
   **Đúng:** gợi ý chỉ có các cột của bảng ở câu đầu (bảng `$ext`), không lẫn cột của bảng ở câu dưới.
 - [ ] Ở script đó, mở Result 2, bấm header cột đầu để sort; rồi qua Result 1 sort cột đầu.
-  **Đúng:** chỉ Result đang xem được sort, vẫn ở tab đó; status bar ghi "sorted in Paboable"; Result kia giữ nguyên, không có mũi tên sort.
+  **Đúng:** chỉ Result đang xem được sort, vẫn ở tab đó; status bar ghi "sorted in Kemable"; Result kia giữ nguyên, không có mũi tên sort.
 - [ ] SQL Server: `exec sp_who` rồi `select 1` (không `GO`), Run.
   **Đúng:** ra các Result nhưng không có khung (batch có `EXEC` không đọc được chắc chắn câu nào ra Result nào).
 - [ ] Kéo đường chia giữa editor và kết quả; double-click nó.
@@ -416,7 +416,7 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [ ] Xem dải **To filter on the server**, bấm **Copy WHERE**, dán ra Notepad.
   **Đúng:** câu `WHERE "quantity" > 3` đúng cú pháp của engine.
 - [ ] Sort một cột khi đang lọc.
-  **Đúng:** sort ngay trên các dòng đang giữ, status bar ghi "sorted in Paboable".
+  **Đúng:** sort ngay trên các dòng đang giữ, status bar ghi "sorted in Kemable".
 - [ ] Chạy lại câu lệnh (Ctrl+Enter).
   **Đúng:** filter vẫn còn và áp vào kết quả mới. Bấm **Clear** mới bỏ.
 - [ ] Ctrl+A, Ctrl+C rồi dán ra Excel.
@@ -467,18 +467,18 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
   **Đúng:** DevTools › Performance (F12, bản dev) cho frame dưới 8 ms ở cả hai lần. Ghi số đo vào mô tả của merge. (Đã đo tự động ngày 2026-11-11 trên một máy: không khác nhau; số đo ở ADR 0012, Consequences. Vẫn nên thử bằng tay trên máy khác, nhất là màn hình 120 Hz hoặc 4K.)
 
 ### 8.8 Cài đặt và thư mục dữ liệu (ADR 0019)
-Dùng file cài `Paboable_<version>_x64-setup.exe` (`pnpm tauri build`, ở `target\release\bundle\nsis\`).
+Dùng file cài `Kemable_<version>_x64-setup.exe` (`pnpm tauri build`, ở `target\release\bundle\nsis\`).
 - [ ] Chạy file cài, bấm Next ở trang chào.
   **Đúng:** không có trang điều khoản; app hỏi điều khoản khi mở lần đầu.
 - [ ] (Tài khoản admin) Trang tiếp theo hỏi cài cho mình hay cho mọi người. Tài khoản thường không thấy trang này.
-- [ ] Ở trang **Choose Install Location**, bấm Browse, chọn một thư mục trên ổ D (ví dụ `D:\Apps\Paboable`), Next.
-  **Đúng:** cài xong, trang **Completing Paboable Setup** có ô Run Paboable và Create desktop shortcut; bấm Finish.
+- [ ] Ở trang **Choose Install Location**, bấm Browse, chọn một thư mục trên ổ D (ví dụ `D:\Apps\Kemable`), Next.
+  **Đúng:** cài xong, trang **Completing Kemable Setup** có ô Run Kemable và Create desktop shortcut; bấm Finish.
 - [ ] Mở app, vào Settings.
-  **Đúng:** mục **Data** ghi "Beside the app, where it was installed: D:\Apps\Paboable\data…"; bấm **Open** mở đúng thư mục đó trong Explorer, có `connections.json`, `ui.json`, `pages\`, `webview\`.
+  **Đúng:** mục **Data** ghi "Beside the app, where it was installed: D:\Apps\Kemable\data…"; bấm **Open** mở đúng thư mục đó trong Explorer, có `connections.json`, `ui.json`, `pages\`, `webview\`.
 - [ ] Mở app lần đầu sau khi cài (hoặc một bản copy, hoặc `pnpm tauri dev` với thư mục dữ liệu mới).
   **Đúng:** hộp thoại **Terms of Service and Privacy Policy** che cả app: một câu với hai link (bấm mở trình duyệt), nút **Disagree and close** và **Agree and continue**; không có nút X, Esc không đóng. **Disagree and close**: app tắt, mở lại vẫn hỏi. **Agree and continue**: hộp thoại tắt; mở lại không hỏi nữa; `ui.json` có `termsAccepted` và `termsAcceptedAt` (ngày giờ đồng ý).
-- [ ] Máy đã từng dùng bản cũ: mở app lần đầu sau khi cài.
-  **Đúng:** connection đã lưu, các tab query, theme và các lựa chọn cũ vẫn còn. Mở lại app lần nữa: vẫn còn.
+- [ ] Máy đã từng dùng bản cũ (có `%APPDATA%\kemable.app`): mở app lần đầu sau khi cài.
+  **Đúng:** connection đã lưu và lịch sử query vẫn còn. Mở lại app lần nữa: vẫn còn.
 - [ ] Gõ vào một tab query, đóng app ngay bằng **Alt+F4** (không chờ), mở lại.
   **Đúng:** chữ vừa gõ vẫn còn.
 - [ ] Kéo rộng sidebar và kéo cao editor, đóng app, mở lại.
@@ -495,11 +495,11 @@ Dùng file cài `Paboable_<version>_x64-setup.exe` (`pnpm tauri build`, ở `tar
 Chạy từ gốc repo khi muốn kiểm lại phần driver và luồng chạy (thay mật khẩu):
 
 ```bash
-set PABOABLE_POSTGRES_URL=postgres://postgres:<mật khẩu>@localhost:5432/postgres?sslmode=disable
-set PABOABLE_MSSQL_URL=sqlserver://localhost
-cargo test -p paboable-driver-postgres -- --ignored --test-threads=1
-cargo test -p paboable-driver-mssql -- --ignored --test-threads=1
-cargo test -p paboable-windows -- --ignored --test-threads=1
+set KEMABLE_POSTGRES_URL=postgres://postgres:<mật khẩu>@localhost:5432/postgres?sslmode=disable
+set KEMABLE_MSSQL_URL=sqlserver://localhost
+cargo test -p kemable-driver-postgres -- --ignored --test-threads=1
+cargo test -p kemable-driver-mssql -- --ignored --test-threads=1
+cargo test -p kemable-windows -- --ignored --test-threads=1
 ```
 
-Test của `paboable-windows` có một test ghi rồi xóa một mục tạm trong Windows Credential Manager.
+Test của `kemable-windows` có một test ghi rồi xóa một mục tạm trong Windows Credential Manager.

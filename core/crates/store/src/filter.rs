@@ -23,9 +23,9 @@
 //!   text as the grid shows it (bytes as `0x` hex) and ignore case, by
 //!   Unicode lowercase, one character at a time.
 
-use paboable_core::DriverError;
-use paboable_core::sql::{FilterOp, ResultFilter, in_items};
-use paboable_core::value::ValueKind;
+use kemable_core::DriverError;
+use kemable_core::sql::{FilterOp, ResultFilter, in_items};
+use kemable_core::value::ValueKind;
 
 use crate::order::{SortCell, compare, is_decimal};
 use crate::store::{Chunk, ColumnChunk, kind_from_u8};
@@ -173,7 +173,7 @@ impl Test {
                 let bytes = data.bytes(local);
                 let text = if kind == ValueKind::Bytes.as_u8() {
                     scratch.hex.clear();
-                    paboable_core::format::hex_preview(bytes, usize::MAX, &mut scratch.hex);
+                    kemable_core::format::hex_preview(bytes, usize::MAX, &mut scratch.hex);
                     scratch.hex.as_str()
                 } else {
                     std::str::from_utf8(bytes).unwrap_or("")
@@ -500,7 +500,7 @@ mod tests {
     #[test]
     fn a_date_reads_back_as_the_day_the_core_shows() {
         for days in [-719_529, -1, 0, 19_723, 19_782, 2_932_897] {
-            let (year, month, day) = paboable_core::format::civil_from_days(days);
+            let (year, month, day) = kemable_core::format::civil_from_days(days);
             assert_eq!(days_from_civil(year, i64::from(month), i64::from(day)), days);
         }
         assert_eq!(date_time("2024-02-29"), Some((19_782 * MICROS_PER_DAY, None)));

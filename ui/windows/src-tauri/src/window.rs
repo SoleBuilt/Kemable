@@ -44,7 +44,7 @@ impl Place {
 
 /// Makes the main window, hidden, puts it back in its place, then shows it.
 /// It shows even when its place cannot be read, so it is never left hidden.
-pub fn open(app: &App, folder: &DataFolder, webview: Option<PathBuf>, import_local_storage: bool) -> tauri::Result<()> {
+pub fn open(app: &App, folder: &DataFolder) -> tauri::Result<()> {
     let config = app
         .config()
         .app
@@ -53,12 +53,10 @@ pub fn open(app: &App, folder: &DataFolder, webview: Option<PathBuf>, import_loc
         .find(|window| window.label == LABEL)
         .cloned()
         .ok_or_else(|| tauri::Error::WindowNotFound)?;
-    let mut builder = WebviewWindowBuilder::from_config(app.handle(), &config)?
-        .initialization_script(folder.startup_script(import_local_storage));
-    if let Some(webview) = webview {
-        builder = builder.data_directory(webview);
-    }
-    let window = builder.build()?;
+    let window = WebviewWindowBuilder::from_config(app.handle(), &config)?
+        .initialization_script(folder.startup_script())
+        .data_directory(folder.webview())
+        .build()?;
     let path = folder.file(PLACE_FILE);
     let place = read_place(&path);
     if let Some(place) = place {

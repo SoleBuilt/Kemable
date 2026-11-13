@@ -5,12 +5,12 @@
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::live::LiveTopic;
-use paboable_core::sink::ResultSink;
-use paboable_core::value::Value;
-use paboable_core::{CallOptions, DriverError, ErrorCode};
-use paboable_store::ResultStore;
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::live::LiveTopic;
+use kemable_core::sink::ResultSink;
+use kemable_core::value::Value;
+use kemable_core::{CallOptions, DriverError, ErrorCode};
+use kemable_store::ResultStore;
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tokio::sync::Notify;

@@ -3,15 +3,15 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::BytesMut;
-use paboable_core::catalog::{ColumnMeta, IndexInfo, ObjectInfo, ObjectKind, TableRef};
-use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
-use paboable_core::connection::Connection;
-use paboable_core::driver::Driver;
-use paboable_core::sink::ResultSink;
-use paboable_core::sql::{self, SqlGrammar};
-use paboable_core::value::{Value, ValueKind};
-use paboable_core::{CallOptions, ErrorCode, format};
-use paboable_store::{ResultStore, WindowReader, WindowRequest};
+use kemable_core::catalog::{ColumnMeta, IndexInfo, ObjectInfo, ObjectKind, TableRef};
+use kemable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+use kemable_core::connection::Connection;
+use kemable_core::driver::Driver;
+use kemable_core::sink::ResultSink;
+use kemable_core::sql::{self, SqlGrammar};
+use kemable_core::value::{Value, ValueKind};
+use kemable_core::{CallOptions, ErrorCode, format};
+use kemable_store::{ResultStore, WindowReader, WindowRequest};
 use postgres_protocol::IsNull;
 use postgres_protocol::types as wire;
 use tokio_postgres::types::Type;
@@ -717,13 +717,13 @@ async fn a_closed_port_fails_to_connect() {
     assert_eq!(error.code, ErrorCode::Connect);
 }
 
-// --- with a server: PABOABLE_POSTGRES_URL=postgres://user:pw@host/db -----------
+// --- with a server: KEMABLE_POSTGRES_URL=postgres://user:pw@host/db -----------
 
-const LIVE: &str = "needs PostgreSQL at $PABOABLE_POSTGRES_URL";
+const LIVE: &str = "needs PostgreSQL at $KEMABLE_POSTGRES_URL";
 
 fn live_config() -> ConnectionConfig {
-    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
-    paboable_core::connection_url::parse(&url).expect("a valid URL")
+    let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+    kemable_core::connection_url::parse(&url).expect("a valid URL")
 }
 
 async fn live() -> Arc<dyn Connection> {
@@ -799,7 +799,7 @@ fn texts(sink: &Collect) -> Vec<String> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn every_mapped_type_reads_as_psql_shows_it() {
     let _ = LIVE;
     let conn = live().await;
@@ -848,20 +848,20 @@ async fn every_mapped_type_reads_as_psql_shows_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn commands_report_rows_affected_and_empty_results_keep_their_columns() {
     let conn = live().await;
-    run(&conn, "create temp table paboable_t (id int primary key, name text)").await;
-    let sink = run(&conn, "insert into paboable_t values (1, 'a'), (2, 'b'), (3, 'c')").await;
+    run(&conn, "create temp table kemable_t (id int primary key, name text)").await;
+    let sink = run(&conn, "insert into kemable_t values (1, 'a'), (2, 'b'), (3, 'c')").await;
     assert_eq!(*sink.commands.lock().unwrap(), [Some(3)]);
-    let sink = run(&conn, "select * from paboable_t where false").await;
+    let sink = run(&conn, "select * from kemable_t where false").await;
     let store = sink.store.lock().unwrap().clone().expect("a set with no rows");
     assert_eq!(store.columns().len(), 2);
     assert_eq!(store.state().total_rows, 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn the_row_limit_stops_the_server_and_the_next_statement_still_runs() {
     let conn = live().await;
     let sink = Arc::new(Collect::default());
@@ -879,7 +879,7 @@ async fn the_row_limit_stops_the_server_and_the_next_statement_still_runs() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn a_cancel_stops_the_statement_on_the_server() {
     let conn = live().await;
     let options = CallOptions::default();
@@ -902,7 +902,7 @@ async fn a_cancel_stops_the_statement_on_the_server() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn a_deadline_reports_a_timeout() {
     let conn = live().await;
     let options = CallOptions::default().with_timeout(Duration::from_millis(300));
@@ -914,7 +914,7 @@ async fn a_deadline_reports_a_timeout() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn a_syntax_error_carries_its_sqlstate_and_byte_position() {
     let conn = live().await;
     let error = conn
@@ -927,7 +927,7 @@ async fn a_syntax_error_carries_its_sqlstate_and_byte_position() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn notices_reach_the_sink() {
     let conn = live().await;
     let sink = run(&conn, "do $$ begin raise notice 'hello from plpgsql'; end $$").await;
@@ -942,15 +942,15 @@ async fn notices_reach_the_sink() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn the_catalog_lists_schemas_tables_and_columns() {
     let conn = live().await;
-    let schema = format!("paboable_test_{}", std::process::id());
+    let schema = format!("kemable_test_{}", std::process::id());
     // A run that failed half way leaves its schema behind; remove those first.
     run(
         &conn,
         "do $$ declare s text; begin \
-           for s in select nspname from pg_namespace where nspname like 'paboable\\_test\\_%' loop \
+           for s in select nspname from pg_namespace where nspname like 'kemable\\_test\\_%' loop \
              execute format('drop schema %I cascade', s); \
            end loop; end $$",
     )
@@ -987,7 +987,7 @@ async fn the_catalog_lists_schemas_tables_and_columns() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn the_databases_this_login_may_open_are_listed_with_the_current_one() {
     let conn = live().await;
     let current = conn.current_database().expect("PostgreSQL reports its database");
@@ -1007,7 +1007,7 @@ async fn the_databases_this_login_may_open_are_listed_with_the_current_one() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn a_wrong_password_is_an_auth_error() {
     let mut config = live_config();
     if let Target::Network { password, .. } = &mut config.target {
@@ -1022,10 +1022,10 @@ async fn a_wrong_password_is_an_auth_error() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn object_ddl_scripts_what_the_server_holds_and_the_script_runs_again() {
     let conn = live().await;
-    let schema = format!("paboable_ddl_{}", std::process::id());
+    let schema = format!("kemable_ddl_{}", std::process::id());
     let copy = format!("{schema}_copy");
     for name in [&schema, &copy] {
         run(&conn, &format!("drop schema if exists {name} cascade")).await;
@@ -1252,9 +1252,9 @@ async fn ddl_of(conn: &Arc<dyn Connection>, schema: &str, name: &str) -> String 
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn object_ddl_scripts_serial_inherited_and_typed_tables_that_run_again() {
-    in_scratch_schema("paboable_ddl_more", |conn, schema| async move {
+    in_scratch_schema("kemable_ddl_more", |conn, schema| async move {
         let copy = format!("{schema}_copy");
         for statement in [
             format!("create table {schema}.items (id serial primary key, code bigserial, name text)"),
@@ -1356,9 +1356,9 @@ async fn object_ddl_scripts_serial_inherited_and_typed_tables_that_run_again() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn indexes_list_the_primary_key_first_and_columns_say_what_the_server_fills() {
-    in_scratch_schema("paboable_indexes", |conn, schema| async move {
+    in_scratch_schema("kemable_indexes", |conn, schema| async move {
         for statement in [
             format!(
                 "create table {schema}.accounts (\
@@ -1453,7 +1453,7 @@ async fn indexes_list_the_primary_key_first_and_columns_say_what_the_server_fill
 
 #[test]
 fn every_kind_the_catalog_lists_has_a_folder_in_the_tree() {
-    use paboable_core::catalog::ObjectKind;
+    use kemable_core::catalog::ObjectKind;
     // The kinds list_objects gives a relation or a routine.
     for kind in [
         ObjectKind::Table,

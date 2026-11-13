@@ -1,7 +1,7 @@
 ---
 name: fix-issue
 description: >-
-  Take a Paboable problem from report to a verified fix: read the report, find the real cause,
+  Take a Kemable problem from report to a verified fix: read the report, find the real cause,
   fix it with every case the cause reaches, add the test that would have caught it, and verify.
   Use for bugs, wrong behavior and small features, whether phrased in English or Vietnamese
   ("sửa lỗi ...", "tại sao ... không chạy", "bị chậm khi ...", "cuộn bị giật").

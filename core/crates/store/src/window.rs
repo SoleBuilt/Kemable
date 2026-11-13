@@ -27,11 +27,11 @@
 //! `text[offsets[cell]..offsets[cell + 1]]`, at most the request's
 //! `max_chars` characters, with control characters made spaces so a cell is
 //! one line. Bitmaps hold a bit per cell, lowest bit first. A cell's kind
-//! byte says what its `raw` holds (`paboable_core::value::Value::raw`).
+//! byte says what its `raw` holds (`kemable_core::value::Value::raw`).
 
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::format::hex_preview;
-use paboable_core::value::ValueKind;
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::format::hex_preview;
+use kemable_core::value::ValueKind;
 
 use crate::store::Inner;
 
@@ -269,7 +269,7 @@ impl<'a> WindowReader<'a> {
 
 #[cfg(test)]
 mod tests {
-    use paboable_core::value::Value;
+    use kemable_core::value::Value;
 
     use super::*;
     use crate::{CHUNK_ROWS, CellValue, ResultStore};

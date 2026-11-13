@@ -9,8 +9,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use paboable_core::config::Secret;
-use paboable_core::{DriverError, ErrorCode};
+use kemable_core::config::Secret;
+use kemable_core::{DriverError, ErrorCode};
 use serde::Deserialize;
 use serde_json::Value as Json;
 
@@ -108,7 +108,7 @@ impl Api {
         let client = reqwest::Client::builder()
             .tls_backend_preconfigured(tls_config()?)
             .connect_timeout(Duration::from_secs(15))
-            .user_agent(concat!("Paboable/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("Kemable/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|error| DriverError::new(ErrorCode::Tls, error.to_string()))?;
         Ok(Self {

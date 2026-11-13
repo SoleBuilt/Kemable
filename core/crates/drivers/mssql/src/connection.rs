@@ -3,14 +3,14 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::TryStreamExt;
-use paboable_core::catalog::{
+use kemable_core::catalog::{
     ColumnInfo, ColumnMeta, DatabaseInfo, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef,
 };
-use paboable_core::config::{ConnectionConfig, Target, TlsMode};
-use paboable_core::connection::Connection;
-use paboable_core::engine::EngineInfo;
-use paboable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
-use paboable_core::{CallOptions, DriverError, ErrorCode, Result};
+use kemable_core::config::{ConnectionConfig, Target, TlsMode};
+use kemable_core::connection::Connection;
+use kemable_core::engine::EngineInfo;
+use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
+use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use tiberius::{AuthMethod, Client, EncryptionLevel, QueryItem, Row, SqlBrowser, ToSql};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -84,12 +84,7 @@ impl MssqlConnection {
         if let Some(database) = database.as_deref().filter(|database| !database.is_empty()) {
             tds.database(database);
         }
-        tds.application_name(
-            config
-                .options
-                .get("application_name")
-                .map_or("Paboable", String::as_str),
-        );
+        tds.application_name(config.options.get("application_name").map_or("Kemable", String::as_str));
         tds.authentication(match user.as_deref().filter(|user| !user.is_empty()) {
             Some(user) => AuthMethod::sql_server(user, password.expose()),
             None => windows_login()?,
@@ -288,7 +283,7 @@ async fn stream_batch(client: &mut MssqlClient, batch: &str, sink: &dyn ResultSi
     Ended::Done(Ok(ExecOutcome::default()))
 }
 
-fn flush(sink: &dyn ResultSink, values: &mut Vec<paboable_core::value::Value>) {
+fn flush(sink: &dyn ResultSink, values: &mut Vec<kemable_core::value::Value>) {
     if !values.is_empty() {
         sink.push_rows(values);
         values.clear();
@@ -995,7 +990,7 @@ struct Discard;
 impl ResultSink for Discard {
     fn begin_set(&self, _columns: Vec<ColumnMeta>) {}
 
-    fn push_rows(&self, _values: &[paboable_core::value::Value]) -> bool {
+    fn push_rows(&self, _values: &[kemable_core::value::Value]) -> bool {
         true
     }
 

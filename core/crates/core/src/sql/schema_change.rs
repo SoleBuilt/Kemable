@@ -9,7 +9,7 @@
 //! | `IMPORT` | PostgreSQL's `IMPORT FOREIGN SCHEMA` makes tables |
 //! | `ATTACH`, `DETACH` | SQLite's databases, PostgreSQL's partitions |
 //! | `INTO` not after `INSERT` or `MERGE` | `SELECT ... INTO t` makes a table |
-//! | `DO`, `CALL`, `EXEC`, `EXECUTE` | a body or procedure Paboable cannot read may do anything |
+//! | `DO`, `CALL`, `EXEC`, `EXECUTE` | a body or procedure Kemable cannot read may do anything |
 //!
 //! It errs towards yes: a word is enough, wherever it stands, so a function
 //! body or a batch that creates something is never missed. A `$$` body is a

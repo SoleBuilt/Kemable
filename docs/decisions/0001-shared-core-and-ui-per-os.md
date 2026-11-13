@@ -5,7 +5,7 @@
 
 ## Context
 
-Paboable must start fast, stay light and scroll smoothly through large results. It starts on Windows; macOS and Linux follow. A UI-free Rust core can keep every driver, session, result set and error code, and give each platform its own UI, which calls the crates directly or through FFI.
+Kemable must start fast, stay light and scroll smoothly through large results. It starts on Windows; macOS and Linux follow. A UI-free Rust core can keep every driver, session, result set and error code, and give each platform its own UI, which calls the crates directly or through FFI.
 
 ## Decision
 
@@ -28,4 +28,4 @@ Paboable must start fast, stay light and scroll smoothly through large results. 
 ## Alternatives considered
 
 - **Logic in TypeScript, Rust only for drivers.** Formatting and splitting would be written again for each UI, and big results would cross into JavaScript.
-- **Reusing another project's database crates as a dependency.** Those read while planning were unpublished or changed often, and pulled engines and a crypto stack this app does not need yet. Paboable writes its own, smaller core.
+- **Reusing another project's database crates as a dependency.** Those read while planning were unpublished or changed often, and pulled engines and a crypto stack this app does not need yet. Kemable writes its own, smaller core.

@@ -22,7 +22,7 @@ Three things shape it:
 
 `EngineInfo::live` (a flag) becomes `EngineInfo::live_topics`: the kinds of topic the engine listens to, empty for an engine that pushes nothing. Today a `Channel` (a name) and a `Pattern` (a glob).
 
-`paboable_core::live::topics` reads what the user typed: names split at spaces, commas and new lines; a name in double quotes keeps its spaces and commas and is marked `exact`.
+`kemable_core::live::topics` reads what the user typed: names split at spaces, commas and new lines; a name in double quotes keeps its spaces and commas and is marked `exact`.
 
 ### PostgreSQL
 
@@ -71,11 +71,11 @@ The result is an ordinary `ResultStore`, so the grid, copy, the row detail, the 
 ## Consequences
 
 - A listening holds one more connection to the server for as long as it runs.
-- The time shown is when the event reached Paboable, in UTC like every `timestamptz` in the app, not when it was sent.
+- The time shown is when the event reached Kemable, in UTC like every `timestamptz` in the app, not when it was sent.
 - At the cap the listening stops; a busy channel needs Clear and Listen again, or a narrower topic.
 - Sorting while it listens sorts the events held. The store puts later ones after them in arrival order (its rule for late rows), so a Live page sorts again at most every 300 ms while events arrive (amended 2026-11-12, after a sort by `received` descending left new events at the bottom).
 - A Tauri channel hands on its next message only once the handler of this one returned, so a handler that throws would hold every later event back with nothing said. `LiveSession` logs a failure and goes on (amended 2026-11-12).
-- The drivers' tests run against a small PostgreSQL backend and a small pub/sub server inside the tests; the tests against a real server are ignored until `$PABOABLE_POSTGRES_URL` and `$PABOABLE_REDIS_URL` are set. On 2026-11-12 the PostgreSQL ones ran against PostgreSQL 17.4, and the Live page was driven in the dev app over WebView2's DevTools protocol (listen, 5,000 events, filter, sort, close); Redis had not run (`docs/testing/phase-3.md` has the steps).
+- The drivers' tests run against a small PostgreSQL backend and a small pub/sub server inside the tests; the tests against a real server are ignored until `$KEMABLE_POSTGRES_URL` and `$KEMABLE_REDIS_URL` are set. On 2026-11-12 the PostgreSQL ones ran against PostgreSQL 17.4, and the Live page was driven in the dev app over WebView2's DevTools protocol (listen, 5,000 events, filter, sort, close); Redis had not run (`docs/testing/phase-3.md` has the steps).
 - Still to build (`docs/roadmap.md`): Supabase Realtime, RabbitMQ consumers, Firebase; reconnect; remembering a connection's channels.
 
 ## Alternatives considered

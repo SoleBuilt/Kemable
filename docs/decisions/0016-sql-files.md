@@ -6,7 +6,7 @@
 
 ## Context
 
-Scripts live in files: in git, shared by a team, opened from Explorer. Paboable kept a query page's text only in the app (pages across launches) or as a saved query in `queries.json`. SSMS and other desktop clients open a `.sql` file into a tab and save it back with Ctrl+S.
+Scripts live in files: in git, shared by a team, opened from Explorer. Kemable kept a query page's text only in the app (pages across launches) or as a saved query in `queries.json`. SSMS and other desktop clients open a `.sql` file into a tab and save it back with Ctrl+S.
 
 ## Decision
 
@@ -21,7 +21,7 @@ Scripts live in files: in git, shared by a team, opened from Explorer. Paboable 
 
 ## Consequences
 
-- Built 2026-11-11: `paboable_core::text_file` decodes and encodes (tested with BOMs, UTF-16 and mixed line endings; bytes that are not text are refused with `file.not_text`, never guessed); the Windows app's `read_text_file` and `write_text_file` read and write (64 MB at most, a save through a temporary file and a rename), and the dialog plugin's `save` asks for a path (`dialog:allow-save`). In `App.svelte` a page's `file` holds the path, the encoding, the line endings and the text last saved; the tab's `●` compares the editor's text with it.
+- Built 2026-11-11: `kemable_core::text_file` decodes and encodes (tested with BOMs, UTF-16 and mixed line endings; bytes that are not text are refused with `file.not_text`, never guessed); the Windows app's `read_text_file` and `write_text_file` read and write (64 MB at most, a save through a temporary file and a rename), and the dialog plugin's `save` asks for a path (`dialog:allow-save`). In `App.svelte` a page's `file` holds the path, the encoding, the line endings and the text last saved; the tab's `●` compares the editor's text with it.
 - Backlog (not decided further): a notice when a file changes outside the app (Reload from disk, or keep my changes), and linking a folder of `.sql` files into the sidebar.
 
 ## Alternatives considered

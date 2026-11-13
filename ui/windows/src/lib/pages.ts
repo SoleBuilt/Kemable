@@ -4,7 +4,7 @@
 // results are not kept; they come from the server.
 
 import { ipc } from "./ipc";
-import { pagesWithoutConnection, readPref, ready, track, writePref } from "./store";
+import { pagesWithoutConnection, readPref, track, writePref } from "./store";
 import type { LineEnding, OpenedConnection, TextEncoding } from "./types";
 
 /** The `.sql` file a query page is (docs/decisions/0016-sql-files.md), as kept. */
@@ -80,7 +80,6 @@ function asPages(kept: unknown): KeptPages | null {
 
 /** The pages kept for `conn`, or null when there are none (or what is kept is not readable). */
 export async function readPages(conn: string): Promise<KeptPages | null> {
-  await ready;
   return asPages(await ipc.readPages(conn).catch(() => null));
 }
 
@@ -91,7 +90,7 @@ export function readPagesWithoutConnection(): KeptPages | null {
 
 /** Keeps `kept` for `conn`; closing the window waits for it. A folder that cannot be written keeps nothing. */
 export function writePages(conn: string, kept: KeptPages): void {
-  void track(ready.then(() => ipc.writePages(conn, kept))).catch(() => {});
+  void track(ipc.writePages(conn, kept)).catch(() => {});
 }
 
 // --- Recent files, for Ctrl+K ------------------------------------------------

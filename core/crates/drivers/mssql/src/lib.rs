@@ -18,13 +18,13 @@ mod errors;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use paboable_core::catalog::ObjectKind;
-use paboable_core::config::ConnectionConfig;
-use paboable_core::connection::Connection;
-use paboable_core::driver::Driver;
-use paboable_core::engine::{DataModel, EngineInfo, TargetKind, TreeFolder};
-use paboable_core::sql::SqlGrammar;
-use paboable_core::{CallOptions, Result};
+use kemable_core::catalog::ObjectKind;
+use kemable_core::config::ConnectionConfig;
+use kemable_core::connection::Connection;
+use kemable_core::driver::Driver;
+use kemable_core::engine::{DataModel, EngineInfo, TargetKind, TreeFolder};
+use kemable_core::sql::SqlGrammar;
+use kemable_core::{CallOptions, Result};
 
 pub use connection::MssqlConnection;
 

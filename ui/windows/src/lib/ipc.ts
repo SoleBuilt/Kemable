@@ -306,9 +306,6 @@ export const ipc = {
   writePages: (key: string, kept: unknown) => invoke<void>("write_pages", { key, kept }),
   /** Keeps the UI's preferences; resolves once they are on disk. */
   writePrefs: (prefs: Record<string, unknown>) => invoke<void>("write_prefs", { prefs }),
-  /** Moves what an older version kept in the WebView's storage into the data folder. */
-  importLocalStorage: (prefs: Record<string, unknown>, pages: Record<string, unknown>) =>
-    invoke<void>("import_local_storage", { prefs, pages }),
   /** Opens the data folder in Explorer. */
   openDataFolder: () => invoke<void>("open_data_folder"),
   /** Opens the Terms of Service or the Privacy Policy in the browser. */

@@ -18,9 +18,9 @@
 
 use std::fmt::Write as _;
 
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::format;
-use paboable_core::value::{Value, ValueKind};
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::format;
+use kemable_core::value::{Value, ValueKind};
 use tiberius::time::{Date, Time};
 use tiberius::{Column, ColumnData, ColumnType};
 

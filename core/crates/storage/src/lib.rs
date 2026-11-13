@@ -20,8 +20,8 @@ pub mod queries;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use paboable_core::config::{ConnectionConfig, Secret, Target};
-use paboable_core::{DriverError, ErrorCode, Result};
+use kemable_core::config::{ConnectionConfig, Secret, Target};
+use kemable_core::{DriverError, ErrorCode, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::profiles::CredentialProfiles;

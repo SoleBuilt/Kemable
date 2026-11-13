@@ -14,7 +14,7 @@ select 1
 select * from public.bang_thu
 ```
 
-is one statement to psql, and a syntax error. In Paboable, Run statement (Ctrl+Enter) with the cursor on the second line sent both lines and failed, and the user read it as the wrong statement being picked. DBeaver's default treats a blank line as the end of a statement, and people who come from it write scripts this way.
+is one statement to psql, and a syntax error. In Kemable, Run statement (Ctrl+Enter) with the cursor on the second line sent both lines and failed, and the user read it as the wrong statement being picked. DBeaver's default treats a blank line as the end of a statement, and people who come from it write scripts this way.
 
 A blank line cannot always end a statement: people also put blank lines inside one, between a `WITH` and its `SELECT`, between the clauses of a long query.
 

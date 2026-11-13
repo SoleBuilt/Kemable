@@ -2,14 +2,14 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use paboable_core::catalog::{ColumnMeta, ObjectKind, TableRef};
-use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
-use paboable_core::connection::Connection;
-use paboable_core::driver::Driver;
-use paboable_core::sink::ResultSink;
-use paboable_core::value::Value;
-use paboable_core::{CallOptions, ErrorCode};
-use paboable_store::{ResultStore, WindowReader, WindowRequest};
+use kemable_core::catalog::{ColumnMeta, ObjectKind, TableRef};
+use kemable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+use kemable_core::connection::Connection;
+use kemable_core::driver::Driver;
+use kemable_core::sink::ResultSink;
+use kemable_core::value::Value;
+use kemable_core::{CallOptions, ErrorCode};
+use kemable_store::{ResultStore, WindowReader, WindowRequest};
 use tiberius::ColumnData;
 use tiberius::time::{Date, DateTime2, Time};
 
@@ -39,7 +39,7 @@ fn a_seventh_fractional_digit_is_kept_in_full() {
     let date = Date::new(738_837);
     let whole = DateTime2::new(date, Time::new(800_003_048_650, 7));
     assert_eq!(
-        paboable_core::format::display(&decode(
+        kemable_core::format::display(&decode(
             tiberius::ColumnType::Datetime2,
             &ColumnData::DateTime2(Some(whole))
         )),
@@ -100,11 +100,11 @@ async fn a_closed_port_fails_to_connect() {
     assert_eq!(error.code, ErrorCode::Connect);
 }
 
-// --- with a server: PABOABLE_MSSQL_URL=sqlserver://localhost (Windows login) ----
+// --- with a server: KEMABLE_MSSQL_URL=sqlserver://localhost (Windows login) ----
 
 fn live_config() -> ConnectionConfig {
-    let url = std::env::var("PABOABLE_MSSQL_URL").expect("PABOABLE_MSSQL_URL is set");
-    paboable_core::connection_url::parse(&url).expect("a valid URL")
+    let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
+    kemable_core::connection_url::parse(&url).expect("a valid URL")
 }
 
 fn in_database(mut config: ConnectionConfig, name: &str) -> ConnectionConfig {
@@ -192,7 +192,7 @@ fn first_row(store: &ResultStore) -> Vec<String> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn every_mapped_type_reads_as_sql_server_shows_it() {
     let conn = live_in("tempdb").await;
     let sink = run(
@@ -235,7 +235,7 @@ async fn every_mapped_type_reads_as_sql_server_shows_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_batch_returns_each_of_its_result_sets_and_commands_report_done() {
     let conn = live_in("tempdb").await;
     let sink = run(&conn, "select 1 as a; select 'two' as b, 2 as c").await;
@@ -245,17 +245,17 @@ async fn a_batch_returns_each_of_its_result_sets_and_commands_report_done() {
 
     let sink = run(
         &conn,
-        "create table #paboable (id int); insert into #paboable values (1), (2)",
+        "create table #kemable (id int); insert into #kemable values (1), (2)",
     )
     .await;
     assert_eq!(*sink.commands.lock().unwrap(), 1);
-    let sink = run(&conn, "select * from #paboable where 1 = 0").await;
+    let sink = run(&conn, "select * from #kemable where 1 = 0").await;
     assert_eq!(sink.last().columns().len(), 1);
     assert_eq!(sink.last().state().total_rows, 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn the_row_limit_stops_the_server_and_the_session_stays_usable() {
     let conn = live_in("tempdb").await;
     let sink = Arc::new(Collect::default());
@@ -273,7 +273,7 @@ async fn the_row_limit_stops_the_server_and_the_session_stays_usable() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_cancel_sends_an_attention_and_the_session_stays_usable() {
     let conn = live_in("tempdb").await;
     let options = CallOptions::default();
@@ -296,7 +296,7 @@ async fn a_cancel_sends_an_attention_and_the_session_stays_usable() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_deadline_reports_a_timeout() {
     let conn = live_in("tempdb").await;
     let options = CallOptions::default().with_timeout(Duration::from_millis(300));
@@ -308,10 +308,10 @@ async fn a_deadline_reports_a_timeout() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn an_error_carries_its_number_and_the_line_it_is_on() {
     let conn = live_in("tempdb").await;
-    let batch = "select 1\nselect 'đ'\nselect * from paboable_missing_table";
+    let batch = "select 1\nselect 'đ'\nselect * from kemable_missing_table";
     let error = conn
         .execute(batch, Arc::new(Collect::default()), CallOptions::default())
         .await
@@ -322,7 +322,7 @@ async fn an_error_carries_its_number_and_the_line_it_is_on() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn the_catalog_lists_databases_schemas_tables_and_columns() {
     let conn = live_in("tempdb").await;
     assert_eq!(conn.current_database().as_deref(), Some("tempdb"));
@@ -337,7 +337,7 @@ async fn the_catalog_lists_databases_schemas_tables_and_columns() {
         ["tempdb"]
     );
 
-    let schema = format!("paboable_{}", std::process::id());
+    let schema = format!("kemable_{}", std::process::id());
     run(&conn, &format!("create schema {schema}")).await;
     run(
         &conn,
@@ -375,11 +375,11 @@ async fn the_catalog_lists_databases_schemas_tables_and_columns() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_wrong_password_is_an_auth_error() {
     let mut config = live_config();
     if let Target::Network { user, password, .. } = &mut config.target {
-        *user = Some("paboable_no_such_login".into());
+        *user = Some("kemable_no_such_login".into());
         *password = Secret::new("certainly-not-the-password");
     }
     let error = MssqlDriver
@@ -393,7 +393,7 @@ async fn a_wrong_password_is_an_auth_error() {
 #[test]
 fn objects_fall_in_ssms_folders_procedures_table_valued_and_scalar_functions() {
     use crate::connection::object_kind;
-    use paboable_core::catalog::ObjectKind;
+    use kemable_core::catalog::ObjectKind;
     for (code, kind) in [
         ("U", ObjectKind::Table),
         ("V", ObjectKind::View),
@@ -412,14 +412,14 @@ fn objects_fall_in_ssms_folders_procedures_table_valued_and_scalar_functions() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn object_ddl_scripts_what_the_server_holds_and_the_table_script_runs_again() {
-    use paboable_core::catalog::ObjectInfo;
-    use paboable_core::sql::{SqlGrammar, split};
+    use kemable_core::catalog::ObjectInfo;
+    use kemable_core::sql::{SqlGrammar, split};
 
     let conn = live_in("tempdb").await;
-    let schema = format!("paboable_ddl_{}", std::process::id());
-    let copy = format!("paboable_ddl_copy_{}", std::process::id());
+    let schema = format!("kemable_ddl_{}", std::process::id());
+    let copy = format!("kemable_ddl_copy_{}", std::process::id());
     let object = |name: &str, kind| ObjectInfo {
         schema: Some(schema.clone()),
         name: name.into(),
@@ -540,7 +540,7 @@ async fn object_ddl_scripts_what_the_server_holds_and_the_table_script_runs_agai
         )
     );
     let missing = conn
-        .object_ddl(&object("paboable_missing", ObjectKind::View), options())
+        .object_ddl(&object("kemable_missing", ObjectKind::View), options())
         .await
         .unwrap_err();
     assert_eq!(missing.code, ErrorCode::NotFound);
@@ -581,14 +581,14 @@ async fn object_ddl_scripts_what_the_server_holds_and_the_table_script_runs_agai
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs SQL Server at $PABOABLE_MSSQL_URL"]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn columnstore_xml_and_spatial_indexes_are_listed_scripted_and_run_again() {
-    use paboable_core::catalog::{IndexInfo, ObjectInfo};
-    use paboable_core::sql::{SqlGrammar, split};
+    use kemable_core::catalog::{IndexInfo, ObjectInfo};
+    use kemable_core::sql::{SqlGrammar, split};
 
     let conn = live_in("tempdb").await;
-    let schema = format!("paboable_ix_{}", std::process::id());
-    let copy = format!("paboable_ix_copy_{}", std::process::id());
+    let schema = format!("kemable_ix_{}", std::process::id());
+    let copy = format!("kemable_ix_copy_{}", std::process::id());
     let table = |name: &str| TableRef {
         schema: Some(schema.clone()),
         name: name.into(),
@@ -789,7 +789,7 @@ fn index_columns_fall_in_key_or_include_by_the_kind_of_index() {
 // --- object scripts, without a server -------------------------------------------
 
 mod ddl_text {
-    use paboable_core::sql::{SqlGrammar, split};
+    use kemable_core::sql::{SqlGrammar, split};
 
     use crate::ddl::*;
 
@@ -1304,7 +1304,7 @@ mod ddl_text {
 #[test]
 fn every_kind_the_catalog_lists_has_a_folder_in_the_tree() {
     use crate::connection::object_kind;
-    use paboable_core::catalog::ObjectKind;
+    use kemable_core::catalog::ObjectKind;
     // The types list_objects reads (its OBJECTS query).
     for code in ["U", "V", "SO", "P", "PC", "FN", "FS", "IF", "TF", "FT"] {
         let kind = object_kind(code);

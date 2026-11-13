@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use paboable_core::{DriverError, ErrorCode, Result};
+use kemable_core::{DriverError, ErrorCode, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

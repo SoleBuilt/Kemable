@@ -6,15 +6,15 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use paboable_core::catalog::{ColumnInfo, ColumnMeta, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
-use paboable_core::config::{ConnectionConfig, Target};
-use paboable_core::connection::Connection;
-use paboable_core::driver::Driver;
-use paboable_core::engine::{DataModel, EngineInfo, TargetKind};
-use paboable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
-use paboable_core::sql::{SqlGrammar, quote_ident};
-use paboable_core::value::{Value, ValueKind};
-use paboable_core::{CallOptions, DriverError, ErrorCode, Result};
+use kemable_core::catalog::{ColumnInfo, ColumnMeta, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef};
+use kemable_core::config::{ConnectionConfig, Target};
+use kemable_core::connection::Connection;
+use kemable_core::driver::Driver;
+use kemable_core::engine::{DataModel, EngineInfo, TargetKind};
+use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
+use kemable_core::sql::{SqlGrammar, quote_ident};
+use kemable_core::value::{Value, ValueKind};
+use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use rusqlite::types::ValueRef;
 use rusqlite::{InterruptHandle, OpenFlags};
 
@@ -27,7 +27,7 @@ pub static INFO: EngineInfo = EngineInfo {
     sql_grammar: Some(SqlGrammar::Sqlite),
     live_topics: &[],
     has_databases: false,
-    tree_folders: paboable_core::engine::SQL_TREE_FOLDERS,
+    tree_folders: kemable_core::engine::SQL_TREE_FOLDERS,
 };
 
 /// How long a statement waits on another process's lock before it fails.

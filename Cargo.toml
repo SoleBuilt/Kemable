@@ -19,14 +19,14 @@ rust-version = "1.99"
 publish = false
 
 [workspace.dependencies]
-paboable-core = { path = "core/crates/core" }
-paboable-store = { path = "core/crates/store" }
-paboable-storage = { path = "core/crates/storage" }
-paboable-driver-sqlite = { path = "core/crates/drivers/sqlite" }
-paboable-driver-postgres = { path = "core/crates/drivers/postgres" }
-paboable-driver-mssql = { path = "core/crates/drivers/mssql" }
-paboable-driver-redis = { path = "core/crates/drivers/redis" }
-paboable-driver-d1 = { path = "core/crates/drivers/d1" }
+kemable-core = { path = "core/crates/core" }
+kemable-store = { path = "core/crates/store" }
+kemable-storage = { path = "core/crates/storage" }
+kemable-driver-sqlite = { path = "core/crates/drivers/sqlite" }
+kemable-driver-postgres = { path = "core/crates/drivers/postgres" }
+kemable-driver-mssql = { path = "core/crates/drivers/mssql" }
+kemable-driver-redis = { path = "core/crates/drivers/redis" }
+kemable-driver-d1 = { path = "core/crates/drivers/d1" }
 
 async-trait = "0.1"
 fallible-iterator = "0.2"

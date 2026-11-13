@@ -1,10 +1,10 @@
 //! A filter on a query result's rows, and the `WHERE` clause that says the
 //! same thing to the server (`docs/decisions/0011-filtering-a-result.md`).
 //!
-//! The store applies the filter to the rows it holds (`paboable_store`); this
+//! The store applies the filter to the rows it holds (`kemable_store`); this
 //! module only checks it and writes it as SQL to copy. A condition names a
 //! column by its index in the result, because two columns of a result can
-//! share a name. The clause is never run by Paboable.
+//! share a name. The clause is never run by Kemable.
 //!
 //! A condition on a column with no name, or with a name another column of
 //! the result shares (case folded, as `sorted.rs` reads names), cannot be

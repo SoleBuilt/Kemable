@@ -17,9 +17,9 @@
 
 use std::sync::Arc;
 
-use paboable_core::catalog::ColumnMeta;
-use paboable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
-use paboable_core::value::{Value, ValueKind};
+use kemable_core::catalog::ColumnMeta;
+use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
+use kemable_core::value::{Value, ValueKind};
 
 use crate::resp::Reply;
 
@@ -285,7 +285,7 @@ fn render(reply: &Reply) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use paboable_store::ResultStore;
+    use kemable_store::ResultStore;
     use std::sync::Mutex;
 
     /// Keeps each set's columns and rows as text, and the notices.
