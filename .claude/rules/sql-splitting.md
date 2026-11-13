@@ -6,6 +6,7 @@ paths:
 # SQL splitting
 
 - **Split the way the engine's own client does.** psql for PostgreSQL (and Neon, Supabase, PGlite), sqlcmd and SSMS for SQL Server, the sqlite3 shell for SQLite and D1. When unsure, check the client's source or run it, and cite what you checked in the test name or a comment.
+- **One addition to the clients: a blank line ends a statement when the next line starts a new one** (PostgreSQL and SQLite, `docs/decisions/0021-blank-line-ends-a-statement.md`). When unsure it does not split. A word added to its lists gets a test for the statement it starts and one for the statement it must not cut.
 - **Ranges are byte offsets** into the script, on char boundaries. Every byte of a multi-byte character counts as an identifier byte, so a scan never stops inside one.
 - **The table in `split.rs`'s module docs is the spec.** A grammar change updates the table and adds a test per row it touches.
 - **A statement that is only whitespace and comments is dropped.** A comment before a statement is not part of its range.
