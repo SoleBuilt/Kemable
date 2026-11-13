@@ -466,6 +466,106 @@ fn a_sort_by_several_columns_orders_as_a_stable_sort_of_the_cells_would() {
 }
 
 #[test]
+fn decimals_mixed_numbers_bytes_and_long_numbers_sort_as_a_stable_sort_of_the_cells_would() {
+    use crate::order::{SortCell, compare};
+    // Enough rows for keys and the radix sort; values alike past a key's
+    // width, values a float cannot tell apart, and values that are the same.
+    const ROWS: usize = 6_000;
+    let store = ResultStore::new(
+        vec![
+            column("mixed", ValueKind::Other),
+            column("amount", ValueKind::Decimal),
+            column("hash", ValueKind::Bytes),
+            column("invoice", ValueKind::Text),
+            column("n", ValueKind::Int),
+        ],
+        None,
+    );
+    let mut rows: Vec<(Value, String, Vec<u8>, String, i64)> = Vec::with_capacity(ROWS);
+    for row in 0..ROWS {
+        let mixed = i64::try_from(row * 7919 % 6_007).unwrap();
+        let number = match row % 6 {
+            0 => Value::Int(mixed % 50),
+            1 => Value::Decimal(format!("{}.5", mixed % 50)),
+            2 => Value::Decimal(format!("{}.0", mixed % 50)),
+            3 => Value::Decimal(format!("9223372036854775807.{}", mixed % 7)),
+            4 => Value::Int(i64::MAX - mixed % 3),
+            _ => Value::Null,
+        };
+        let amount = match row % 4 {
+            0 => format!("{}.{:02}", mixed / 100, mixed % 100),
+            1 => format!("0.1{}", "0".repeat(18 + usize::try_from(mixed % 3).unwrap())) + "1",
+            2 => "12.50".to_owned(),
+            _ => "12.5".to_owned(),
+        };
+        let mut hash = vec![0x5a; 32 + usize::try_from(mixed % 3).unwrap()];
+        hash.extend_from_slice(&(mixed % 400).to_be_bytes());
+        let invoice = match row % 3 {
+            0 => format!("INV-9{:039}", mixed % 500),
+            1 => format!("INV-9{:039}/{}", mixed % 500, mixed % 4),
+            _ => format!("INV-00{}", mixed % 30),
+        };
+        rows.push((number, amount, hash, invoice, mixed));
+    }
+    let values: Vec<Value> = rows
+        .iter()
+        .flat_map(|(number, amount, hash, invoice, n)| {
+            [
+                number.clone(),
+                Value::Decimal(amount.clone()),
+                Value::Bytes(hash.clone()),
+                Value::Text(invoice.clone()),
+                Value::Int(*n),
+            ]
+        })
+        .collect();
+    assert!(store.push_rows(&values));
+
+    let cell = |row: usize, column: usize| -> SortCell<'_> {
+        let (number, amount, hash, invoice, n) = &rows[row];
+        match column {
+            0 => match number {
+                Value::Int(value) => SortCell::Int(*value),
+                Value::Decimal(text) => SortCell::Decimal(text),
+                _ => SortCell::Null,
+            },
+            1 => SortCell::Decimal(amount),
+            2 => SortCell::Bytes(hash),
+            3 => SortCell::Text(invoice),
+            _ => SortCell::Int(*n),
+        }
+    };
+    let key = |column, descending| SortKey { column, descending };
+    for keys in [
+        vec![key(0, false)],
+        vec![key(0, true), key(4, false)],
+        vec![key(1, false), key(4, true)],
+        vec![key(2, false), key(3, true)],
+        vec![key(2, true), key(4, false)],
+        vec![key(3, false), key(4, false)],
+        vec![key(3, true), key(1, false), key(0, true)],
+    ] {
+        store.sort(&keys);
+        let mut expected: Vec<usize> = (0..ROWS).collect();
+        expected.sort_by(|&a, &b| {
+            keys.iter()
+                .map(|key| {
+                    let order = compare(cell(a, key.column), cell(b, key.column));
+                    if key.descending { order.reverse() } else { order }
+                })
+                .find(|order| order.is_ne())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let shown: Vec<String> = (0..ROWS as u64)
+            .map(|row| store.cell_text(row, 4).flatten().unwrap_or_default())
+            .collect();
+        // `n` is different in every row (6,007 is prime), so it names the row shown.
+        let wanted: Vec<String> = expected.iter().map(|&row| rows[row].4.to_string()).collect();
+        assert_eq!(shown, wanted, "the sort by {keys:?}");
+    }
+}
+
+#[test]
 fn copies_and_row_reads_go_through_the_filter() {
     let store = people();
     store.filter(&[condition(1, FilterOp::Contains, "a")], false).unwrap();
@@ -652,4 +752,58 @@ fn rows_picked_one_by_one_copy_in_the_order_given_through_the_filter() {
         "Ñandú\r\nAlice\r\n"
     );
     assert_eq!(store.copy_tsv_rows(&[], 0, 2, false).unwrap(), "");
+}
+
+#[test]
+#[ignore = "a timing to read by hand: cargo test -p kemable-store --release -- --ignored --nocapture"]
+fn two_million_rows_sort_what_a_key_could_not_hold() {
+    let store = ResultStore::new(
+        vec![
+            column("mixed", ValueKind::Other),
+            column("amount", ValueKind::Decimal),
+            column("hash", ValueKind::Bytes),
+            column("invoice", ValueKind::Text),
+            column("group", ValueKind::Int),
+        ],
+        None,
+    );
+    // Shuffled so no column arrives sorted: n * 7919 mod a prime visits every value once.
+    let values: Vec<Value> = (0..2_000_000i64)
+        .flat_map(|n| {
+            let mixed = n * 7919 % 2_000_003;
+            let mut hash = vec![0x5a; 32];
+            hash.extend_from_slice(&mixed.to_be_bytes());
+            [
+                // SQLite: an INTEGER and a REAL-looking NUMERIC in one column.
+                if mixed % 2 == 0 {
+                    Value::Int(mixed)
+                } else {
+                    Value::Decimal(format!("{mixed}.5"))
+                },
+                // PostgreSQL numeric(12, 2).
+                Value::Decimal(format!("{}.{:02}", mixed / 100, mixed % 100)),
+                // A hash after a header every row shares.
+                Value::Bytes(hash),
+                // A number of 40 digits, alike for its first 33.
+                Value::Text(format!("INV-9{mixed:039}")),
+                Value::Int(mixed % 100),
+            ]
+        })
+        .collect();
+    assert!(store.push_rows(&values));
+    let key = |column| SortKey {
+        column,
+        descending: false,
+    };
+    for (keys, what) in [
+        (vec![key(0)], "integers mixed with decimals"),
+        (vec![key(1)], "decimals"),
+        (vec![key(2)], "bytes with a long shared start"),
+        (vec![key(3)], "a text with a long number"),
+        (vec![key(4), key(2)], "a group, then bytes"),
+    ] {
+        let started = std::time::Instant::now();
+        store.sort(&keys);
+        println!("sort 2,000,000 rows by {what}: {:?}", started.elapsed());
+    }
 }

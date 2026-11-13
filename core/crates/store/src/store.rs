@@ -8,8 +8,8 @@ use kemable_core::value::{Value, ValueKind};
 
 use crate::filter::{RowFilter, Scratch};
 use crate::order::{
-    KeyBuilder, Keyed, NARROW_KEY, SortCell, WIDE_KEY, compare, key_order, radix_sort, shared_start, skippable,
-    wants_wide_key,
+    KeyBuilder, KeyStart, Keyed, NARROW_KEY, SortCell, WIDE_KEY, compare, key_order, radix_sort, shared_start,
+    skippable, wants_wide_key,
 };
 use crate::window::{self, WindowRequest};
 
@@ -490,7 +490,7 @@ fn sort_rows(inner: &Inner, rows: &mut [u64], keys: &[SortKey], width: usize) {
             })
         })
         .collect();
-    RowSort { inner, keys, wide }.sort(rows, 0, 0);
+    RowSort { inner, keys, wide }.sort(rows, 0, KeyStart::default());
 }
 
 /// Below this many rows a sort compares cells at once: keys would cost more
@@ -505,8 +505,9 @@ const RADIX_FROM: usize = 1024;
 /// The rows are sorted by keys of the first column, which reads each cell
 /// once. Rows whose keys are the same form a run, and each run is settled by
 /// itself: when the cells are equal, by the next sort column, in the same
-/// way; when they are texts alike past the key's width, by keys of what
-/// follows the start they share. Only what keys cannot say is left to a
+/// way; when they are texts or bytes alike past the key's width, by keys of
+/// what follows the start they share. Only what keys cannot say (numbers that
+/// round to the same float, a count of digits past a byte) is left to a
 /// comparison of the cells.
 struct RowSort<'a> {
     inner: &'a Inner,
@@ -545,22 +546,22 @@ impl<'a> RowSort<'a> {
     }
 
     /// Sorts `rows`, which are equal in every sort column before `level`, by
-    /// the columns from `level` on. Their texts in column `level` are alike up
-    /// to byte `past`, so keys are read from there.
-    fn sort(&self, rows: &mut [u64], level: usize, past: usize) {
+    /// the columns from `level` on. Their texts or bytes in column `level` are
+    /// alike before `from`, so keys are read from there.
+    fn sort(&self, rows: &mut [u64], level: usize, from: KeyStart) {
         if level >= self.keys.len() || rows.len() < 2 {
             return;
         }
         if rows.len() < FEW_ROWS || u32::try_from(rows.len()).is_err() {
             rows.sort_by(|&a, &b| self.by_cells(a, b, level));
         } else if self.wide.get(level) == Some(&true) {
-            self.sort_keyed::<WIDE_KEY>(rows, level, past);
+            self.sort_keyed::<WIDE_KEY>(rows, level, from);
         } else {
-            self.sort_keyed::<NARROW_KEY>(rows, level, past);
+            self.sort_keyed::<NARROW_KEY>(rows, level, from);
         }
     }
 
-    fn sort_keyed<const N: usize>(&self, rows: &mut [u64], level: usize, past: usize) {
+    fn sort_keyed<const N: usize>(&self, rows: &mut [u64], level: usize, from: KeyStart) {
         let Some(&SortKey { column, descending }) = self.keys.get(level) else {
             return;
         };
@@ -569,10 +570,20 @@ impl<'a> RowSort<'a> {
             .iter()
             .zip(0u32..)
             .map(|(&row, place)| Keyed {
-                key: builder.key(self.cell(row, column), past),
+                key: builder.key(self.cell(row, column), from),
                 place,
             })
             .collect();
+        if builder.numbers_mixed() {
+            // An integer's key and a decimal's do not compare: every number is
+            // keyed again by its nearest float, which reads its cell once more.
+            for entry in &mut keyed {
+                let row = rows.get(entry.place as usize).copied().unwrap_or(0);
+                if let Some(key) = KeyBuilder::number_key(self.cell(row, column)) {
+                    entry.key = key;
+                }
+            }
+        }
         for entry in &mut keyed {
             builder.settle(&mut entry.key, descending);
         }
@@ -595,51 +606,70 @@ impl<'a> RowSort<'a> {
             if run > 1
                 && let Some(alike) = rows.get_mut(start..start + run)
             {
-                self.settle(alike, level, past, &builder);
+                self.settle(alike, level, from, &builder);
             }
             start += run;
         }
     }
 
     /// Orders rows whose keys in column `level` are the same.
-    fn settle(&self, alike: &mut [u64], level: usize, past: usize, builder: &KeyBuilder) {
+    fn settle(&self, alike: &mut [u64], level: usize, from: KeyStart, builder: &KeyBuilder) {
         let (Some(key), Some(&first)) = (self.keys.get(level), alike.first()) else {
             return;
         };
         let head = self.cell(first, key.column);
         if builder.whole(head) {
             // The key was the whole cell, so the cells are equal: the next column orders them.
-            return self.sort(alike, level + 1, 0);
+            return self.sort(alike, level + 1, KeyStart::default());
         }
-        if let SortCell::Text(head) = head {
-            let head = head.as_bytes();
-            let rest = |text: &'a [u8]| text.get(past..).unwrap_or_default();
-            // How far every text of the run is the same, and whether they all are, whole.
-            let mut shared = head.len();
+        let bytes = |cell: SortCell<'a>| match cell {
+            SortCell::Text(text) => Some(text.as_bytes()),
+            SortCell::Bytes(bytes) => Some(bytes),
+            _ => None,
+        };
+        if let Some(head_bytes) = bytes(head) {
+            let is_text = matches!(head, SortCell::Text(_));
+            let rest = |of: &'a [u8]| of.get(from.at..).unwrap_or_default();
+            // How far every value of the run is the same, and whether they all are, whole.
+            let mut shared = head_bytes.len();
             let mut same = true;
             for &row in alike.iter().skip(1) {
-                let SortCell::Text(text) = self.cell(row, key.column) else {
-                    (shared, same) = (past, false);
+                let cell = self.cell(row, key.column);
+                let Some(other) = bytes(cell).filter(|_| matches!(cell, SortCell::Text(_)) == is_text) else {
+                    (shared, same) = (from.at, false);
                     break;
                 };
-                let text = text.as_bytes();
-                let common = past + shared_start(rest(head), rest(text));
-                same &= text.len() == head.len() && common == head.len();
+                let common = from.at + shared_start(rest(head_bytes), rest(other));
+                same &= other.len() == head_bytes.len() && common == head_bytes.len();
                 shared = shared.min(common);
-                if !same && shared <= past {
+                if !same && shared <= from.at {
                     break;
                 }
             }
             if same {
-                return self.sort(alike, level + 1, 0);
+                return self.sort(alike, level + 1, KeyStart::default());
             }
             // Alike past the key's width: key them again from what follows the shared start.
-            let further = skippable(head, shared, past);
-            if further > past {
+            let further = if is_text {
+                skippable(head_bytes, shared, from)
+            } else {
+                KeyStart {
+                    at: shared.max(from.at),
+                    in_number: false,
+                }
+            };
+            if further != from {
                 return self.sort(alike, level, further);
             }
+        } else if alike
+            .iter()
+            .skip(1)
+            .all(|&row| compare(head, self.cell(row, key.column)).is_eq())
+        {
+            // Numbers keyed by their nearest float, all equal: the next column orders them.
+            return self.sort(alike, level + 1, KeyStart::default());
         }
-        // What a key cannot say: numbers of several kinds, bytes, digits past a key's width.
+        // What a key cannot say: numbers that round alike, a count of digits past a byte.
         alike.sort_by(|&a, &b| self.by_cells(a, b, level));
     }
 }
