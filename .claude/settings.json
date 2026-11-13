@@ -10,7 +10,8 @@
             "Bash(pnpm build)",
             "Bash(git status:*)",
             "Bash(git diff:*)",
-            "Bash(git log:*)"
+            "Bash(git log:*)",
+            "Bash(node .claude/skills/clean-target/clean-target.mjs)"
         ]
     }
 }
