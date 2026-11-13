@@ -1423,8 +1423,18 @@
     newTab = false,
     where: { filters: Filter[]; matchAny: boolean } | null = null,
   ) {
-    if (object.kind !== "table" && object.kind !== "view" && object.kind !== "materializedView") return;
     if (!connection) return;
+    // A document engine (Firebase): a collection or a path reads on a query page, through its console.
+    if (connection.engine.dataModel === "document" && (object.kind === "collection" || object.kind === "key")) {
+      const line = object.kind === "collection" ? `get ${object.name}` : `rtdb ${object.name}`;
+      if (running) return;
+      if (offQuery || (editor?.text().trim() ?? "") !== "") newQueryPage();
+      await tick();
+      editor?.insert(line);
+      void startRun({ sql: line, cursor: null, origin: 0 }, false, { record: true });
+      return;
+    }
+    if (object.kind !== "table" && object.kind !== "view" && object.kind !== "materializedView") return;
     if (running) {
       note("Wait for the run to end, or stop it, before you open a table");
       return;
@@ -2116,11 +2126,19 @@
     connectDialog = { engine: "postgres", saved: null };
   }
 
-  const ENGINE_NAMES: Record<string, string> = { postgres: "PostgreSQL", mssql: "SQL Server", redis: "Redis", d1: "Cloudflare D1", sqlite: "SQLite" };
+  const ENGINE_NAMES: Record<string, string> = {
+    postgres: "PostgreSQL",
+    mssql: "SQL Server",
+    redis: "Redis",
+    rabbitmq: "RabbitMQ",
+    firebase: "Firebase",
+    d1: "Cloudflare D1",
+    sqlite: "SQLite",
+  };
 
   function savedWhere(entry: SavedConnection): string {
     const target = entry.config.target;
-    const place = target.kind === "network" ? target.host : target.kind === "http" ? "Cloudflare API" : target.kind === "file" ? target.path : "";
+    const place = target.kind === "network" ? target.host : target.kind === "http" ? (entry.config.engine === "firebase" ? target.endpoint || "Google Cloud" : "Cloudflare API") : target.kind === "file" ? target.path : "";
     return `${ENGINE_NAMES[entry.config.engine] ?? entry.config.engine} · ${place}`;
   }
 

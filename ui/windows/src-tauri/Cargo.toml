@@ -21,6 +21,7 @@ tauri-build.workspace = true
 keyring.workspace = true
 kemable-core.workspace = true
 kemable-driver-d1.workspace = true
+kemable-driver-firebase.workspace = true
 kemable-driver-mssql.workspace = true
 kemable-driver-postgres.workspace = true
 kemable-driver-rabbitmq.workspace = true

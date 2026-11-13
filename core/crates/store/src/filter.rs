@@ -24,6 +24,7 @@
 //!   Unicode lowercase, one character at a time.
 
 use kemable_core::DriverError;
+use kemable_core::format::days_from_civil;
 use kemable_core::sql::{FilterOp, ResultFilter, in_items};
 use kemable_core::value::ValueKind;
 
@@ -479,18 +480,6 @@ fn days_in_month(year: i64, month: i64) -> i64 {
         4 | 6 | 9 | 11 => 30,
         _ => 31,
     }
-}
-
-/// Days since 1970-01-01 of a proleptic Gregorian date, from Howard
-/// Hinnant's `days_from_civil`; the inverse of `format::civil_from_days`.
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let year = if month <= 2 { year - 1 } else { year };
-    let era = year.div_euclid(400);
-    let year_of_era = year - era * 400;
-    let month_index = (month + 9) % 12;
-    let day_of_year = (153 * month_index + 2) / 5 + day - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    era * 146_097 + day_of_era - 719_468
 }
 
 #[cfg(test)]

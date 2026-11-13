@@ -347,6 +347,46 @@ Cần một RabbitMQ. Nhanh nhất: cài Docker rồi `docker run -d --name rabb
 - [ ] Đang nghe thì dừng broker (`docker stop rabbit`).
   **Đúng:** tab Live dừng với lỗi "The connection was lost" (ngay, hoặc trong khoảng 60 giây); các dòng đã nhận vẫn còn.
 
+## 9. Firebase: Firestore và Realtime Database (thêm 2026-11-14, ADR 0027)
+
+Cần một project Firebase có Firestore (và Realtime Database nếu muốn thử phần đó). Lấy key: Firebase console › Project settings › **Service accounts** › **Generate new private key** → tải về file `.json`. Tạo sẵn vài document trong collection `orders` với nhiều kiểu field (số, chữ có dấu, timestamp, map, array).
+
+### 9.1 Kết nối
+- [ ] **Ctrl+N**, Engine **Firebase**.
+  **Đúng:** form có **Service account key file** (với nút Browse…), **Project ID**, **Realtime Database URL**, **Firestore emulator**; không có Host, User, Password, không có ô "Keep the password".
+- [ ] Bấm **Browse…** chọn file key, để trống Project ID, bấm **Test** rồi **Connect**.
+  **Đúng:** kết nối mở (project lấy từ file key); status bar ghi tên project. Sidebar có 2 nhánh **Firestore** (thư mục Collections) và **Realtime Database** (thư mục Children).
+- [ ] Mở `connections.json` trong thư mục dữ liệu.
+  **Đúng:** chỉ có đường dẫn file key (`key_file`), **không** có nội dung key.
+- [ ] Chọn một file JSON không phải key (hoặc file không tồn tại), Test.
+  **Đúng:** lỗi "The connection settings are not valid" kèm lý do (không đọc được file / không phải key).
+
+### 9.2 Đọc Firestore
+- [ ] Double-click collection `orders` trong cây.
+  **Đúng:** mở tab query với dòng `get orders` và chạy luôn; grid có cột `id`, các field theo tên, `other_fields`, `update_time`. Số nguyên hiện đúng (không bị làm tròn), timestamp theo UTC, map/array là JSON, chữ tiếng Việt đúng.
+- [ ] Collection có hơn 1.000 document với Limit 1,000.
+  **Đúng:** dừng ở 1,000 dòng như các engine khác (đọc nhiều trang, mỗi trang 300).
+- [ ] Chạy `get orders/<id của một document>`.
+  **Đúng:** đúng 1 dòng.
+- [ ] Chạy `get orders where total > 5 limit 10` (đổi tên field theo dữ liệu của bạn).
+  **Đúng:** chỉ các document thoả điều kiện, tối đa 10.
+- [ ] Chạy `get orders where status == "new" order by total desc`.
+  **Đúng:** nếu Firestore cần index thì lỗi "The query failed" kèm lời của Google và link tạo index; tạo index xong chạy lại được.
+- [ ] Chạy `get orders where status in '["new","paid"]'`.
+  **Đúng:** document có status `new` hoặc `paid`.
+
+### 9.3 Đọc Realtime Database
+- [ ] Mở nhánh **Realtime Database** trong cây.
+  **Đúng:** các key con của gốc. (Nếu database không ở US, điền **Realtime Database URL** dạng `https://<project>-default-rtdb.<vùng>.firebasedatabase.app` rồi kết nối lại.)
+- [ ] Double-click một key.
+  **Đúng:** tab query với `rtdb <key>` chạy luôn: mỗi con một dòng (`key` + các field), hoặc một dòng `value` nếu là giá trị đơn.
+- [ ] Chạy `rtdb /<đường dẫn> limit 5`.
+  **Đúng:** tối đa 5 con, theo thứ tự key.
+
+### 9.4 Emulator (nếu dùng Firebase Emulator Suite)
+- [ ] Chạy `firebase emulators:start --only firestore`, kết nối với Project ID của bạn và **Firestore emulator** `localhost:8080`, không chọn file key.
+  **Đúng:** kết nối được, `get <collection>` đọc dữ liệu của emulator.
+
 ## Test tự động chạy trên server thật
 
 Hai test của phần nghe cần server thật (thay mật khẩu):

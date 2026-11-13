@@ -2911,6 +2911,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kemable-driver-firebase"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kemable-core",
+ "kemable-store",
+ "reqwest",
+ "ring",
+ "rustls",
+ "rustls-platform-verifier",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "kemable-driver-mssql"
 version = "0.1.0"
 dependencies = [
@@ -3019,6 +3035,7 @@ dependencies = [
  "async-trait",
  "kemable-core",
  "kemable-driver-d1",
+ "kemable-driver-firebase",
  "kemable-driver-mssql",
  "kemable-driver-postgres",
  "kemable-driver-rabbitmq",
