@@ -21,7 +21,7 @@ The engines the author uses: SQL Server, PostgreSQL, SQLite, PGlite, Redis, Rabb
 | Cloudflare D1, remote | SQL | HTTPS | `reqwest` with rustls and the system proxy | Done (`docs/decisions/0009-d1-over-http.md`). `POST /accounts/{account}/d1/database/{id}/raw` with an API token, one statement a request. No session: each request is its own transaction. The account's databases are the tree's databases |
 | Redis | key-value | TCP, TLS | its own RESP2 client on tokio, rustls with ring and the Windows trust store | Done (`docs/decisions/0008-key-value-engines.md`). `SCAN` for keys, never `KEYS`; a key read in steps of 1,000 into a result set; one command per line in the console, `SELECT n` as a directive. Not the `redis` crate: its TLS and its cancelled replies are explained in ADR 0008 |
 | Firebase | document | HTTPS | `reqwest` with a service-account token | Firestore through its REST API; the Realtime Database through REST |
-| RabbitMQ | queue | HTTPS and AMQP | management HTTP API, `lapin` | Lists and peeks through the management API (peek requeues); publish and consume through AMQP |
+| RabbitMQ | queue | AMQP (and HTTPS later) | `lapin` on tokio, rustls with ring | Done for AMQP (`docs/decisions/0026-rabbitmq.md`): the console publishes, a Live tab watches exchanges or takes from queues. To build: lists and peeks through the management HTTP API (peek requeues) |
 
 The Live tab, one kind of tab for every engine that pushes changes (`docs/decisions/0020-live-tab.md`):
 
@@ -29,7 +29,7 @@ The Live tab, one kind of tab for every engine that pushes changes (`docs/decisi
 |---|---|
 | PostgreSQL, Neon, Supabase | Done: `LISTEN` / `NOTIFY` on a session of its own, not through a pooler in transaction mode. Supabase also through Realtime over its WebSocket: tables' changes and broadcast channels (`docs/decisions/0025-supabase-realtime.md`) |
 | Redis | Done: `SUBSCRIBE`, `PSUBSCRIBE`, keyspace notifications as the channels they are, with a `PING` every 30 s |
-| RabbitMQ | a consumer on a queue, or on a temporary queue bound to an exchange |
+| RabbitMQ | Done: a consumer on a queue (it takes), or on a queue of its own bound to exchanges (a copy) |
 | Firebase | the Realtime Database's server-sent events; Firestore listens over gRPC, which is added only if its size is worth it |
 | D1, SQLite | none; a Live tab is not offered |
 

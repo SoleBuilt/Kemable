@@ -63,6 +63,7 @@
   import CommandPalette, { type Command } from "./lib/ui/CommandPalette.svelte";
   import Icon from "./lib/ui/Icon.svelte";
   import InfoBar from "./lib/ui/InfoBar.svelte";
+  import EmptyState from "./lib/ui/EmptyState.svelte";
   import SettingsDialog, {
     applyMica,
     applyStyle,
@@ -376,6 +377,8 @@
   let keyView = $state.raw<{ name: string; detail: KeyDetail } | null>(null);
   let keyBrowser: KeyBrowser | undefined = $state();
   const keyValue = $derived(connection?.engine.dataModel === "keyValue");
+  /** A message broker (RabbitMQ): no tree, a console that publishes, and Live tabs (docs/decisions/0026-rabbitmq.md). */
+  const queueModel = $derived(connection?.engine.dataModel === "queue");
   let filtersOpen = $state(false);
   let filterRow: FilterRow | undefined = $state();
   let pager: Pager | undefined = $state();
@@ -2357,6 +2360,18 @@
       {@const open = connection}
       <!-- Sidebar: Objects fills it; Queries and History fold (D19) -->
       <aside class="pb-side" aria-label="Objects, saved queries and history">
+        {#if queueModel}
+          <SidePane title="Messages" main>
+            <EmptyState
+              compact
+              icon="radio"
+              title="Watch messages in a Live tab"
+              text="Ctrl+Alt+L opens one: bind to an exchange to see a copy of what it routes, or take from a queue. Publish from a query tab: publish amq.topic orders.new hello"
+            >
+              <Button size="sm" icon="radio" label="New Live tab" onclick={() => newLivePage()} />
+            </EmptyState>
+          </SidePane>
+        {:else}
         <SidePane title={keyValue ? "Keys" : "Objects"} main>
           {#snippet actions()}
             {#if !keyValue && open.engine.hasDatabases}
@@ -2408,7 +2423,8 @@
             />
           {/if}
         </SidePane>
-        {#if !keyValue}
+        {/if}
+        {#if !keyValue && !queueModel}
           <SidePane title="Queries" bind:open={queriesOpen} count={queryCount}>
             <QueryList
               connectionId={open.savedId}
@@ -2420,7 +2436,7 @@
             />
           </SidePane>
         {/if}
-        {#if !keyValue}
+        {#if !keyValue && !queueModel}
           <SidePane title="SQL files" bind:open={filesOpen} count={fileCount}>
             <SqlFolders
               folders={sqlFolders}
@@ -2505,7 +2521,7 @@
           <SqlEditor
             bind:this={editor}
             {grammar}
-            plain={keyValue}
+            plain={keyValue || queueModel}
             onRun={(request) => void startRun(request)}
             complete={completeAt}
             onChange={onEditorChange}

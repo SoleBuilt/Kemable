@@ -5,7 +5,7 @@
 import { asCoreError, ipc } from "../ipc";
 import type { Condition } from "../grid/FilterRow.svelte";
 import { nextSortKeys, type SortKey } from "../grid/engine";
-import type { ColumnMeta, CoreError, LiveEvent, ResultFilter } from "../types";
+import type { ColumnMeta, CoreError, LiveEvent, LiveTopicKind, ResultFilter } from "../types";
 
 export type LiveStatus = "idle" | "starting" | "listening" | "stopping";
 
@@ -22,6 +22,9 @@ export class LiveSession {
   broadcasts = $state("");
   /** The API key typed; kept in Windows Credential Manager once it worked, and blank after. */
   apiKey = $state("");
+  /** RabbitMQ: exchanges to bind a queue of the page's own to, and queues to take from (docs/decisions/0026-rabbitmq.md). */
+  bindings = $state("");
+  queues = $state("");
   status: LiveStatus = $state("idle");
   /** The database the listening started in. */
   database: string | null = $state(null);
@@ -51,9 +54,25 @@ export class LiveSession {
     return this.status !== "idle";
   }
 
+  /** What is typed for each kind of topic the page listens to now. */
+  private get typed(): { kind: LiveTopicKind; text: string }[] {
+    const all: { kind: LiveTopicKind; text: string }[] =
+      this.source === "realtime"
+        ? [
+            { kind: "table", text: this.tables },
+            { kind: "broadcast", text: this.broadcasts },
+          ]
+        : [
+            { kind: "channel", text: this.channels },
+            { kind: "pattern", text: this.patterns },
+            { kind: "binding", text: this.bindings },
+            { kind: "queue", text: this.queues },
+          ];
+    return all.filter((entry) => entry.text.trim() !== "");
+  }
+
   get hasTopics(): boolean {
-    if (this.source === "realtime") return this.tables.trim() !== "" || this.broadcasts.trim() !== "";
-    return this.channels.trim() !== "" || this.patterns.trim() !== "";
+    return this.typed.length > 0;
   }
 
   /** Starts listening; what was heard before stays until the server has taken the topics. */
@@ -65,9 +84,9 @@ export class LiveSession {
     this.notices = [];
     this.database = database;
     try {
-      const realtime =
-        this.source === "realtime" ? { tables: this.tables, broadcasts: this.broadcasts, apiKey: this.apiKey.trim() || null } : null;
-      this.run = await ipc.startLive(conn, database, this.channels, this.patterns, (event) => this.onEvent(event), realtime);
+      const realtime = this.source === "realtime";
+      const request = { topics: this.typed, apiKey: realtime ? this.apiKey.trim() || null : null };
+      this.run = await ipc.startLive(conn, database, request, (event) => this.onEvent(event));
       // The key went to Credential Manager: the box need not hold it any more.
       if (realtime) this.apiKey = "";
       // The page closed, or Stop was pressed, before the id came back. (The

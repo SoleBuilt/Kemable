@@ -310,6 +310,43 @@ Cần một project Supabase. Trong Supabase Dashboard › Project Settings › 
 - [ ] Đang nghe thì tắt Wi-Fi khoảng 1 phút.
   **Đúng:** trong khoảng 25–50 giây tab Live dừng với lỗi "The connection was lost"; các dòng đã nhận vẫn còn.
 
+## 8. RabbitMQ (thêm 2026-11-14, ADR 0026)
+
+Cần một RabbitMQ. Nhanh nhất: cài Docker rồi `docker run -d --name rabbit -p 5672:5672 -p 15672:15672 rabbitmq:4-management` (giao diện quản lý ở http://localhost:15672, `guest`/`guest`).
+
+### 8.1 Kết nối
+- [ ] **Ctrl+N**, Engine **RabbitMQ**, dán `amqp://guest:guest@localhost:5672/%2F` vào Connection URL.
+  **Đúng:** Host `localhost`, Port `5672`, User `guest`, ô **Virtual host** là `/`, Encryption **Off**. Không có ô Database dạng danh sách.
+- [ ] Bấm **Test**, rồi **Connect**.
+  **Đúng:** kết nối mở. Sidebar là **Messages** với lời chỉ cách mở tab Live và nút **New Live tab**; không có Queries, SQL files.
+- [ ] Đổi mật khẩu sai, Test.
+  **Đúng:** lỗi "Access denied" (hoặc "Could not connect" nếu broker đóng kết nối ngay), kèm lời của broker.
+
+### 8.2 Console: publish
+- [ ] Ở tab query gõ `publish amq.topic orders.new xin chào` rồi Run.
+  **Đúng:** Messages ghi Done, không lỗi.
+- [ ] Gõ `hello` rồi Run.
+  **Đúng:** lỗi "Not supported by this database", chi tiết nói console biết `publish <exchange> <routing key> <body>`.
+
+### 8.3 Tab Live: xem bản sao từ exchange
+- [ ] Mở tab Live (**Ctrl+Alt+L** hoặc nút trên sidebar).
+  **Đúng:** có 2 ô **Exchanges** và **Take from queues**; gợi ý nhắc `amq.topic:orders.#` và câu `publish`.
+- [ ] Gõ `amq.topic:orders.#` vào Exchanges, Enter. Ở tab query chạy `publish amq.topic orders.new {"id":1}` vài lần, và `publish amq.topic khac.x bo-qua`.
+  **Đúng:** tab Live có đúng các message `orders.*` (không có `khac.x`); cột `exchange` = `amq.topic`, `routing_key` = `orders.new`, `body` đúng chữ, `properties` có `"content_type":"text/plain"`, `redelivered` = false.
+- [ ] Trong giao diện quản lý (Queues) khi đang nghe.
+  **Đúng:** có một queue tên `amq.gen-...` (exclusive). Bấm **Stop** ở Kemable: queue đó biến mất.
+
+### 8.4 Tab Live: lấy từ queue
+- [ ] Trong giao diện quản lý tạo queue `jobs`, publish vào đó 3 message (hoặc ở Kemable: `publish "" jobs viec-1`, ...).
+- [ ] Ở tab Live gõ `jobs` vào **Take from queues**, Enter.
+  **Đúng:** status bar/notice nói message lấy từ queue sẽ được acknowledge và queue không còn giữ chúng; 3 message hiện ra; trong giao diện quản lý queue `jobs` còn 0 message.
+- [ ] Gõ một queue không có (`khong-co`), Listen.
+  **Đúng:** lỗi "The query failed", chi tiết NOT_FOUND của broker; queue đó **không** bị tạo ra.
+
+### 8.5 Mất kết nối
+- [ ] Đang nghe thì dừng broker (`docker stop rabbit`).
+  **Đúng:** tab Live dừng với lỗi "The connection was lost" (ngay, hoặc trong khoảng 60 giây); các dòng đã nhận vẫn còn.
+
 ## Test tự động chạy trên server thật
 
 Hai test của phần nghe cần server thật (thay mật khẩu):

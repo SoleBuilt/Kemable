@@ -11,14 +11,15 @@ core/crates/
 └── drivers/
     ├── d1/                     kemable-driver-d1: Cloudflare D1 through its REST API, reqwest with rustls
     ├── mssql/                  kemable-driver-mssql: tiberius; SQL Server, Windows or SQL Server login
-    ├── postgres/               kemable-driver-postgres: tokio-postgres and rustls; PostgreSQL, Neon, Supabase
+    ├── postgres/               kemable-driver-postgres: tokio-postgres and rustls; PostgreSQL, Neon, Supabase (and its Realtime)
+    ├── rabbitmq/               kemable-driver-rabbitmq: lapin on tokio; RabbitMQ over AMQP
     ├── redis/                  kemable-driver-redis: its own RESP2 client on tokio and rustls; Redis, Valkey
     └── sqlite/                 kemable-driver-sqlite: rusqlite, SQLite compiled in
 core/crates/tunnel/             kemable-tunnel: SSH tunnels on russh, a local port forwarded to a database
 ui/windows/src-tauri/           kemable-windows: the Tauri app, the only crate that names every driver
 ```
 
-Planned crates, in the order `docs/roadmap.md` gives: `drivers/rabbitmq`, `drivers/firebase`, `session` (health, reconnect). The Live tab needed no crate of its own: a driver's `listen` and a result set hold it (`docs/decisions/0020-live-tab.md`).
+Planned crates, in the order `docs/roadmap.md` gives: `drivers/firebase`, `session` (health, reconnect). The Live tab needed no crate of its own: a driver's `listen` and a result set hold it (`docs/decisions/0020-live-tab.md`).
 
 ## Dependency rules
 

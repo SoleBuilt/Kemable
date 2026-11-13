@@ -48,11 +48,15 @@
 
   const numberFormat = new Intl.NumberFormat();
   const takesPatterns = $derived(engine.liveTopics.includes("pattern"));
+  const takesChannels = $derived(engine.liveTopics.includes("channel"));
+  /** RabbitMQ: exchanges to watch, and queues to take from (docs/decisions/0026-rabbitmq.md). */
+  const takesBindings = $derived(engine.liveTopics.includes("binding"));
 
   /** How to send a first event, in the engine's own words. */
   const HINTS: Record<string, string> = {
     postgres: "Type the channels and press Listen. Then send one from a query tab: NOTIFY orders, 'hello'",
     redis: "Type the channels or patterns and press Listen. Then send one from a query tab: PUBLISH news hello",
+    rabbitmq: "Type an exchange to watch (amq.topic:orders.#) and press Listen. Then send one from a query tab: publish amq.topic orders.new hello",
   };
 
   let grid: DataGrid | undefined = $state();
@@ -148,7 +152,31 @@
           bind:value={session.apiKey}
         />
       </label>
-    {:else}
+    {:else if takesBindings}
+      <label class="pb-live-topic">
+        <span>Exchanges</span>
+        <Input
+          size="sm"
+          mono
+          placeholder="amq.topic:orders.#, events"
+          disabled={session.busy}
+          tip="exchange or exchange:key. A queue of this page's own gets a copy of what they route; it goes when the page stops. Enter listens"
+          tipAt="start"
+          bind:value={session.bindings}
+        />
+      </label>
+      <label class="pb-live-topic">
+        <span>Take from queues</span>
+        <Input
+          size="sm"
+          mono
+          placeholder="jobs"
+          disabled={session.busy}
+          tip="Consumes them: each message heard is acknowledged and the queue no longer holds it. Enter listens"
+          bind:value={session.queues}
+        />
+      </label>
+    {:else if takesChannels}
     <label class="pb-live-topic">
       <span>Channels</span>
       <Input
