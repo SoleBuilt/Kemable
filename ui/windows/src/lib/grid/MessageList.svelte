@@ -3,7 +3,7 @@
 
   /** What a run said besides its rows. */
   export type Message =
-    | { kind: "command"; statement: number; rowsAffected: number | null }
+    | { kind: "command"; statement: number; rowsAffected: number | null; changesSchema?: boolean }
     | { kind: "notice"; statement: number | null; text: string }
     | { kind: "switched"; statement: number; database: string }
     | { kind: "error"; statement: number | null; error: CoreError };

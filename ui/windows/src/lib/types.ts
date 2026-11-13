@@ -171,7 +171,7 @@ export type RunEvent =
   | { type: "partsDropped"; statement: number }
   | { type: "rows"; result: number; total: number }
   | { type: "setFinished"; result: number; total: number; limited: boolean }
-  | { type: "commandDone"; statement: number; rowsAffected: number | null }
+  | { type: "commandDone"; statement: number; rowsAffected: number | null; changesSchema: boolean }
   | { type: "notice"; statement: number; text: string }
   | { type: "databaseChanged"; statement: number; database: string }
   | { type: "statementFailed"; statement: number; error: CoreError }

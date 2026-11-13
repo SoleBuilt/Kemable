@@ -10,6 +10,7 @@ mod literal;
 mod object_action;
 mod result_filter;
 mod result_source;
+mod schema_change;
 mod sorted;
 mod split;
 
@@ -25,6 +26,7 @@ pub use literal::{typed as typed_literal, value_literal};
 pub use object_action::{Maintenance, ObjectAction, action_statements, maintenance_tasks, view_definition};
 pub use result_filter::{ResultFilter, ResultWhere, in_items, result_where};
 pub use result_source::{ResultSource, result_source};
+pub use schema_change::may_change_schema;
 pub use sorted::{SortColumn, sorted_statement};
 pub use split::{StatementKind, StatementSpan, split, statement_at};
 
