@@ -76,7 +76,7 @@ The result is an ordinary `ResultStore`, so the grid, copy, the row detail, the 
 - Sorting while it listens sorts the events held. The store puts later ones after them in arrival order (its rule for late rows), so a Live page sorts again at most every 300 ms while events arrive (amended 2026-11-12, after a sort by `received` descending left new events at the bottom).
 - A Tauri channel hands on its next message only once the handler of this one returned, so a handler that throws would hold every later event back with nothing said. `LiveSession` logs a failure and goes on (amended 2026-11-12).
 - The drivers' tests run against a small PostgreSQL backend and a small pub/sub server inside the tests; the tests against a real server are ignored until `$KEMABLE_POSTGRES_URL` and `$KEMABLE_REDIS_URL` are set. On 2026-11-12 the PostgreSQL ones ran against PostgreSQL 17.4, and the Live page was driven in the dev app over WebView2's DevTools protocol (listen, 5,000 events, filter, sort, close); Redis had not run (`docs/testing/phase-3.md` has the steps).
-- Still to build (`docs/roadmap.md`): RabbitMQ consumers, Firebase; reconnect; remembering a connection's channels. Supabase Realtime was built 2026-11-14, with topic kinds of its own (`Table`, `Broadcast`; `docs/decisions/0025-supabase-realtime.md`).
+- Still to build (`docs/roadmap.md`): reconnect; remembering a connection's channels. RabbitMQ (`docs/decisions/0026-rabbitmq.md`) and the Firebase Realtime Database (`docs/decisions/0027-firebase.md`) were built 2026-11-14 with topic kinds of their own. Supabase Realtime was built 2026-11-14, with topic kinds of its own (`Table`, `Broadcast`; `docs/decisions/0025-supabase-realtime.md`).
 
 ## Alternatives considered
 

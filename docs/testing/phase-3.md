@@ -387,6 +387,25 @@ Cần một project Firebase có Firestore (và Realtime Database nếu muốn t
 - [ ] Chạy `firebase emulators:start --only firestore`, kết nối với Project ID của bạn và **Firestore emulator** `localhost:8080`, không chọn file key.
   **Đúng:** kết nối được, `get <collection>` đọc dữ liệu của emulator.
 
+## 10. Tab Live với Firebase Realtime Database (thêm 2026-11-14, ADR 0027)
+
+Dùng kết nối Firebase ở mục 9 (cần Realtime Database). Thay đổi dữ liệu từ Firebase console › Realtime Database, hoặc từ app của bạn.
+
+- [ ] Kết nối Firebase, nhấn **Ctrl+Alt+L**.
+  **Đúng:** tab Live có ô **Paths**; gợi ý nói gõ path rồi đổi dữ liệu từ Firebase console.
+- [ ] Gõ `/chats` (hoặc một path có thật), Enter.
+  **Đúng:** status bar ghi Listening; có notice nói giá trị lúc bắt đầu nghe không thành dòng, chỉ những gì thay đổi sau đó; grid có cột `received`, `path`, `event`, `data`, chưa có dòng.
+- [ ] Trong Firebase console thêm một con dưới `/chats`, sửa một field, rồi xoá một con.
+  **Đúng:** mỗi thay đổi một dòng. `path` là đường dẫn đầy đủ (`/chats/room2/title`); `event` là `put` hoặc `patch`; `data` là giá trị mới, xoá thì `data` là NULL.
+- [ ] Nghe hai path cùng lúc: `/chats, /presence`.
+  **Đúng:** thay đổi ở cả hai đều tới.
+- [ ] Gõ một path mà rules không cho đọc, Listen.
+  **Đúng:** lỗi (Access denied hoặc lời của server); không treo.
+- [ ] Để tab nghe hơn 1 giờ (token hết hạn), rồi đổi dữ liệu.
+  **Đúng:** vẫn nhận được: stream tự mở lại với token mới.
+- [ ] Đang nghe thì tắt mạng.
+  **Đúng:** tab dừng với "The connection was lost" (có thể sau một lúc); các dòng đã nhận vẫn còn.
+
 ## Test tự động chạy trên server thật
 
 Hai test của phần nghe cần server thật (thay mật khẩu):

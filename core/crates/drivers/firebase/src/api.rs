@@ -180,6 +180,10 @@ impl Firebase {
         })
     }
 
+    pub(crate) fn http(&self) -> &reqwest::Client {
+        &self.http
+    }
+
     /// Signs in (a token for a service account), so a wrong key fails at connect.
     pub(crate) async fn sign_in(&self) -> Result<()> {
         self.login.bearer(&self.http).await.map(|_| ())

@@ -40,7 +40,7 @@ export interface EngineInfo {
 }
 
 /** A channel by its name, or every channel a glob matches (docs/decisions/0020-live-tab.md). */
-export type LiveTopicKind = "channel" | "pattern" | "table" | "broadcast" | "binding" | "queue";
+export type LiveTopicKind = "channel" | "pattern" | "table" | "broadcast" | "binding" | "queue" | "path";
 
 /** What a Live tab reports while it listens; event counts come at most every 50 ms. */
 export type LiveEvent =

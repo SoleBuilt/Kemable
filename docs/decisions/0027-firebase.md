@@ -25,6 +25,14 @@ Two things shape it:
 - **A document as a row**: `id`, one column per field the first page has (by name, as Firestore sends them), `other_fields` (JSON of the fields only later documents have, so nothing is lost), `update_time`. Types map exactly: integers as integers (past a float's 2^53 too), doubles, timestamps in UTC with their microseconds, bytes, references as their path, maps and arrays as JSON with their typed values unwrapped.
 - **Errors** keep Google's words and status (`NOT_FOUND`, `FAILED_PRECONDITION` with its link to create an index); a refused key or token is `driver.auth`.
 
+### The Live tab (added 2026-11-14)
+
+- A Live tab of a Firebase connection listens to the Realtime Database's paths (`LiveTopicKind::Path`, typed `/chats/room1, /presence`): each is a stream of server-sent events (`Accept: text/event-stream`, the token in the query).
+- A stream's first `put` is the path's value when it opened, not a change: it is not a row. The set begins once every stream has read its own; a change heard meanwhile on a stream already open is kept and comes first. The page says so in a notice.
+- Every `put` and `patch` after it is a row: `received`, `path` (the topic's path and the event's, joined), `event`, `data` (JSON, or the value; NULL for a delete).
+- `auth_revoked` (the token ended, after an hour) opens the stream again with a new token, its first value skipped again; `cancel` (the rules no longer let the account read it) ends the listening with `driver.query`; a stream the server closes ends it as `driver.lost`. `keep-alive` is nothing.
+- Firestore's own listening is over gRPC and is not built (`docs/decisions/0004-engines.md`).
+
 ## Rationale
 
 - **The file, not its text, kept**: it does not fit Credential Manager, and it is how Google's own tools take a key; the user already keeps the file somewhere safe.
@@ -35,4 +43,6 @@ Two things shape it:
 
 - Built 2026-11-14 with its tests against a small HTTP server inside them standing in for Google's token endpoint, Firestore and the Realtime Database: the JWT verified with the key's public half, a collection over two pages with every type, a document, a query and its request, a query that needs an index, the Realtime Database, the tree, and keys that do not read. `test-only-key.pem` was made for these tests and is used nowhere else. Not tried against a real project here: `docs/testing/phase-3.md` has the steps.
 - Writing (set, update, delete) and subcollections in the tree are not built.
+- The Live tab's streams are tested against a server inside the tests that sends events across chunks, `
+` endings and a data split over two lines, two paths at once, a `cancel`, and a refused token.
 - A connection holds no session: each command is a request, as D1's are.

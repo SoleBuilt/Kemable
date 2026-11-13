@@ -25,6 +25,8 @@ export class LiveSession {
   /** RabbitMQ: exchanges to bind a queue of the page's own to, and queues to take from (docs/decisions/0026-rabbitmq.md). */
   bindings = $state("");
   queues = $state("");
+  /** Firebase: the Realtime Database's paths (docs/decisions/0027-firebase.md). */
+  paths = $state("");
   status: LiveStatus = $state("idle");
   /** The database the listening started in. */
   database: string | null = $state(null);
@@ -67,6 +69,7 @@ export class LiveSession {
             { kind: "pattern", text: this.patterns },
             { kind: "binding", text: this.bindings },
             { kind: "queue", text: this.queues },
+            { kind: "path", text: this.paths },
           ];
     return all.filter((entry) => entry.text.trim() !== "");
   }
