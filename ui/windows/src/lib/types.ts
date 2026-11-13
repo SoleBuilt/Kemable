@@ -306,6 +306,22 @@ export type LineEnding = "crlf" | "lf";
 
 /** A script file's text with `
 ` line endings, and how a save writes it back. */
+/** A folder of `.sql` files linked into the sidebar: what is below it, folders first. */
+export interface SqlFolder {
+  entries: SqlFolderEntry[];
+  /** Listing stopped at 5,000 files. */
+  truncated: boolean;
+}
+
+export interface SqlFolderEntry {
+  /** The path below the folder linked, parts joined by `/`. */
+  relative: string;
+  path: string;
+  folder: boolean;
+  /** 0 for what sits in the folder linked. */
+  depth: number;
+}
+
 /** When a file was last written (nanoseconds, as text) and its length: compared, never read as a time. */
 export interface FileStamp {
   modified: string;

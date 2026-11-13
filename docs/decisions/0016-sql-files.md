@@ -25,12 +25,13 @@ Scripts live in files: in git, shared by a team, opened from Explorer. Kemable k
   - a file deleted or moved: the page keeps its text, unsaved, and says the file is no longer on disk, with **Save** (write it again) and **Dismiss**.
   
   Ctrl+S never writes over a version the page has not seen: it looks at the stamp first, and when the file changed it shows the notice instead of saving.
+- **Folders of `.sql` files in the sidebar** (added 2026-11-14). The sidebar's SQL files pane, folded under Queries, lists the folders linked to it (Link folder… in the pane, or Link a folder of .sql files… in Ctrl+K), each with the `.sql` files below it, folders first, then files, by name. A click on a file opens it on a query page, or shows the page that has it; the page shown is marked. A folder with no `.sql` file below it, a hidden folder (`.git`) and the folders of tools and builds (`node_modules`, `target`, `bin`, `obj`) are left out; a listing stops at 5,000 files and 12 folders down. Find a file narrows the list by the path below the folder. The folders are read again when the pane opens, when the window comes back to the front while it is open, after a save, and from a folder's right-click menu (Refresh, Link another folder…, Remove from the sidebar, which leaves the files on disk). The linked folders are one list for every connection, kept with the preferences (`sqlFolders` in `ui.json`).
 
 ## Consequences
 
 - Built 2026-11-11: `kemable_core::text_file` decodes and encodes (tested with BOMs, UTF-16 and mixed line endings; bytes that are not text are refused with `file.not_text`, never guessed); the Windows app's `read_text_file` and `write_text_file` read and write (64 MB at most, a save through a temporary file and a rename), and the dialog plugin's `save` asks for a path (`dialog:allow-save`). In `App.svelte` a page's `file` holds the path, the encoding, the line endings and the text last saved; the tab's `●` compares the editor's text with it.
 - A file changed outside the app, built 2026-11-14: `write_text_file` resolves to the file's stamp once written; the stamps are nanoseconds and a length, compared, never read as a time, so a touch with the same text says nothing. No file watcher runs: a change is seen when the window or the page is shown again, which is when the person can act on it, and nothing runs while the app is in the background.
-- Backlog (not decided further): linking a folder of `.sql` files into the sidebar.
+- Folders in the sidebar, built 2026-11-14: `list_sql_folder` walks a folder on a blocking thread (`src-tauri/src/folders.rs`, tested on a folder with hidden, empty and build folders) and the pane is `src/lib/sidebar/SqlFolders.svelte`. The pane lives in the sidebar, which shows once a connection is open; with none, a linked folder's files open from Ctrl+O as before.
 
 ## Alternatives considered
 

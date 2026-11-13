@@ -31,6 +31,7 @@
   import KeyBrowser from "./lib/sidebar/KeyBrowser.svelte";
   import ObjectTree, { type TreeScope, type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
   import QueryList from "./lib/sidebar/QueryList.svelte";
+  import SqlFolders from "./lib/sidebar/SqlFolders.svelte";
   import SaveQueryDialog from "./lib/sidebar/SaveQueryDialog.svelte";
   import ObjectActionDialog, { type ActionKind } from "./lib/sidebar/ObjectActionDialog.svelte";
   import StructureDialog from "./lib/sidebar/StructureDialog.svelte";
@@ -314,6 +315,40 @@
   /** The sidebar's folding panes (Objects always shows). */
   let queriesOpen = $state(false);
   let historyOpen = $state(false);
+  let filesOpen = $state(false);
+
+  // --- Folders of .sql files linked into the sidebar (docs/decisions/0016-sql-files.md) ---
+
+  function keptFolders(): string[] {
+    const kept = readPref("sqlFolders");
+    return Array.isArray(kept) ? kept.filter((folder): folder is string => typeof folder === "string") : [];
+  }
+  let sqlFolders: string[] = $state(keptFolders());
+  /** Bumped to read the linked folders again. */
+  let filesKey = $state(0);
+  let fileCount: number | null = $state(null);
+  // Opening the pane reads the folders again: files come and go while it is folded.
+  $effect(() => {
+    if (filesOpen) untrack(() => filesKey++);
+  });
+
+  /** Asks for a folder and links it into the sidebar's SQL files pane. */
+  async function linkFolder() {
+    const path = await open({ directory: true, multiple: false, title: "Link a folder of .sql files" });
+    if (typeof path !== "string") return;
+    if (!sqlFolders.some((folder) => folder.toLowerCase() === path.toLowerCase())) {
+      sqlFolders = [...sqlFolders, path];
+      writePref("sqlFolders", sqlFolders);
+    }
+    filesOpen = true;
+    filesKey++;
+  }
+
+  function unlinkFolder(path: string) {
+    sqlFolders = sqlFolders.filter((folder) => folder !== path);
+    writePref("sqlFolders", sqlFolders);
+    note(`${fileName(path)} is no longer in the sidebar; its files stay on disk`);
+  }
   let queryCount: number | null = $state(null);
   let historyCount: number | null = $state(null);
   /** Bumped after a run that went to the history, and after a save. */
@@ -929,6 +964,7 @@
     recentFiles = addRecentFile(file.path);
     keepPagesSoon();
     note(`Saved ${fileName(file.path)}`);
+    filesKey++;
     return true;
   }
 
@@ -2085,6 +2121,7 @@
       : []),
     { id: "new-connection", group: "Start", label: "New connection…", icon: "plus", keys: ["Ctrl", "N"], run: newConnection },
     { id: "open-file", group: "Start", label: "Open file…", icon: "file", keys: ["Ctrl", "O"], run: () => void openFile() },
+    { id: "link-folder", group: "Start", label: "Link a folder of .sql files…", icon: "folder-plus", run: () => void linkFolder() },
     { id: "memory", group: "Start", label: "Open an in-memory database", icon: "database", run: () => void connectTo(":memory:") },
     ...library.map((entry) => ({
       id: `saved:${entry.id}`,
@@ -2249,7 +2286,13 @@
   );
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} onfocus={() => void checkFiles()} />
+<svelte:window
+  onkeydown={onWindowKeydown}
+  onfocus={() => {
+    void checkFiles();
+    if (filesOpen) filesKey++;
+  }}
+/>
 
 <div class="pb-app" style:grid-template-rows={connectError ? "auto auto minmax(0, 1fr) auto" : undefined}>
   <!-- The title bar says where you are (D14) and holds the window's buttons. -->
@@ -2340,6 +2383,19 @@
               onRun={runSaved}
               onEdit={(query) => (saving = query)}
               onCount={(count) => (queryCount = count)}
+            />
+          </SidePane>
+        {/if}
+        {#if !keyValue}
+          <SidePane title="SQL files" bind:open={filesOpen} count={fileCount}>
+            <SqlFolders
+              folders={sqlFolders}
+              refreshKey={filesKey}
+              openPath={currentPage?.file?.path ?? null}
+              onOpen={(path) => void openScript(path)}
+              onLink={() => void linkFolder()}
+              onUnlink={unlinkFolder}
+              onCount={(count) => (fileCount = count)}
             />
           </SidePane>
         {/if}
