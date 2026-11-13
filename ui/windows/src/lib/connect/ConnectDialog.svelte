@@ -2,10 +2,10 @@
   import type { ConnectionConfig } from "../types";
 
   /** The engines this dialog connects to over the network. */
-  export type NetworkEngine = "postgres" | "mssql" | "redis" | "d1";
+  export type NetworkEngine = "postgres" | "mssql" | "redis" | "rabbitmq" | "d1";
 
   export function isNetworkEngine(id: string): id is NetworkEngine {
-    return id === "postgres" || id === "mssql" || id === "redis" || id === "d1";
+    return id === "postgres" || id === "mssql" || id === "redis" || id === "rabbitmq" || id === "d1";
   }
 
   /** What Connect asks for: a saved connection by id, or a config as typed. */
@@ -87,6 +87,12 @@
       title: "Redis",
       port: 6379,
       urlHint: "redis://:password@host:6379/0 (rediss:// for TLS)",
+      hostHint: "localhost",
+    },
+    rabbitmq: {
+      title: "RabbitMQ",
+      port: 5672,
+      urlHint: "amqp://user:password@host:5672/vhost (amqps:// for TLS)",
       hostHint: "localhost",
     },
     d1: {
@@ -297,13 +303,14 @@
     { value: "disable", label: "Off" },
     { value: "verifyFull", label: "TLS (check the certificate and host)" },
   ];
-  const tlsModes = $derived(engine === "redis" ? REDIS_TLS_MODES : TLS_MODES);
+  // RabbitMQ too: amqp is plain, amqps is TLS from the first byte.
+  const tlsModes = $derived(engine === "redis" || engine === "rabbitmq" ? REDIS_TLS_MODES : TLS_MODES);
 
   function pickEngine(next: NetworkEngine) {
     // Another engine is a new connection: the saved one and its fields are dropped.
     if (saved && next !== engine) fill(null);
     engine = next;
-    if (next === "redis" && tls !== "verifyFull") tls = "disable";
+    if ((next === "redis" || next === "rabbitmq") && tls !== "verifyFull") tls = "disable";
   }
 
   async function loadProfiles() {
@@ -670,6 +677,9 @@
     {#if engine === "redis"}
       <Field label="Database number"><Input bind:value={database} placeholder="0" inputmode="numeric" /></Field>
     {/if}
+    {#if engine === "rabbitmq"}
+      <Field label="Virtual host"><Input mono bind:value={database} placeholder="/" /></Field>
+    {/if}
     {#if engine === "mssql"}
       <Field label="Sign in with" as="group">
         <Segmented label="Sign in with" fill options={LOGINS} value={windowsLogin} onChange={(windows) => (windowsLogin = windows)} />
@@ -705,7 +715,10 @@
     {:else if usesLogin}
       <div class="pb-form-2">
         <Field label="User">
-          <Input bind:value={user} placeholder={engine === "postgres" ? "postgres" : engine === "redis" ? "Optional (ACL user)" : "sa"} />
+          <Input
+            bind:value={user}
+            placeholder={engine === "postgres" ? "postgres" : engine === "redis" ? "Optional (ACL user)" : engine === "rabbitmq" ? "guest" : "sa"}
+          />
         </Field>
         <Field label="Password">
           <Input type="password" bind:value={password} placeholder={savedId && saved?.savePassword ? "Kept in Windows Credential Manager" : ""} />
@@ -755,7 +768,7 @@
       {/if}
       <p class="pb-hint">The host and port above are the database's as the SSH server sees them, often localhost. The SSH password or passphrase is kept in Windows Credential Manager.</p>
     {/if}
-    {#if engine !== "redis"}
+    {#if engine !== "redis" && engine !== "rabbitmq"}
       <!-- After the login: the list is what that login may see. -->
       <Field label="Database" as="group" hint="Optional. The tree shows every database this login may see.">
         <Combobox

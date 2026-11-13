@@ -23,6 +23,7 @@ use kemable_core::registry::DriverRegistry;
 use kemable_driver_d1::D1Driver;
 use kemable_driver_mssql::MssqlDriver;
 use kemable_driver_postgres::PostgresDriver;
+use kemable_driver_rabbitmq::RabbitmqDriver;
 use kemable_driver_redis::RedisDriver;
 use kemable_driver_sqlite::SqliteDriver;
 use tauri::Manager;
@@ -37,6 +38,7 @@ fn registry() -> DriverRegistry {
         .with(Arc::new(PostgresDriver))
         .with(Arc::new(MssqlDriver))
         .with(Arc::new(RedisDriver))
+        .with(Arc::new(RabbitmqDriver))
         .with(Arc::new(D1Driver))
 }
 

@@ -5,7 +5,9 @@
 //! (`postgresql://` too), and the same shape for SQL Server as `sqlserver://`
 //! (or `mssql://`), where a URL without a user logs in as the Windows user.
 //! Redis is `redis://[user]:password@host:port/db`, and `rediss://` for TLS
-//! with the certificate checked. `sslmode` becomes the TLS mode; every other query
+//! with the certificate checked. RabbitMQ is `amqp://user:password@host:port/vhost`,
+//! and `amqps://` for TLS; the virtual host is the database (`/` when the path
+//! is empty or `%2F`). `sslmode` becomes the TLS mode; every other query
 //! parameter goes to `options` unchanged, for the driver to read.
 
 use std::collections::BTreeMap;
@@ -23,6 +25,7 @@ pub fn parse(url: &str) -> Result<ConnectionConfig, DriverError> {
         "postgres" | "postgresql" => "postgres",
         "sqlserver" | "mssql" => "mssql",
         "redis" | "rediss" => "redis",
+        "amqp" | "amqps" => "rabbitmq",
         other => return Err(DriverError::unsupported(format!("no driver reads {other}:// URLs"))),
     };
 
@@ -45,6 +48,8 @@ pub fn parse(url: &str) -> Result<ConnectionConfig, DriverError> {
     let mut tls = match scheme.as_str() {
         "redis" => TlsMode::Disable,
         "rediss" => TlsMode::VerifyFull,
+        "amqp" => TlsMode::Disable,
+        "amqps" => TlsMode::VerifyFull,
         _ => TlsMode::Prefer,
     };
     for pair in query.split('&').filter(|pair| !pair.is_empty()) {
@@ -64,6 +69,10 @@ pub fn parse(url: &str) -> Result<ConnectionConfig, DriverError> {
     }
 
     let database = Some(decode(path)?).filter(|database| !database.is_empty());
+    // A broker's options (heartbeat, connection_timeout) are the driver's own to set.
+    if engine == "rabbitmq" {
+        options.clear();
+    }
     Ok(ConnectionConfig {
         engine: engine.into(),
         target: Target::Network {
@@ -204,6 +213,31 @@ mod tests {
             ("localhost", None, None, "", Some("demo"), TlsMode::Prefer)
         );
         assert_eq!(parse("mssql://sa:pw@db:1433").expect("a valid URL").engine, "mssql");
+    }
+
+    #[test]
+    fn an_amqp_url_takes_its_virtual_host_and_amqps_its_tls() {
+        let config = parse("amqp://app:p%40ss@mq.local:5672/orders?heartbeat=10").expect("a valid URL");
+        assert_eq!(config.engine, "rabbitmq");
+        assert!(config.options.is_empty(), "the driver sets the heartbeat itself");
+        let Target::Network {
+            database,
+            tls,
+            password,
+            ..
+        } = config.target
+        else {
+            panic!("a network target")
+        };
+        assert_eq!(database.as_deref(), Some("orders"));
+        assert_eq!(tls, TlsMode::Disable);
+        assert_eq!(password.expose(), "p@ss");
+        let secure = parse("amqps://u:p@b-1.mq.amazonaws.com:5671/%2F").expect("a valid URL");
+        let Target::Network { database, tls, .. } = secure.target else {
+            panic!("a network target")
+        };
+        assert_eq!(database.as_deref(), Some("/"));
+        assert_eq!(tls, TlsMode::VerifyFull);
     }
 
     #[test]

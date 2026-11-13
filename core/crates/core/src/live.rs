@@ -20,6 +20,13 @@ pub enum LiveTopicKind {
     Table,
     /// A broadcast channel by its name: Supabase Realtime's broadcast.
     Broadcast,
+    /// An exchange and a binding key (`exchange` or `exchange:key`, `#` when
+    /// none): a copy of what it routes, through a queue of the listener's own
+    /// that goes when it stops. RabbitMQ (`docs/decisions/0026-rabbitmq.md`).
+    Binding,
+    /// A queue by its name, consumed: what the listener takes, it acknowledges,
+    /// and the queue no longer holds. RabbitMQ.
+    Queue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

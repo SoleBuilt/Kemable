@@ -1,0 +1,25 @@
+[package]
+name = "kemable-driver-rabbitmq"
+description = "RabbitMQ over AMQP 0-9-1 with lapin on tokio: a console that publishes, and a Live tab that consumes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+futures-util.workspace = true
+kemable-core.workspace = true
+lapin.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+kemable-store.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
+
+[lints]
+workspace = true

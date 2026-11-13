@@ -1236,41 +1236,38 @@ pub async fn delete_query(library: State<'_, Library>, id: String) -> CommandRes
 /// `cancel_run` stops (`docs/decisions/0020-live-tab.md`). `channels` and
 /// `patterns` are what the user typed; the core reads the names in them.
 /// Events arrive on `on_event` until one of type `finished`.
-#[allow(clippy::too_many_arguments)] // Each is one field of the Live page's request.
 #[tauri::command]
 pub async fn start_live(
     state: State<'_, Arc<AppState>>,
     library: State<'_, Library>,
     conn: u64,
     database: Option<String>,
-    channels: String,
-    patterns: String,
-    realtime: Option<RealtimeTopics>,
+    request: LiveRequest,
     on_event: Channel<crate::live::LiveEvent>,
 ) -> CommandResult<u64> {
+    use kemable_core::live::LiveTopicKind;
     let server = state.server(conn)?;
-    let RealtimeTopics {
-        tables,
-        broadcasts,
-        api_key,
-    } = realtime.unwrap_or_default();
-    let realtime = !tables.trim().is_empty() || !broadcasts.trim().is_empty();
-    let (topics, realtime) = if realtime {
-        // Supabase Realtime: a socket of its own, not a session (ADR 0025).
+    let texts: Vec<(LiveTopicKind, &str)> = request
+        .topics
+        .iter()
+        .map(|typed| (typed.kind, typed.text.as_str()))
+        .collect();
+    let topics = kemable_core::live::topics_of(&texts);
+    if topics.is_empty() {
+        return Err(DriverError::config("nothing to listen to"));
+    }
+    let through_realtime = |kind: LiveTopicKind| matches!(kind, LiveTopicKind::Table | LiveTopicKind::Broadcast);
+    let realtime = if topics.iter().any(|topic| through_realtime(topic.kind)) {
+        // Supabase Realtime: a socket of its own, not a session (ADR 0025), and nothing else on it.
+        if !topics.iter().all(|topic| through_realtime(topic.kind)) {
+            return Err(DriverError::config("Realtime tables and LISTEN channels listen apart"));
+        }
         let url = server
             .realtime_url()
             .ok_or_else(|| DriverError::unsupported("Realtime is a Supabase project's"))?;
-        let key = realtime_key(&library, &url, api_key)?;
-        let topics = kemable_core::live::topics_of(&[
-            (kemable_core::live::LiveTopicKind::Table, &tables),
-            (kemable_core::live::LiveTopicKind::Broadcast, &broadcasts),
-        ]);
-        (topics, Some((url, key)))
+        let key = realtime_key(&library, &url, request.api_key)?;
+        Some((url, key))
     } else {
-        let topics = kemable_core::live::topics(&channels, &patterns);
-        if topics.is_empty() {
-            return Err(DriverError::config("no channel or pattern to listen to"));
-        }
         if topics
             .iter()
             .any(|topic| !server.engine.live_topics.contains(&topic.kind))
@@ -1279,7 +1276,7 @@ pub async fn start_live(
                 "this engine does not listen to that kind of topic",
             ));
         }
-        (topics, None)
+        None
     };
     let cancel = server.closing.child_token();
     let id = state.add_run(cancel.clone());
@@ -1297,16 +1294,20 @@ pub async fn start_live(
     Ok(id)
 }
 
-/// What a Live tab of a Supabase project listens to through Realtime, as typed.
-#[derive(Debug, Default, Deserialize)]
+/// What a Live page asks to listen to: the text typed for each kind of topic.
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RealtimeTopics {
+pub struct LiveRequest {
+    topics: Vec<TypedTopics>,
+    /// Supabase Realtime's API key typed now; none uses the one kept for the project.
     #[serde(default)]
-    tables: String,
-    #[serde(default)]
-    broadcasts: String,
-    /// Typed now; none uses the one kept for the project.
     api_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TypedTopics {
+    kind: kemable_core::live::LiveTopicKind,
+    text: String,
 }
 
 /// The API key Realtime signs in with: the one typed, which is then kept in
