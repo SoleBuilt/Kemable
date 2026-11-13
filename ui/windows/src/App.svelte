@@ -99,6 +99,7 @@
     LineEnding,
     TextEncoding,
     TextFile,
+    FileStamp,
   } from "./lib/types";
 
   /**
@@ -221,6 +222,10 @@
     lineEnding: LineEnding;
     /** The text as last read from or written to the file: the page is unsaved while it differs. */
     saved: string;
+    /** The file's stamp when it was last read or written: another one means it changed outside the app. */
+    stamp: FileStamp | null;
+    /** Changed outside the app while the page held unsaved text, or gone: shown on the page until answered. */
+    outside: "changed" | "gone" | null;
   }
 
   function emptyState(): PageState {
@@ -446,6 +451,7 @@
     if (target.kind === "query") {
       editor?.restoreState(target.editor);
       void tick().then(() => editor?.focus());
+      if (target.file) void checkFiles();
     }
     keepPagesSoon();
     return true;
@@ -581,10 +587,17 @@
         let text = page.text;
         let file: PageFile | null = null;
         if (page.file) {
-          const disk = await ipc.readTextFile(page.file.path).catch(() => null);
+          const disk = await readScript(page.file.path).catch(() => null);
           // A file gone or unreadable keeps the page's text, unsaved, so a save writes it again.
-          file = { path: page.file.path, encoding: disk?.encoding ?? page.file.encoding, lineEnding: disk?.lineEnding ?? page.file.lineEnding, saved: disk?.text ?? "" };
-          if (disk && !page.file.dirty) text = disk.text;
+          file = {
+            path: page.file.path,
+            encoding: disk?.read.encoding ?? page.file.encoding,
+            lineEnding: disk?.read.lineEnding ?? page.file.lineEnding,
+            saved: disk?.read.text ?? "",
+            stamp: disk?.stamp ?? null,
+            outside: null,
+          };
+          if (disk && !page.file.dirty) text = disk.read.text;
         }
         return { id: nextPageId++, kind: "query", number: page.number, editor: view.stateWith(text, page.cursor), state: emptyState(), file };
       }),
@@ -848,8 +861,9 @@
       return;
     }
     let read: TextFile;
+    let stamp: FileStamp | null;
     try {
-      read = await ipc.readTextFile(path);
+      ({ read, stamp } = await readScript(path));
     } catch (caught) {
       const error = asCoreError(caught);
       note(`${errorTitle(error)}: ${error.message}`);
@@ -865,7 +879,7 @@
       number,
       editor: null,
       state: emptyState(),
-      file: { path, encoding: read.encoding, lineEnding: read.lineEnding, saved: read.text },
+      file: { path, encoding: read.encoding, lineEnding: read.lineEnding, saved: read.text, stamp, outside: null },
     };
     pages = blank ? [page] : [...current, page];
     activePage = page.id;
@@ -895,22 +909,161 @@
       });
       if (typeof path !== "string") return;
       // A new file is UTF-8 with CRLF; Save As keeps the encoding of the file it came from.
-      target = { path, encoding: page.file?.encoding ?? "utf8", lineEnding: page.file?.lineEnding ?? "crlf", saved: "" };
+      target = { path, encoding: page.file?.encoding ?? "utf8", lineEnding: page.file?.lineEnding ?? "crlf", saved: "", stamp: null, outside: null };
+    } else if (await changedOutside(page.id)) {
+      // Never over a version the page has not seen: the page asks first.
+      note(`${fileName(target.path)} changed outside Kemable: reload it or keep your changes, then save`);
+      return false;
     }
+    let stamp: FileStamp | null;
     try {
-      await ipc.writeTextFile(target.path, text, target.encoding, target.lineEnding);
+      stamp = await ipc.writeTextFile(target.path, text, target.encoding, target.lineEnding);
     } catch (caught) {
       const error = asCoreError(caught);
       note(`Not saved: ${errorTitle(error)}: ${error.message}`);
       return false;
     }
-    const file: PageFile = { ...target, saved: text };
+    const file: PageFile = { ...target, saved: text, stamp, outside: null };
     pages = pages.map((other) => (other.id === page.id ? { ...other, file } : other));
     pagesKey ??= connection ? null : NO_CONNECTION;
     recentFiles = addRecentFile(file.path);
     keepPagesSoon();
     note(`Saved ${fileName(file.path)}`);
     return true;
+  }
+
+  // --- A file changed outside the app (docs/decisions/0016-sql-files.md) -----
+
+  /** A file's stamp, then its text: a change made after the stamp is read is seen next time. */
+  async function readScript(path: string): Promise<{ read: TextFile; stamp: FileStamp | null }> {
+    const [stamp] = await ipc.fileStamps([path]);
+    const read = await ipc.readTextFile(path);
+    return { read, stamp: stamp ?? null };
+  }
+
+  function sameStamp(a: FileStamp | null, b: FileStamp | null): boolean {
+    return a?.modified === b?.modified && a?.size === b?.size;
+  }
+
+  function setFile(id: number, file: PageFile) {
+    pages = pages.map((page) => (page.id === id ? { ...page, file } : page));
+  }
+
+  let checkingFiles = false;
+
+  /**
+   * Looks whether the files of the query pages changed on disk, when the window comes
+   * back to the front and when a page is shown. Only stamps are read; a file is read
+   * only when its stamp moved. A page with nothing unsaved takes the new text at once;
+   * a page with unsaved text says so and asks (Reload from disk, Keep my changes).
+   */
+  async function checkFiles() {
+    const bound = pages.flatMap((page) => (page.file ? [{ id: page.id, path: page.file.path }] : []));
+    if (checkingFiles || bound.length === 0) return;
+    checkingFiles = true;
+    try {
+      const stamps = await ipc.fileStamps(bound.map((page) => page.path));
+      for (const [index, page] of bound.entries()) await checkFile(page.id, page.path, stamps[index] ?? null);
+    } catch {
+      // A check that fails is tried again the next time the window comes to the front.
+    } finally {
+      checkingFiles = false;
+    }
+  }
+
+  async function checkFile(id: number, path: string, stamp: FileStamp | null) {
+    const before = pages.find((page) => page.id === id)?.file;
+    if (!before || before.path !== path || sameStamp(before.stamp, stamp)) return;
+    if (!stamp) {
+      // Gone: the page keeps its text, unsaved, so a save writes the file again.
+      if (before.outside !== "gone") setFile(id, { ...before, saved: "", stamp: null, outside: "gone" });
+      return;
+    }
+    // Read only now that the stamp moved. A file being written may not read yet: next time.
+    const read = await ipc.readTextFile(path).catch(() => null);
+    const page = pages.find((other) => other.id === id);
+    const file = page?.file;
+    if (!read || !page || !file || file.path !== path) return;
+    if (read.text === file.saved || read.text === pageText(page)) {
+      // Touched, or written with the text the page has: nothing to ask.
+      setFile(id, { ...file, encoding: read.encoding, lineEnding: read.lineEnding, saved: read.text, stamp, outside: null });
+      return;
+    }
+    if (!pageDirty(page) && file.outside !== "gone") {
+      takeText(page, read, stamp);
+      note(`Reloaded ${fileName(path)}: it changed outside Kemable`);
+      return;
+    }
+    if (file.outside !== "changed") setFile(id, { ...file, outside: "changed" });
+  }
+
+  /** A page takes its file's text from disk; the editor keeps its undo, so the reload can be undone. */
+  function takeText(page: Page, read: TextFile, stamp: FileStamp | null) {
+    const file: PageFile | null = page.file && {
+      ...page.file,
+      encoding: read.encoding,
+      lineEnding: read.lineEnding,
+      saved: read.text,
+      stamp,
+      outside: null,
+    };
+    if (!file) return;
+    if (page.id === activePage && editor) {
+      editor.replaceText(read.text);
+      setFile(page.id, file);
+    } else {
+      const state = page.editor && editor ? editor.withText(page.editor, read.text) : (editor?.stateWith(read.text, 0) ?? null);
+      pages = pages.map((other) => (other.id === page.id ? { ...other, file, editor: state } : other));
+    }
+    keepPagesSoon();
+  }
+
+  /** Whether page `id`'s file changed on disk since the page read or wrote it; marks the page when so. */
+  async function changedOutside(id: number): Promise<boolean> {
+    const before = pages.find((page) => page.id === id)?.file;
+    if (!before) return false;
+    if (before.outside === "changed") return true;
+    const [stamp] = await ipc.fileStamps([before.path]).catch(() => [null]);
+    if (!stamp || sameStamp(before.stamp, stamp)) return false;
+    const read = await ipc.readTextFile(before.path).catch(() => null);
+    const file = pages.find((page) => page.id === id)?.file;
+    if (!read || !file) return false;
+    if (read.text === file.saved) {
+      setFile(id, { ...file, stamp });
+      return false;
+    }
+    setFile(id, { ...file, outside: "changed" });
+    return true;
+  }
+
+  /** Reload from disk: the page drops its unsaved text for the file's. */
+  async function reloadFromDisk() {
+    const page = currentPage;
+    if (!page?.file) return;
+    try {
+      const { read, stamp } = await readScript(page.file.path);
+      takeText(page, read, stamp);
+      note(`Reloaded ${fileName(page.file.path)}`);
+    } catch (caught) {
+      const error = asCoreError(caught);
+      note(`${errorTitle(error)}: ${error.message}`);
+    }
+  }
+
+  /** Keep my changes: the page keeps its text, unsaved against the file as it is now, and a save writes over it. */
+  async function keepMyChanges() {
+    const page = currentPage;
+    const file = page?.file;
+    if (!page || !file) return;
+    if (file.outside === "gone") {
+      setFile(page.id, { ...file, outside: null });
+      return;
+    }
+    const disk = await readScript(file.path).catch(() => null);
+    const now = pages.find((other) => other.id === page.id)?.file;
+    if (!now) return;
+    setFile(page.id, disk ? { ...now, saved: disk.read.text, stamp: disk.stamp, outside: null } : { ...now, saved: "", stamp: null, outside: "gone" });
+    editTick++;
   }
 
   /** The answer to "Save changes to <file>?" as its page closes. */
@@ -2096,7 +2249,7 @@
   );
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} />
+<svelte:window onkeydown={onWindowKeydown} onfocus={() => void checkFiles()} />
 
 <div class="pb-app" style:grid-template-rows={connectError ? "auto auto minmax(0, 1fr) auto" : undefined}>
   <!-- The title bar says where you are (D14) and holds the window's buttons. -->
@@ -2248,6 +2401,17 @@
 
         <!-- One editor for every query page; a table page and a Live page hide it (D17). -->
         <section class="pb-editor-host" hidden={offQuery} aria-label="Editor">
+          {#if currentPage?.kind === "query" && currentPage.file?.outside === "changed"}
+            <InfoBar tone="warning" strip title={`${fileName(currentPage.file.path)} changed outside Kemable`} message="This page has changes that are not saved.">
+              <Button size="sm" label="Reload from disk" tip="Drop this page's changes and read the file again" onclick={() => void reloadFromDisk()} />
+              <Button size="sm" variant="ghost" label="Keep my changes" tip="Keep this page's text; Ctrl+S then writes over the file" onclick={() => void keepMyChanges()} />
+            </InfoBar>
+          {:else if currentPage?.kind === "query" && currentPage.file?.outside === "gone"}
+            <InfoBar tone="warning" strip title={`${fileName(currentPage.file.path)} is no longer on disk`} message="It was deleted or moved outside Kemable. Ctrl+S writes it again.">
+              <Button size="sm" label="Save" tip="Write the file again (Ctrl+S)" onclick={() => void saveScript()} />
+              <Button size="sm" variant="ghost" label="Dismiss" onclick={() => void keepMyChanges()} />
+            </InfoBar>
+          {/if}
           <SqlEditor
             bind:this={editor}
             {grammar}

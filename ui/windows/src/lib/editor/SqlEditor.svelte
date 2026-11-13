@@ -313,6 +313,22 @@
     return state.update({ selection: { anchor: at } }).state;
   }
 
+  /**
+   * `state` with its whole text replaced by `text`, as one change its undo history
+   * keeps, the cursor kept where it was (cut to the text): a file read again from disk.
+   */
+  export function withText(state: EditorState, text: string): EditorState {
+    const at = Math.min(state.selection.main.head, text.length);
+    return state.update({ changes: { from: 0, to: state.doc.length, insert: text }, selection: { anchor: at } }).state;
+  }
+
+  /** The shown tab's text replaced by `text`, as [withText] does. */
+  export function replaceText(text: string): void {
+    if (!view) return;
+    const at = Math.min(view.state.selection.main.head, text.length);
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: at } });
+  }
+
   /** Shows `state` (a tab's saved one), or a fresh empty editor when null. */
   export function restoreState(state: EditorState | null): void {
     if (!view) return;
