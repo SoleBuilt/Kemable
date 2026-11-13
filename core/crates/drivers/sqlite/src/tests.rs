@@ -46,6 +46,8 @@ async fn memory() -> Arc<dyn Connection> {
             read_only: false,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     SqliteDriver
         .connect(&config, CallOptions::default())
@@ -186,6 +188,8 @@ async fn opening_a_file_that_is_not_a_database_fails_to_connect() {
             read_only: true,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let error = SqliteDriver
         .connect(&config, CallOptions::default())

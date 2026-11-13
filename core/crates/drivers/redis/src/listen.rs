@@ -333,6 +333,7 @@ mod tests {
         let endpoint = Endpoint {
             host: "127.0.0.1".into(),
             port,
+            dial: None,
             user: None,
             password: Secret::default(),
             database: 0,
@@ -540,6 +541,7 @@ mod tests {
         let endpoint = Endpoint {
             host: "256.0.0.1".into(),
             port: 1,
+            dial: None,
             user: None,
             password: Secret::default(),
             database: 0,

@@ -21,9 +21,10 @@
 
 <script lang="ts">
   import { onMount } from "svelte";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
-  import type { CoreError, CredentialProfile, SavedConnection, TlsMode } from "../types";
+  import type { CoreError, CredentialProfile, SavedConnection, SshTunnel, TlsMode } from "../types";
   import Combobox, { type ComboOption } from "../ui/Combobox.svelte";
   import Button from "../ui/Button.svelte";
   import Checkbox from "../ui/Checkbox.svelte";
@@ -125,6 +126,79 @@
   /** The profile "Save these as a profile" just made, to say so. */
   let madeProfile: string | null = $state(null);
 
+  // --- SSH tunnel (docs/decisions/0024-ssh-tunnels.md) ---
+  let sshOn = $state(false);
+  let sshHost = $state("");
+  let sshPort = $state("");
+  let sshUser = $state("");
+  let sshWithKey = $state(false);
+  let sshPassword = $state("");
+  let sshKeyPath = $state("");
+  let sshPassphrase = $state("");
+  /** Whether the connection being edited has an SSH secret kept, so a blank field keeps it. */
+  let sshKept = $state(false);
+
+  function fillSsh(ssh: SshTunnel | null | undefined) {
+    sshOn = Boolean(ssh);
+    sshHost = ssh?.host ?? "";
+    sshPort = ssh?.port ? String(ssh.port) : "";
+    sshUser = ssh?.user ?? "";
+    sshWithKey = ssh?.auth.kind === "key";
+    sshKeyPath = ssh?.auth.kind === "key" ? ssh.auth.path : "";
+    sshPassword = "";
+    sshPassphrase = "";
+    sshKept = Boolean(ssh);
+  }
+
+  /** The tunnel as typed, or null when it is off; sets the error when a field is wrong. */
+  function buildSsh(): SshTunnel | null | false {
+    if (!sshOn) return null;
+    const portNumber = sshPort.trim() === "" ? null : Number(sshPort);
+    if (portNumber !== null && (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535)) {
+      error = { code: "config.invalid", message: `${sshPort} is not an SSH port` };
+      return false;
+    }
+    return {
+      host: sshHost.trim(),
+      port: portNumber,
+      user: sshUser.trim(),
+      auth: sshWithKey ? { kind: "key", path: sshKeyPath.trim(), passphrase: sshPassphrase } : { kind: "password", password: sshPassword },
+    };
+  }
+
+  async function pickKey() {
+    const path = await open({ multiple: false, directory: false, title: "An SSH private key" });
+    if (typeof path === "string") sshKeyPath = path;
+  }
+
+  const SSH_LOGINS = [
+    { value: false, label: "Password" },
+    { value: true, label: "Private key" },
+  ];
+
+  /** An SSH server not known yet, shown with its fingerprint: trusting it does again what was asked. */
+  let unknownHost: { host: string; port: number | null; fingerprint: string; again: () => void } | null = $state(null);
+
+  /** Keeps what to do again when `failure` is an SSH server not known yet. */
+  function askTrust(failure: CoreError | null, again: () => void): CoreError | null {
+    if (failure?.code !== "ssh.host_unknown") return failure;
+    const portNumber = sshPort.trim() === "" ? null : Number(sshPort);
+    unknownHost = { host: sshHost.trim(), port: portNumber, fingerprint: failure.message, again };
+    return null;
+  }
+
+  async function trustHost() {
+    const target = unknownHost;
+    if (!target) return;
+    unknownHost = null;
+    try {
+      await ipc.trustSshHost(target.host, target.port);
+      target.again();
+    } catch (caught) {
+      error = asCoreError(caught);
+    }
+  }
+
   /** Fills the form from a saved connection, or empties it for a new one; a kept password stays kept. */
   function fill(from: SavedConnection | null) {
     saved = from;
@@ -136,6 +210,8 @@
     useProfile = from?.profileId != null;
     profileId = from?.profileId ?? null;
     color = from?.color ?? "gray";
+    unknownHost = null;
+    fillSsh(from?.config.ssh);
     if (!from) {
       savedId = null;
       name = "";
@@ -180,6 +256,7 @@
   // svelte-ignore state_referenced_locally
   if (initialSaved) {
     fillFields(initialSaved);
+    fillSsh(initialSaved.config.ssh);
     useProfile = initialSaved.profileId != null;
     profileId = initialSaved.profileId;
     color = initialSaved.color ?? "gray";
@@ -206,7 +283,8 @@
   const profileEngine = $derived((engine === "postgres" || engine === "mssql") && usesLogin);
   const withProfile = $derived(profileEngine && useProfile);
   const profile = $derived(profiles.find((entry) => entry.id === profileId) ?? null);
-  const ready = $derived((http ? account.trim() !== "" : host.trim() !== "") && (!withProfile || profile !== null));
+  const sshReady = $derived(!sshOn || (sshHost.trim() !== "" && sshUser.trim() !== "" && (!sshWithKey || sshKeyPath.trim() !== "")));
+  const ready = $derived((http ? account.trim() !== "" : host.trim() !== "") && (!withProfile || profile !== null) && sshReady);
 
   const TLS_MODES: { value: TlsMode; label: string }[] = [
     { value: "disable", label: "Disable" },
@@ -362,8 +440,11 @@
       error = { code: "config.invalid", message: `${port} is not a port` };
       return null;
     }
+    const ssh = buildSsh();
+    if (ssh === false) return null;
     return {
       engine,
+      ssh,
       target: {
         kind: "network",
         host: host.trim(),
@@ -414,15 +495,19 @@
     const config = buildConfig();
     if (!config) return;
     busy = true;
+    unknownHost = null;
     // With Save this connection, the connection is saved only once the server has
     // answered, so a mistyped host or login is never kept; a password left blank
     // on a saved connection uses the one kept in Credential Manager.
-    error = await onConnect({
-      config,
-      profileId: withProfile ? profileId : null,
-      title: name.trim() || defaultName(),
-      keep: save ? { connection: formConnection(config), password: typedPassword() } : null,
-    });
+    error = askTrust(
+      await onConnect({
+        config,
+        profileId: withProfile ? profileId : null,
+        title: name.trim() || defaultName(),
+        keep: save ? { connection: formConnection(config), password: typedPassword() } : null,
+      }),
+      () => void submit(),
+    );
     if (save && !error) onSaved();
     busy = false;
   }
@@ -431,7 +516,7 @@
 
   /** The login the list is read with; it is read again when one of these changes. */
   const loginFields = $derived(
-    JSON.stringify([engine, host, port, user, password, windowsLogin, tls, options, withProfile, profileId, savedId]),
+    JSON.stringify([engine, host, port, user, password, windowsLogin, tls, options, withProfile, profileId, savedId, sshOn, sshHost, sshPort, sshUser, sshWithKey, sshPassword, sshKeyPath, sshPassphrase]),
   );
   let listed: { fields: string; names: string[] | null; error: CoreError | null } | null = $state(null);
   let listing = $state(false);
@@ -447,7 +532,12 @@
     try {
       listed = { fields, names: await ipc.listFormDatabases(config, savedId, withProfile ? profileId : null), error: null };
     } catch (caught) {
-      listed = { fields, names: null, error: asCoreError(caught) };
+      const failure = asCoreError(caught);
+      listed = { fields, names: null, error: failure };
+      askTrust(failure, () => {
+        listed = null;
+        void listDatabases();
+      });
     }
     listing = false;
   }
@@ -467,7 +557,9 @@
   });
 
   /** The fields a test depends on: a result shows only while they are as tested. */
-  const testedFields = $derived(JSON.stringify([engine, host, port, database, user, password, windowsLogin, tls, account, options, withProfile, profileId]));
+  const testedFields = $derived(
+    JSON.stringify([engine, host, port, database, user, password, windowsLogin, tls, account, options, withProfile, profileId, sshOn, sshHost, sshPort, sshUser, sshWithKey, sshPassword, sshKeyPath, sshPassphrase]),
+  );
   let testing = $state(false);
   let tested: { fields: string; title: string; message: string } | null = $state(null);
 
@@ -480,13 +572,14 @@
     testing = true;
     error = null;
     tested = null;
+    unknownHost = null;
     try {
       const reply = await ipc.testConnection(config, savedId, withProfile ? profileId : null);
       const version = `${info.title} ${reply.serverVersion ?? ""}`.trim();
       const count = reply.databases === null ? "" : ` · this login sees ${reply.databases} ${reply.databases === 1 ? "database" : "databases"}`;
-      tested = { fields, title: "Connected", message: version + count };
+      tested = { fields, title: sshOn ? "Connected through SSH" : "Connected", message: version + count };
     } catch (caught) {
-      error = asCoreError(caught);
+      error = askTrust(asCoreError(caught), () => void test());
     }
     testing = false;
   }
@@ -510,6 +603,15 @@
 
 <Dialog title={saved ? `Edit ${saved.name}` : "New connection"} width={600} {busy} {onClose} onsubmit={() => void submit()}>
   {#if error}<InfoBar tone="danger" title={errorTitle(error)} message={error.message} />{/if}
+  {#if unknownHost}
+    <InfoBar
+      tone="warning"
+      title={`${unknownHost.host} is not a known SSH server`}
+      message={`Its key is ${unknownHost.fingerprint}. Trust it only if your server's administrator gives the same fingerprint.`}
+    >
+      <Button size="sm" label="Trust this key" tip="Keep it in Kemable's known hosts and go on" onclick={() => void trustHost()} />
+    </InfoBar>
+  {/if}
   {#if tested && tested.fields === testedFields && !error}<InfoBar tone="success" title={tested.title} message={tested.message} />{/if}
 
   <div class="pb-form-2">
@@ -626,6 +728,33 @@
     <Field label="Encryption" as="group">
       <Combobox label="Encryption" width={552} options={tlsModes} value={tls} onPick={(mode) => (tls = mode)} />
     </Field>
+    <Checkbox bind:checked={sshOn}>Connect through an SSH tunnel</Checkbox>
+    {#if sshOn}
+      <div class="pb-form-grid">
+        <Field label="SSH host"><Input bind:value={sshHost} required placeholder="bastion.example.com" /></Field>
+        <Field label="SSH port"><Input class="pb-num" bind:value={sshPort} placeholder="22" inputmode="numeric" /></Field>
+      </div>
+      <div class="pb-form-2">
+        <Field label="SSH user"><Input bind:value={sshUser} required placeholder="ubuntu" /></Field>
+        <Field label="SSH sign-in" as="group">
+          <Segmented label="SSH sign-in" fill options={SSH_LOGINS} value={sshWithKey} onChange={(key) => (sshWithKey = key)} />
+        </Field>
+      </div>
+      {#if sshWithKey}
+        <div class="pb-form-grid pb-form-grid--auto">
+          <Field label="Private key file"><Input mono bind:value={sshKeyPath} required placeholder="C:\Users\me\.ssh\id_ed25519" /></Field>
+          <Field label={" "} as="group"><Button icon="file" onclick={() => void pickKey()}>Browse…</Button></Field>
+        </div>
+        <Field label="Key passphrase">
+          <Input type="password" bind:value={sshPassphrase} placeholder={sshKept ? "Kept in Windows Credential Manager, or none" : "Empty when the key has none"} />
+        </Field>
+      {:else}
+        <Field label="SSH password">
+          <Input type="password" bind:value={sshPassword} placeholder={sshKept ? "Kept in Windows Credential Manager" : ""} />
+        </Field>
+      {/if}
+      <p class="pb-hint">The host and port above are the database's as the SSH server sees them, often localhost. The SSH password or passphrase is kept in Windows Credential Manager.</p>
+    {/if}
     {#if engine !== "redis"}
       <!-- After the login: the list is what that login may see. -->
       <Field label="Database" as="group" hint="Optional. The tree shows every database this login may see.">

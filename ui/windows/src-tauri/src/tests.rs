@@ -389,6 +389,8 @@ async fn a_table_tab_pages_and_filters_on_sqlite() {
             read_only: false,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
     let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
@@ -516,6 +518,8 @@ async fn completion_reads_the_sqlite_catalog() {
             read_only: false,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
     let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
@@ -689,6 +693,8 @@ async fn edits_save_on_sqlite() {
             read_only: false,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
     let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
@@ -734,6 +740,8 @@ async fn a_test_connection_reports_the_server_and_keeps_nothing_open() {
             read_only: false,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let tested = crate::commands::try_connection(&state.registry, &config).await.unwrap();
     let json = serde_json::to_value(&tested).unwrap();
@@ -764,6 +772,8 @@ async fn a_test_connection_fails_with_the_drivers_code() {
             tls: TlsMode::Disable,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let refused = crate::commands::try_connection(&state.registry, &config)
         .await
@@ -799,6 +809,8 @@ async fn the_forms_database_list_says_why_it_has_none() {
             tls: TlsMode::Disable,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let error = crate::commands::form_databases(&state.registry, &refused)
         .await
@@ -813,6 +825,8 @@ async fn the_forms_database_list_says_why_it_has_none() {
             read_only: false,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let error = crate::commands::form_databases(&state.registry, &file)
         .await
@@ -885,6 +899,8 @@ async fn a_result_names_its_table_and_brings_its_where_as_filters() {
             read_only: false,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
     let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
@@ -930,6 +946,8 @@ async fn sqlite_server(state: &Arc<AppState>, name: &str) -> (Arc<OpenServer>, s
             read_only: false,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let first = driver.connect(&config, CallOptions::default()).await.unwrap();
     (Arc::new(OpenServer::new(driver, config, first, "test".into())), folder)
@@ -1316,6 +1334,8 @@ async fn the_connect_form_keeps_a_connection_only_once_it_connects() {
         engine: "sqlite".into(),
         target: Target::File { path, read_only: true },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let saved = |name: &str| SavedConnection {
         id: "kept-1".into(),
@@ -1457,6 +1477,8 @@ async fn live_tab(listener: Listener, max_events: u64) -> LiveTab {
             read_only: false,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let sqlite = state.registry.get("sqlite").cloned().unwrap();
     let first = sqlite.connect(&config, CallOptions::default()).await.unwrap();
@@ -1590,6 +1612,8 @@ async fn a_link_beside_the_sessions_goes_to_the_database_asked_for() {
             tls: TlsMode::Disable,
         },
         options: Default::default(),
+        ssh: None,
+        dial: None,
     };
     let moved = crate::state::with_database(&config, "other");
     assert!(matches!(moved.target, Target::Network { database: Some(name), .. } if name == "other"));

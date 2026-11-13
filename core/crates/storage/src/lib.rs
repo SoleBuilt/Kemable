@@ -79,6 +79,19 @@ pub fn password_key(id: &str) -> String {
     format!("connection/{id}/password")
 }
 
+/// Where the vault keeps a connection's SSH password or key passphrase
+/// (`docs/decisions/0024-ssh-tunnels.md`).
+pub fn ssh_key(id: &str) -> String {
+    format!("connection/{id}/ssh")
+}
+
+/// Clears the SSH secret a config carries, if it goes through SSH.
+fn clear_ssh_secret(config: &mut ConnectionConfig) {
+    if let Some(ssh) = &mut config.ssh {
+        ssh.set_secret(Secret::default());
+    }
+}
+
 fn io_error(what: &str, path: &Path, error: impl std::fmt::Display) -> DriverError {
     DriverError::new(ErrorCode::Io, format!("{what} {}: {error}", path.display()))
 }
@@ -140,6 +153,7 @@ impl ConnectionLibrary {
         // A secret in the file (written by hand, say) is never used or kept.
         for connection in &mut file.connections {
             set_secret(&mut connection.config, Secret::default());
+            clear_ssh_secret(&mut connection.config);
         }
         Ok(file)
     }
@@ -175,6 +189,15 @@ impl ConnectionLibrary {
         if connection.id.is_empty() {
             connection.id = uuid::Uuid::new_v4().to_string();
         }
+        // A tunnel cannot ask for its secret when it connects, so a secret
+        // given is kept whatever Save password says; a blank one keeps the one
+        // kept, and a connection without SSH keeps none.
+        match &connection.config.ssh {
+            Some(ssh) if !ssh.secret().is_empty() => vault.set(&ssh_key(&connection.id), ssh.secret())?,
+            Some(_) => {}
+            None => vault.delete(&ssh_key(&connection.id))?,
+        }
+        clear_ssh_secret(&mut connection.config);
         // A colour the UI has no token for would draw nothing: it is dropped.
         connection.color = connection
             .color
@@ -238,6 +261,7 @@ impl ConnectionLibrary {
         let mut file = self.read()?;
         file.connections.retain(|saved| saved.id != id);
         self.write(&file)?;
+        vault.delete(&ssh_key(id))?;
         vault.delete(&password_key(id))
     }
 
@@ -257,6 +281,11 @@ impl ConnectionLibrary {
             && let Some(secret) = vault.get(&password_key(id))?
         {
             set_secret(&mut config, secret);
+        }
+        if let Some(ssh) = &mut config.ssh
+            && let Some(secret) = vault.get(&ssh_key(id))?
+        {
+            ssh.set_secret(secret);
         }
         Ok((saved, config))
     }

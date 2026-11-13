@@ -29,6 +29,8 @@ pub struct AppState {
     runs: Mutex<HashMap<u64, CancellationToken>>,
     /// What the editor's completion has read of each server's catalog.
     pub catalog: CatalogCache,
+    /// The SSH servers trusted, in the data folder's `known_hosts`, set at startup.
+    pub host_keys: std::sync::OnceLock<Arc<kemable_tunnel::HostKeys>>,
 }
 
 /// A result set and where it came from.
@@ -67,6 +69,9 @@ pub struct OpenServer {
     /// Fires when the connection closes. What listens on a link of its own
     /// (a Live tab) takes a child of it, so it stops with its server.
     pub closing: CancellationToken,
+    /// The SSH tunnel every session and listener of this server goes through;
+    /// it closes with the server (`docs/decisions/0024-ssh-tunnels.md`).
+    tunnel: std::sync::Mutex<Option<kemable_tunnel::Tunnel>>,
 }
 
 impl OpenServer {
@@ -85,7 +90,15 @@ impl OpenServer {
             sessions: tokio::sync::Mutex::new(HashMap::from([(home.clone(), first)])),
             home,
             closing: CancellationToken::new(),
+            tunnel: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Keeps `tunnel` open as long as this server is.
+    #[must_use]
+    pub fn with_tunnel(self, tunnel: Option<kemable_tunnel::Tunnel>) -> Self {
+        *lock(&self.tunnel) = tunnel;
+        self
     }
 
     /// The config that reaches `database` on this server, for a link opened
@@ -126,6 +139,8 @@ impl OpenServer {
         for session in sessions {
             let _ = session.close().await;
         }
+        // Last: the sessions said goodbye through it.
+        lock(&self.tunnel).take();
     }
 
     /// Closes the app's own session on `database`, so a `DROP DATABASE` is
@@ -172,7 +187,17 @@ impl AppState {
             results: Mutex::default(),
             runs: Mutex::default(),
             catalog: CatalogCache::default(),
+            host_keys: std::sync::OnceLock::new(),
         }
+    }
+
+    /// The known SSH hosts; before startup sets them (tests), a file in the temp folder.
+    pub fn host_keys(&self) -> Arc<kemable_tunnel::HostKeys> {
+        Arc::clone(self.host_keys.get_or_init(|| {
+            Arc::new(kemable_tunnel::HostKeys::new(
+                std::env::temp_dir().join(format!("kemable-known-hosts-{}", std::process::id())),
+            ))
+        }))
     }
 
     fn next_id(&self) -> u64 {

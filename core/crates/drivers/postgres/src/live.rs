@@ -291,6 +291,8 @@ mod tests {
                 tls: TlsMode::Disable,
             },
             options: Default::default(),
+            ssh: None,
+            dial: None,
         }
     }
 
@@ -415,6 +417,24 @@ mod tests {
         assert!(outcome.limited);
         assert_eq!(heard.rows().len(), 2);
         assert!(*heard.ended.lock().unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_dial_address_is_where_the_link_goes_and_the_host_stays_the_servers_name() {
+        // An SSH tunnel's local end, with the database's host as the SSH server sees it.
+        let (port, _query) = backend(vec![notification(1, "a", "1")], false).await;
+        let mut through = config(1);
+        if let Target::Network { host, .. } = &mut through.target {
+            *host = "db.internal".into();
+        }
+        through.dial = Some(std::net::SocketAddr::from(([127, 0, 0, 1], port)));
+        let (heard, _arrivals) = Heard::new(1);
+        let outcome = PostgresDriver
+            .listen(&through, &[topic("a", false)], heard.clone(), CallOptions::default())
+            .await
+            .unwrap();
+        assert!(outcome.limited);
+        assert_eq!(heard.rows().len(), 1);
     }
 
     #[tokio::test]

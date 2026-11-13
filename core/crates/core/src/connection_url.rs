@@ -75,6 +75,8 @@ pub fn parse(url: &str) -> Result<ConnectionConfig, DriverError> {
             tls,
         },
         options,
+        ssh: None,
+        dial: None,
     })
 }
 

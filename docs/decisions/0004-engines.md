@@ -33,6 +33,8 @@ The Live tab, one kind of tab for every engine that pushes changes (`docs/decisi
 | Firebase | the Realtime Database's server-sent events; Firestore listens over gRPC, which is added only if its size is worth it |
 | D1, SQLite | none; a Live tab is not offered |
 
+Any network engine can go through an SSH server (`docs/decisions/0024-ssh-tunnels.md`): the app opens a tunnel and the driver dials its local end, keeping the host for TLS. SQL Server's named instances need a port there.
+
 ## Rationale
 
 - Engines of one family share a driver and a grammar, so a fix reaches all of them.

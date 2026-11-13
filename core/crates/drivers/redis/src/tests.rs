@@ -299,6 +299,8 @@ fn config(port: u16, password: &str, database: Option<&str>) -> ConnectionConfig
             tls: TlsMode::Disable,
         },
         options: BTreeMap::new(),
+        ssh: None,
+        dial: None,
     }
 }
 
@@ -376,6 +378,19 @@ async fn a_wrong_password_is_an_auth_error_and_the_right_one_logs_in() {
     let databases = connection.list_databases(options()).await.unwrap();
     assert_eq!(databases.len(), 4);
     assert!(databases[2].is_current);
+}
+
+#[tokio::test]
+async fn a_dial_address_is_where_the_link_goes_whatever_the_host() {
+    // An SSH tunnel's local end: the host is as the SSH server sees it.
+    let (port, _) = serve(sample()).await;
+    let mut through = config(1, "pw", None);
+    if let Target::Network { host, .. } = &mut through.target {
+        *host = "db.internal".into();
+    }
+    through.dial = Some(std::net::SocketAddr::from(([127, 0, 0, 1], port)));
+    let connection = RedisDriver.connect(&through, options()).await.unwrap();
+    assert_eq!(connection.server_version().as_deref(), Some("7.4.1"));
 }
 
 #[tokio::test]

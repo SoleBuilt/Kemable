@@ -38,9 +38,21 @@ fn install_crypto_provider() {
     });
 }
 
+/// How a session's TCP link is opened.
+#[derive(Debug, Clone, Copy)]
+enum Reach {
+    /// The host and port in the config.
+    Direct,
+    /// A named instance without a port, through the SQL Server Browser.
+    Named,
+    /// An SSH tunnel's local end (`ConnectionConfig::dial`); the host still
+    /// names the server for TLS.
+    Through(std::net::SocketAddr),
+}
+
 pub struct MssqlConnection {
     config: tiberius::Config,
-    named_instance: bool,
+    reach: Reach,
     /// `None` once a stop could not bring the session back; the next call opens a new one.
     editor: Mutex<Option<MssqlClient>>,
     catalog: Mutex<Option<MssqlClient>>,
@@ -111,13 +123,18 @@ impl MssqlConnection {
         }
 
         options.check()?;
-        let named_instance = instance.is_some() && port.is_none();
+        // Through a tunnel there is no SQL Server Browser to ask: the port must be given.
+        let reach = match config.dial {
+            Some(dial) => Reach::Through(dial),
+            None if instance.is_some() && port.is_none() => Reach::Named,
+            None => Reach::Direct,
+        };
         let (editor, catalog) = options
-            .run(async { tokio::try_join!(open(&tds, named_instance), open(&tds, named_instance)) })
+            .run(async { tokio::try_join!(open(&tds, reach), open(&tds, reach)) })
             .await?;
         let mut connection = Self {
             config: tds,
-            named_instance,
+            reach,
             editor: Mutex::new(Some(editor)),
             catalog: Mutex::new(Some(catalog)),
             version: String::new(),
@@ -149,7 +166,7 @@ impl MssqlConnection {
             .run(async {
                 let mut guard = self.catalog.lock().await;
                 if guard.is_none() {
-                    *guard = Some(open(&self.config, self.named_instance).await?);
+                    *guard = Some(open(&self.config, self.reach).await?);
                 }
                 let Some(client) = guard.as_mut() else {
                     return Err(DriverError::new(ErrorCode::Lost, "the catalog session is closed"));
@@ -182,21 +199,20 @@ fn windows_login() -> Result<AuthMethod> {
 
 /// Opens one session within `CONNECT_TIMEOUT`; tiberius has no timeout of its
 /// own, and a reopen after a failed stop must not hang a call either.
-async fn open(config: &tiberius::Config, named_instance: bool) -> Result<MssqlClient> {
-    tokio::time::timeout(CONNECT_TIMEOUT, open_now(config, named_instance))
+async fn open(config: &tiberius::Config, reach: Reach) -> Result<MssqlClient> {
+    tokio::time::timeout(CONNECT_TIMEOUT, open_now(config, reach))
         .await
         .map_err(|_| DriverError::new(ErrorCode::Timeout, "the server did not finish the login in time"))?
 }
 
 /// Opens one session, following an Azure SQL redirect when the server sends one.
-async fn open_now(config: &tiberius::Config, named_instance: bool) -> Result<MssqlClient> {
+async fn open_now(config: &tiberius::Config, reach: Reach) -> Result<MssqlClient> {
     let map = |error| errors::map(error, None, Phase::Connect);
-    let tcp = if named_instance {
-        TcpStream::connect_named(config).await.map_err(map)?
-    } else {
-        TcpStream::connect(config.get_addr())
-            .await
-            .map_err(|error| DriverError::new(ErrorCode::Connect, error.to_string()))?
+    let refused = |error: std::io::Error| DriverError::new(ErrorCode::Connect, error.to_string());
+    let tcp = match reach {
+        Reach::Named => TcpStream::connect_named(config).await.map_err(map)?,
+        Reach::Direct => TcpStream::connect(config.get_addr()).await.map_err(refused)?,
+        Reach::Through(dial) => TcpStream::connect(dial).await.map_err(refused)?,
     };
     let _ = tcp.set_nodelay(true);
     match Client::connect(config.clone(), tcp.compat_write()).await {
@@ -911,7 +927,7 @@ impl Connection for MssqlConnection {
         options.check()?;
         let mut guard = self.editor.lock().await;
         if guard.is_none() {
-            *guard = Some(open(&self.config, self.named_instance).await?);
+            *guard = Some(open(&self.config, self.reach).await?);
         }
         let ended = {
             let Some(client) = guard.as_mut() else {

@@ -72,6 +72,18 @@ export interface ConnectionConfig {
   engine: string;
   target: Target;
   options?: Record<string, string>;
+  /** Reach the host through this SSH server (docs/decisions/0024-ssh-tunnels.md). */
+  ssh?: SshTunnel | null;
+}
+
+/** An SSH server a connection goes through; the database's host is as that server sees it. */
+export interface SshTunnel {
+  host: string;
+  /** 22 when null. */
+  port: number | null;
+  user: string;
+  /** The password or the passphrase is blank when it is kept in Windows Credential Manager. */
+  auth: { kind: "password"; password: string } | { kind: "key"; path: string; passphrase: string };
 }
 
 export interface OpenedConnection {

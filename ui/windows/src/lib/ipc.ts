@@ -69,6 +69,8 @@ export const ipc = {
   testConnection: (config: ConnectionConfig, savedId: string | null, profileId: string | null = null) =>
     invoke<TestedConnection>("test_connection", { config, savedId, profileId }),
   /** The databases the connect form's login may see: connects as Test does, lists them, closes. */
+  /** Trusts the key an SSH server showed when it was unknown, once the user saw its fingerprint. */
+  trustSshHost: (host: string, port: number | null) => invoke<void>("trust_ssh_host", { host, port }),
   listFormDatabases: (config: ConnectionConfig, savedId: string | null, profileId: string | null) =>
     invoke<string[]>("list_form_databases", { config, savedId, profileId }),
 

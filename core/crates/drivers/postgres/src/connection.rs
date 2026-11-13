@@ -117,8 +117,13 @@ impl SessionSettings {
         let (tls, ssl_mode) = tls::build(*tls, &config.options)?;
 
         let mut pg = Config::new();
+        // Through an SSH tunnel the link goes to its local end, and the host
+        // still names the server for TLS (`ConnectionConfig::dial`).
+        if let Some(dial) = config.dial {
+            pg.hostaddr(dial.ip());
+        }
         pg.host(host)
-            .port(port)
+            .port(config.dial.map_or(port, |dial| dial.port()))
             .user(user)
             .dbname(database)
             .application_name(config.options.get("application_name").map_or("Kemable", String::as_str))

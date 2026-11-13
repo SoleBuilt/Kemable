@@ -18,6 +18,11 @@ const TITLES: Record<string, string> = {
   "filter.raw": "A SQL condition can filter a table, not a query result",
   "filter.invalid": "This filter needs a column of the result and a value",
   "file.not_text": "This file is not UTF-8 or UTF-16 text",
+  "ssh.connect": "Could not reach the SSH server",
+  "ssh.auth": "The SSH server refused the login",
+  "ssh.host_unknown": "This SSH server is not known yet",
+  "ssh.host_changed": "This SSH server's key has changed",
+  "ssh.forward": "The SSH server would not reach the database",
   internal: "Something went wrong inside Kemable",
 };
 

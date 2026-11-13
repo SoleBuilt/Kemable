@@ -14,6 +14,7 @@ core/crates/
     ├── postgres/               kemable-driver-postgres: tokio-postgres and rustls; PostgreSQL, Neon, Supabase
     ├── redis/                  kemable-driver-redis: its own RESP2 client on tokio and rustls; Redis, Valkey
     └── sqlite/                 kemable-driver-sqlite: rusqlite, SQLite compiled in
+core/crates/tunnel/             kemable-tunnel: SSH tunnels on russh, a local port forwarded to a database
 ui/windows/src-tauri/           kemable-windows: the Tauri app, the only crate that names every driver
 ```
 
@@ -27,6 +28,7 @@ Planned crates, in the order `docs/roadmap.md` gives: `drivers/rabbitmq`, `drive
 | `store` | `core` |
 | `storage` | `core`. Secrets go through the `SecretVault` trait the app implements, never to the file |
 | `drivers/*` | `core` only. Never another driver, never `store`. Their tests may use `store` |
+| `tunnel` | `core`. Drivers never use it: they dial `ConnectionConfig::dial`, which the app sets to a tunnel's local end (`docs/decisions/0024-ssh-tunnels.md`) |
 | an app (`ui/windows/src-tauri`) | everything above |
 
 - No core crate depends on Tauri, a UI toolkit or an app crate.

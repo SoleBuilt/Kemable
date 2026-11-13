@@ -140,7 +140,7 @@ fn sign_in_with(library: &Library, config: &mut ConnectionConfig, profile_id: Op
 
 async fn open_server(
     state: &AppState,
-    config: ConnectionConfig,
+    mut config: ConnectionConfig,
     title: String,
     saved_id: Option<String>,
 ) -> CommandResult<OpenedConnection> {
@@ -149,11 +149,12 @@ async fn open_server(
         .get(&config.engine)
         .cloned()
         .ok_or_else(|| DriverError::unsupported(format!("no driver for {}", config.engine)))?;
+    let tunnel = tunnel_for(state, &mut config).await?;
     let first = driver
         .connect(&config, CallOptions::default().with_timeout(CONNECT_TIMEOUT))
         .await?;
     let server_version = first.server_version();
-    let server = Arc::new(OpenServer::new(driver, config, first, title.clone()));
+    let server = Arc::new(OpenServer::new(driver, config, first, title.clone()).with_tunnel(tunnel));
     let opened = OpenedConnection {
         id: 0,
         engine: server.engine.clone(),
@@ -355,7 +356,51 @@ pub async fn test_connection(
     profile_id: Option<String>,
 ) -> CommandResult<TestedConnection> {
     sign_in_as_form(&library, &mut config, saved_id, profile_id)?;
+    let _tunnel = tunnel_for(&state, &mut config).await?;
     try_connection(&state.registry, &config).await
+}
+
+/// Opens the SSH tunnel `config` asks for, if any, and points the config at
+/// its local end (`docs/decisions/0024-ssh-tunnels.md`). Whatever is opened
+/// from the config goes through it for as long as the tunnel is kept.
+pub(crate) async fn tunnel_for(
+    state: &AppState,
+    config: &mut ConnectionConfig,
+) -> CommandResult<Option<kemable_tunnel::Tunnel>> {
+    let Some(ssh) = config.ssh.clone() else {
+        return Ok(None);
+    };
+    let Target::Network { host, port, .. } = &config.target else {
+        return Err(DriverError::config("an SSH tunnel reaches a host and a port"));
+    };
+    let port = port
+        .or_else(|| {
+            state
+                .registry
+                .get(&config.engine)
+                .and_then(|driver| driver.info().default_port)
+        })
+        .ok_or_else(|| DriverError::config("the port is needed to go through SSH"))?;
+    let tunnel = kemable_tunnel::open(
+        &ssh,
+        host.trim(),
+        port,
+        state.host_keys(),
+        &CallOptions::default().with_timeout(CONNECT_TIMEOUT),
+    )
+    .await?;
+    config.dial = Some(tunnel.local());
+    Ok(Some(tunnel))
+}
+
+/// Trusts the key an SSH server showed when it was unknown, after the user
+/// saw its fingerprint; the next connection through it goes on.
+#[tauri::command]
+pub async fn trust_ssh_host(state: State<'_, Arc<AppState>>, host: String, port: Option<u16>) -> CommandResult<()> {
+    state.host_keys().trust(
+        host.trim(),
+        port.unwrap_or(kemable_core::config::SshTunnel::DEFAULT_PORT),
+    )
 }
 
 /// Signs `config` in as the connect form would connect: with a credential
@@ -366,6 +411,17 @@ fn sign_in_as_form(
     saved_id: Option<String>,
     profile_id: Option<String>,
 ) -> CommandResult<()> {
+    // The SSH secret is the connection's even with a profile: a blank one is the kept one.
+    if let Some(id) = &saved_id
+        && config.ssh.as_ref().is_some_and(|ssh| ssh.secret().is_empty())
+    {
+        let (_, kept) = library.with(|library, vault| library.resolve(id, vault))?;
+        if let (Some(ssh), Some(kept)) = (config.ssh.as_mut(), kept.ssh)
+            && std::mem::discriminant(&ssh.auth) == std::mem::discriminant(&kept.auth)
+        {
+            ssh.set_secret(kept.secret().clone());
+        }
+    }
     if profile_id.is_some() {
         sign_in_with(library, config, profile_id.as_deref())?;
     } else if let Some(id) = saved_id
@@ -388,6 +444,7 @@ pub async fn list_form_databases(
     profile_id: Option<String>,
 ) -> CommandResult<Vec<String>> {
     sign_in_as_form(&library, &mut config, saved_id, profile_id)?;
+    let _tunnel = tunnel_for(&state, &mut config).await?;
     form_databases(&state.registry, &config).await
 }
 

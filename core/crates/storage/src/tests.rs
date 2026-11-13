@@ -62,6 +62,8 @@ fn postgres(password: &str) -> SavedConnection {
                 tls: TlsMode::Prefer,
             },
             options: BTreeMap::new(),
+            ssh: None,
+            dial: None,
         },
         save_password: true,
         last_used: None,
@@ -557,4 +559,48 @@ impl WithNewId for SavedQuery {
             ..self
         }
     }
+}
+
+#[test]
+fn an_ssh_password_goes_to_the_vault_comes_back_on_resolve_and_goes_with_the_connection() {
+    use kemable_core::config::{SshAuth, SshTunnel};
+    let folder = Folder::new("ssh");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let vault = MemoryVault::default();
+    let mut connection = postgres("pw");
+    // Not kept: the tunnel's secret is kept anyway, since nothing asks for it at connect time.
+    connection.save_password = false;
+    connection.config.ssh = Some(SshTunnel {
+        host: "bastion".into(),
+        port: None,
+        user: "me".into(),
+        auth: SshAuth::Password {
+            password: Secret::new("ssh-pw"),
+        },
+    });
+    let saved = library.save(connection, None, &vault).unwrap();
+    let text = std::fs::read_to_string(library.path()).unwrap();
+    assert!(!text.contains("ssh-pw"), "the file never holds it");
+    assert!(text.contains("bastion"));
+    assert_eq!(vault.get(&ssh_key(&saved.id)).unwrap().unwrap().expose(), "ssh-pw");
+
+    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(config.ssh.as_ref().unwrap().secret().expose(), "ssh-pw");
+
+    // Saved again with the field blank: the kept one stays.
+    let mut again = saved.clone();
+    again.config.ssh.as_mut().unwrap().set_secret(Secret::default());
+    library.save(again.clone(), None, &vault).unwrap();
+    assert!(vault.get(&ssh_key(&saved.id)).unwrap().is_some());
+
+    // Without SSH: none kept.
+    again.config.ssh = None;
+    library.save(again, None, &vault).unwrap();
+    assert!(vault.get(&ssh_key(&saved.id)).unwrap().is_none());
+
+    let mut with_ssh = saved.clone();
+    with_ssh.config.ssh.as_mut().unwrap().set_secret(Secret::new("again"));
+    library.save(with_ssh, None, &vault).unwrap();
+    library.delete(&saved.id, &vault).unwrap();
+    assert!(vault.get(&ssh_key(&saved.id)).unwrap().is_none());
 }

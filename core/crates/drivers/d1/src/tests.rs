@@ -222,6 +222,8 @@ fn config(base: &str, token: &str, database: Option<&str>) -> ConnectionConfig {
             token: Secret::new(token),
         },
         options,
+        ssh: None,
+        dial: None,
     }
 }
 
@@ -521,6 +523,8 @@ async fn the_real_api_runs_a_round_trip() {
             token: Secret::new(token),
         },
         options: BTreeMap::from([("database".to_owned(), database)]),
+        ssh: None,
+        dial: None,
     };
     let connection = D1Driver
         .connect(&config, options())
