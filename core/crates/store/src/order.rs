@@ -250,10 +250,13 @@ fn trim_zeros(digits: &[u8]) -> &[u8] {
 // bytes is the order above. Sorting then works on keys, and reads cells again
 // only for rows whose keys are the same.
 //
-// A key is exact when equal keys mean equal cells: one kind of number, a
-// date or time, a boolean, NULL. A text's key is its first bytes only, and a
-// column that mixes kinds of number (an integer and a decimal) keys them all
-// alike, so those keys only narrow the order and the comparison finishes it.
+// A key is exact when equal keys mean equal cells: one kind of number held
+// whole (integers, unsigned integers or floats), a date or time, a boolean,
+// NULL. A text's or bytes' key is its first bytes only. A decimal, and every
+// number of a column that mixes kinds of number (an integer and a decimal),
+// is keyed by its nearest float: never out of order, since rounding to the
+// nearest float keeps the order, but numbers that round alike share a key,
+// and the comparison finishes them.
 //
 // A key is a cell's class, then its value. Numbers and times need eight
 // bytes, so their columns take the narrow key; a column with text or bytes
@@ -272,6 +275,15 @@ pub(crate) fn wants_wide_key(kind: u8) -> bool {
     )
 }
 
+/// Where a text's or bytes' key starts: at byte `at`, which for a text may
+/// fall inside a number whose start, leading zeros included, every text of
+/// the rows keyed shares ([`skippable`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct KeyStart {
+    pub(crate) at: usize,
+    pub(crate) in_number: bool,
+}
+
 /// Which kinds of number a column held, as bits.
 const INT: u8 = 1;
 const UINT: u8 = 2;
@@ -285,10 +297,12 @@ pub(crate) struct KeyBuilder {
 }
 
 impl KeyBuilder {
-    /// The key of `cell`, `N` bytes, at least [`NARROW_KEY`]. A text is keyed
-    /// from its byte `past` on, for rows known to be alike before it
-    /// ([`skippable`]). Call [`Self::settle`] on every key once the column is read.
-    pub(crate) fn key<const N: usize>(&mut self, cell: SortCell<'_>, past: usize) -> [u8; N] {
+    /// The key of `cell`, `N` bytes, at least [`NARROW_KEY`]. A text or bytes
+    /// are keyed from `from` on, for rows known to be alike before it
+    /// ([`skippable`]). Once the column is read, key its numbers again with
+    /// [`Self::number_key`] when [`Self::numbers_mixed`] says so, and call
+    /// [`Self::settle`] on every key.
+    pub(crate) fn key<const N: usize>(&mut self, cell: SortCell<'_>, from: KeyStart) -> [u8; N] {
         let mut key = [0u8; N];
         let Some((class, payload)) = key.split_first_mut() else {
             return key;
@@ -314,10 +328,18 @@ impl KeyBuilder {
                 self.numbers |= FLOAT;
                 eight(float_order(value).to_be_bytes());
             }
-            SortCell::Decimal(_) => self.numbers |= DECIMAL,
+            SortCell::Decimal(_) => {
+                self.numbers |= DECIMAL;
+                eight(float_order(as_f64(cell)).to_be_bytes());
+            }
             SortCell::Instant(value) => eight(signed(value)),
-            SortCell::Text(text) => natural_prefix(text.as_bytes().get(past..).unwrap_or_default(), payload),
+            SortCell::Text(text) => natural_prefix(
+                text.as_bytes().get(from.at..).unwrap_or_default(),
+                payload,
+                from.in_number,
+            ),
             SortCell::Bytes(bytes) => {
+                let bytes = bytes.get(from.at..).unwrap_or_default();
                 let taken = bytes.len().min(payload.len());
                 payload[..taken].copy_from_slice(&bytes[..taken]);
             }
@@ -328,6 +350,28 @@ impl KeyBuilder {
     /// Whether every number keyed was of one kind that a key holds whole.
     fn one_kind_of_number(&self) -> bool {
         matches!(self.numbers, 0 | INT | UINT | FLOAT)
+    }
+
+    /// Whether the column held numbers of kinds whose keys are not alike
+    /// (an integer's and a decimal's), so every number must be keyed again
+    /// with [`Self::number_key`], by its nearest float.
+    pub(crate) fn numbers_mixed(&self) -> bool {
+        !matches!(self.numbers, 0 | INT | UINT | FLOAT | DECIMAL)
+    }
+
+    /// A number's key by its nearest float, for a column of mixed numbers;
+    /// `None` for any other cell, which keeps the key [`Self::key`] gave it.
+    pub(crate) fn number_key<const N: usize>(cell: SortCell<'_>) -> Option<[u8; N]> {
+        if cell.class() != 2 {
+            return None;
+        }
+        let mut key = [0u8; N];
+        let (class, payload) = key.split_first_mut()?;
+        *class = 2;
+        payload
+            .get_mut(..8)?
+            .copy_from_slice(&float_order(as_f64(cell)).to_be_bytes());
+        Some(key)
     }
 
     /// Whether `cell`'s key holds all of it, so that a row with the same key
@@ -342,13 +386,9 @@ impl KeyBuilder {
         }
     }
 
-    /// Finishes a key once the whole column is read: numbers of several kinds
-    /// compare exactly only as cells, so their keys say "a number" and no more;
-    /// a descending key is every bit turned, which reverses the order, NULL last.
+    /// Finishes a key once the whole column is read: a descending key is
+    /// every bit turned, which reverses the order, NULL last.
     pub(crate) fn settle<const N: usize>(&self, key: &mut [u8; N], descending: bool) {
-        if key.first() == Some(&2) && !self.one_kind_of_number() {
-            key[1..].fill(0);
-        }
         if descending {
             for byte in key.iter_mut() {
                 *byte = !*byte;
@@ -383,23 +423,25 @@ fn float_order(value: f64) -> u64 {
 /// other characters, and a number of up to eight digits costs two bytes more
 /// than its digits. A count past 254 ends the key there, which leaves the
 /// rest to the comparison.
-fn natural_prefix(text: &[u8], out: &mut [u8]) {
-    /// A count that does not fit a byte is written as this, and ends the key.
-    const TOO_MANY: usize = 255;
-    let mut at = 0;
-    // Writes one byte; false once the key is full.
-    let mut push = |byte: u8| match out.get_mut(at) {
-        Some(slot) => {
-            *slot = byte;
-            at += 1;
-            true
-        }
-        None => false,
-    };
+///
+/// `in_number` says the text starts inside a number whose start, leading
+/// zeros and a digit past them included, every text keyed shares. Of numbers
+/// alike so far, the longer is the larger, and of two as long, the one whose
+/// digits come first: so the rest of that number is keyed as its count of
+/// digits, then the digits as they are, with no zeros left to count.
+fn natural_prefix(text: &[u8], out: &mut [u8], in_number: bool) {
+    let mut key = KeyWriter { out, at: 0 };
     let mut i = 0;
+    if in_number {
+        let run = text.iter().take_while(|byte| byte.is_ascii_digit()).count();
+        if !key.count(run) || !text[..run].iter().all(|&digit| key.push(digit)) {
+            return;
+        }
+        i = run;
+    }
     while i < text.len() {
         if !text[i].is_ascii_digit() {
-            if !push(text[i]) {
+            if !key.push(text[i]) {
                 return;
             }
             i += 1;
@@ -408,25 +450,49 @@ fn natural_prefix(text: &[u8], out: &mut [u8]) {
         let run = text[i..].iter().take_while(|byte| byte.is_ascii_digit()).count();
         let digits = trim_zeros(&text[i..i + run]);
         let zeros = run - digits.len();
-        // Up to eight digits: the count is the mark. More: '9', then the count.
-        let short = u8::try_from(digits.len()).ok().filter(|count| *count < 9);
-        if !push(b'0' + short.unwrap_or(9)) {
+        if !key.count(digits.len()) || !digits.iter().all(|&digit| key.push(digit)) {
             return;
         }
-        if short.is_none() {
-            let count = u8::try_from(digits.len()).ok().filter(|_| digits.len() < TOO_MANY);
-            if !push(count.unwrap_or(u8::MAX)) || count.is_none() {
-                return;
-            }
-        }
-        if !digits.iter().all(|&digit| push(digit)) {
-            return;
-        }
-        let count = u8::try_from(zeros).ok().filter(|_| zeros < TOO_MANY);
-        if !push(count.unwrap_or(u8::MAX)) || count.is_none() {
+        let zeros = u8::try_from(zeros)
+            .ok()
+            .filter(|&zeros| usize::from(zeros) < KeyWriter::TOO_MANY);
+        if !key.push(zeros.unwrap_or(u8::MAX)) || zeros.is_none() {
             return;
         }
         i += run;
+    }
+}
+
+/// Writes a key's bytes, and says when it is full.
+struct KeyWriter<'a> {
+    out: &'a mut [u8],
+    at: usize,
+}
+
+impl KeyWriter<'_> {
+    /// A count that does not fit a byte is written as this, and ends the key.
+    const TOO_MANY: usize = 255;
+
+    /// Writes one byte; false once the key is full.
+    fn push(&mut self, byte: u8) -> bool {
+        match self.out.get_mut(self.at) {
+            Some(slot) => {
+                *slot = byte;
+                self.at += 1;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// A count of digits: up to eight is one mark, more is `'9'` and the
+    /// count. False once the key is full or the count ends it.
+    fn count(&mut self, digits: usize) -> bool {
+        if let Some(short) = u8::try_from(digits).ok().filter(|&count| count < 9) {
+            return self.push(b'0' + short);
+        }
+        let count = u8::try_from(digits).ok().filter(|_| digits < Self::TOO_MANY);
+        self.push(b'9') && self.push(count.unwrap_or(u8::MAX)) && count.is_some()
     }
 }
 
@@ -435,21 +501,31 @@ pub(crate) fn shared_start(a: &[u8], b: &[u8]) -> usize {
     a.iter().zip(b).take_while(|(x, y)| x == y).count()
 }
 
-/// How much of the `shared` bytes that some texts all start with can be left
-/// out when they are keyed again, given they were already alike up to `from`:
-/// all of it, less the digits it ends in. Those may be the start of numbers
-/// that go on differently (`item12` and `item123` share `item12`, and it is
-/// 12 against 123 that orders them), and [`natural`] compares a number whole.
-/// What comes before a digit-free end is equal in every text and says nothing.
-pub(crate) fn skippable(text: &[u8], shared: usize, from: usize) -> usize {
-    let digits = text
-        .get(from..shared)
-        .unwrap_or_default()
-        .iter()
-        .rev()
-        .take_while(|byte| byte.is_ascii_digit())
-        .count();
-    shared.saturating_sub(digits).max(from)
+/// Where texts alike in their first `shared` bytes, and keyed from `from`
+/// until now, are keyed next: after the start they share, unless it ends in
+/// digits. Those may begin numbers that go on differently (`item12` and
+/// `item123` share `item12`, and it is 12 against 123 that orders them), and
+/// [`natural`] compares a number whole. When a digit other than a leading
+/// zero is among them, every text's number has the same start and the same
+/// leading zeros, so the rest of the number is keyed as digits
+/// ([`natural_prefix`]); otherwise the key starts again where the number
+/// does. `from` again when nothing more can be left out.
+pub(crate) fn skippable(text: &[u8], shared: usize, from: KeyStart) -> KeyStart {
+    let start = text.get(..shared).unwrap_or_default();
+    let digits = start.iter().rev().take_while(|byte| byte.is_ascii_digit()).count();
+    let number = start.get(start.len() - digits..).unwrap_or_default();
+    let next = if number.iter().any(|&digit| digit != b'0') {
+        KeyStart {
+            at: start.len(),
+            in_number: true,
+        }
+    } else {
+        KeyStart {
+            at: start.len() - digits,
+            in_number: false,
+        }
+    };
+    if next.at > from.at { next } else { from }
 }
 
 /// One row of a sort: its key, and its place among the rows before the
@@ -588,17 +664,24 @@ mod tests {
     /// that differ order as the cells do, and a cell whose key is whole is
     /// equal to every cell with the same key. Returns whether every key was whole.
     fn keys_agree_with_compare(cells: &[SortCell<'_>]) -> bool {
-        let narrow = keys_agree::<NARROW_KEY>(cells, 0);
-        assert_eq!(keys_agree::<WIDE_KEY>(cells, 0), narrow);
+        let narrow = keys_agree::<NARROW_KEY>(cells, KeyStart::default());
+        assert_eq!(keys_agree::<WIDE_KEY>(cells, KeyStart::default()), narrow);
         narrow
     }
 
-    /// The same, with every text keyed from its byte `past` on.
-    fn keys_agree<const N: usize>(cells: &[SortCell<'_>], past: usize) -> bool {
+    /// The same, with every text keyed from `from` on.
+    fn keys_agree<const N: usize>(cells: &[SortCell<'_>], from: KeyStart) -> bool {
         let mut builder = KeyBuilder::default();
         for descending in [false, true] {
             builder = KeyBuilder::default();
-            let mut keys: Vec<[u8; N]> = cells.iter().map(|cell| builder.key(*cell, past)).collect();
+            let mut keys: Vec<[u8; N]> = cells.iter().map(|cell| builder.key(*cell, from)).collect();
+            if builder.numbers_mixed() {
+                for (cell, key) in cells.iter().zip(&mut keys) {
+                    if let Some(again) = KeyBuilder::number_key(*cell) {
+                        *key = again;
+                    }
+                }
+            }
             for key in &mut keys {
                 builder.settle(key, descending);
             }
@@ -620,19 +703,25 @@ mod tests {
     }
 
     #[test]
-    fn texts_alike_at_the_start_are_keyed_past_what_they_share_less_its_last_digits() {
-        // What may be left out: all that is shared, but never part of a number.
-        assert_eq!(skippable(b"item12", 6, 0), 4);
-        assert_eq!(skippable(b"item12/", 7, 0), 7);
-        assert_eq!(skippable(b"2024", 4, 0), 0);
-        assert_eq!(skippable(b"a1b22", 5, 3), 3);
-        assert_eq!(skippable(b"", 0, 0), 0);
+    fn texts_alike_at_the_start_are_keyed_past_what_they_share_or_inside_a_number_they_share() {
+        let at = |at| KeyStart { at, in_number: false };
+        let inside = |at| KeyStart { at, in_number: true };
+        // What may be left out: all that is shared. A number cut there goes on
+        // from inside it when its leading zeros are shared too, else from its start.
+        assert_eq!(skippable(b"item12", 6, at(0)), inside(6));
+        assert_eq!(skippable(b"item12/", 7, at(0)), at(7));
+        assert_eq!(skippable(b"2024", 4, at(0)), inside(4));
+        assert_eq!(skippable(b"item00", 6, at(0)), at(4));
+        assert_eq!(skippable(b"x00", 3, at(1)), at(1));
+        assert_eq!(skippable(b"a1b22", 5, at(3)), inside(5));
+        assert_eq!(skippable(b"a1b22", 5, inside(5)), inside(5));
+        assert_eq!(skippable(b"", 0, at(0)), at(0));
         assert_eq!(shared_start(b"item12", b"item123"), 6);
         assert_eq!(shared_start("đường".as_bytes(), "đưa".as_bytes()), 4);
 
         // Each group shares a start; keyed past it, the keys still order as
         // the whole texts do, and now tell apart what 31 bytes could not.
-        let groups: [&[&str]; 4] = [
+        let groups: [&[&str]; 7] = [
             &[
                 "https://example.com/khach-hang/chi-tiet/1999",
                 "https://example.com/khach-hang/chi-tiet/20",
@@ -644,6 +733,18 @@ mod tests {
             &["item12", "item123", "item12a", "item1200", "item012"],
             &["x100", "x1000", "x10", "x10 ", "x10a"],
             &["đường 5 quận 1", "đường 5 quận 10", "đường 5 quận 2", "đường 5"],
+            // Numbers alike in their start and leading zeros: the rest is keyed as digits.
+            &["n0012", "n0013", "n00120", "n0012b", "n001", "n0019z"],
+            // Numbers longer than a key, alike for their first 33 digits.
+            &[
+                "INV-9000000000000000000000000000000001234567",
+                "INV-9000000000000000000000000000000001234568",
+                "INV-9000000000000000000000000000000001234567/1",
+                "INV-90000000000000000000000000000000012345670",
+                "INV-9000000000000000000000000000000002",
+            ],
+            // Only zeros shared: the key starts again where the numbers do.
+            &["x0001", "x0002", "x002", "x01"],
         ];
         for texts in groups {
             let shared = texts
@@ -651,7 +752,7 @@ mod tests {
                 .map(|text| shared_start(texts[0].as_bytes(), text.as_bytes()))
                 .min()
                 .unwrap();
-            let past = skippable(texts[0].as_bytes(), shared, 0);
+            let past = skippable(texts[0].as_bytes(), shared, KeyStart::default());
             let cells: Vec<SortCell<'_>> = texts.iter().map(|text| SortCell::Text(text)).collect();
             keys_agree::<WIDE_KEY>(&cells, past);
             // Told apart: no two of these share a key once the start is left out.
@@ -659,7 +760,7 @@ mod tests {
             let mut keys: Vec<[u8; WIDE_KEY]> = cells.iter().map(|cell| builder.key(*cell, past)).collect();
             keys.sort();
             keys.dedup();
-            assert_eq!(keys.len(), texts.len(), "{texts:?} past {past}");
+            assert_eq!(keys.len(), texts.len(), "{texts:?} past {past:?}");
         }
     }
 
@@ -768,7 +869,7 @@ mod tests {
             .iter()
             .zip(0u32..)
             .map(|(&value, place)| Keyed {
-                key: builder.key(SortCell::Int(value), 0),
+                key: builder.key(SortCell::Int(value), KeyStart::default()),
                 place,
             })
             .collect();
@@ -793,7 +894,7 @@ mod tests {
     }
 
     #[test]
-    fn a_column_of_several_kinds_keys_by_class_and_leaves_mixed_numbers_to_the_comparison() {
+    fn a_column_of_several_kinds_keys_mixed_numbers_by_their_nearest_float() {
         let mixed = [
             SortCell::Null,
             SortCell::Bool(true),
@@ -818,5 +919,78 @@ mod tests {
             SortCell::Decimal("10.0"),
             SortCell::Int(9)
         ]));
+        // Past a float's precision numbers share a key, and only then.
+        let near = [
+            SortCell::Int(i64::MAX),
+            SortCell::Int(i64::MAX - 1),
+            SortCell::Decimal("9223372036854775807.5"),
+            SortCell::Decimal("-0.1"),
+            SortCell::Decimal("-0.10000000000000000001"),
+            SortCell::UInt(u64::MAX),
+            SortCell::Float(1.5),
+            SortCell::Decimal("1.5"),
+            SortCell::Decimal("NaN"),
+            SortCell::Decimal("Infinity"),
+            SortCell::Decimal("-Infinity"),
+            SortCell::Decimal("1e400"),
+        ];
+        assert!(!keys_agree_with_compare(&near));
+    }
+
+    #[test]
+    fn decimals_alone_key_by_their_nearest_float() {
+        let amounts: Vec<SortCell<'_>> = [
+            "0",
+            "-0.00",
+            "12.50",
+            "12.5",
+            "12.51",
+            "-3",
+            "1e2",
+            "99999999999999999999.99",
+        ]
+        .into_iter()
+        .map(SortCell::Decimal)
+        .chain([SortCell::Null])
+        .collect();
+        assert!(!keys_agree_with_compare(&amounts), "a decimal's key is only near it");
+        let mut builder = KeyBuilder::default();
+        let twelve: [u8; NARROW_KEY] = builder.key(SortCell::Decimal("12.50"), KeyStart::default());
+        let more: [u8; NARROW_KEY] = builder.key(SortCell::Decimal("12.51"), KeyStart::default());
+        assert!(twelve < more, "the key tells apart what a float tells apart");
+        assert!(!builder.numbers_mixed());
+    }
+
+    #[test]
+    fn bytes_are_keyed_from_where_they_stop_being_alike() {
+        let header = [0x5a_u8; 40];
+        let values: Vec<Vec<u8>> = [&[1u8, 2][..], &[1, 3], &[1], &[0, 255], &[]]
+            .iter()
+            .map(|tail| [&header[..], tail].concat())
+            .collect();
+        let cells: Vec<SortCell<'_>> = values.iter().map(|value| SortCell::Bytes(value)).collect();
+        keys_agree::<WIDE_KEY>(
+            &cells,
+            KeyStart {
+                at: 40,
+                in_number: false,
+            },
+        );
+        let mut builder = KeyBuilder::default();
+        let mut keys: Vec<[u8; WIDE_KEY]> = cells
+            .iter()
+            .map(|cell| {
+                builder.key(
+                    *cell,
+                    KeyStart {
+                        at: 40,
+                        in_number: false,
+                    },
+                )
+            })
+            .collect();
+        keys.sort();
+        keys.dedup();
+        assert_eq!(keys.len(), values.len());
     }
 }

@@ -282,6 +282,24 @@ Viết bằng tiếng Việt vì đây là tài liệu cho người kiểm thử
 - [x] Đặt Limit **1,000**, chạy `select * from order_items` trong một script hai câu (để không chạy lại được), rồi sort.
   **Đúng:** status bar báo chỉ sort những dòng đã tải.
 - [x] Ctrl+click tiêu đề vẫn là chọn cột, không sort.
+- [ ] **Sort trong Kemable những cột trước đây chậm** (thêm 2026-11-14, ADR 0005). Tắt Limit (hoặc bấm Fetch All), rồi trên PostgreSQL chạy script hai câu để kết quả không chạy lại được:
+  ```sql
+  select g, (g * 7919 % 1000003)::numeric(12, 2) / 100 as amount,
+         decode(md5(g::text), 'hex') as hash,
+         'INV-9' || lpad((g * 7919 % 1000003)::text, 39, '0') as invoice
+  from generate_series(1, 1000000) g;
+  select 1;
+  ```
+  Sort Result 1 lần lượt theo `amount`, `hash`, `invoice`, mỗi cột cả tăng lẫn giảm.
+  **Đúng:** mỗi lần sort xong trong khoảng 1 giây hoặc nhanh hơn, không treo app. `amount` theo giá trị số (9.5 trước 10.25). `invoice` theo số (`INV-9…0099` trước `INV-9…0100`). `hash` theo byte. Shift+click thêm cột `g` vẫn đúng.
+- [ ] **Cột SQLite trộn số nguyên với số thực.** Mở **Open an in-memory database**, chạy:
+  ```sql
+  with recursive n(x) as (select 1 union all select x + 1 from n where x < 1000000)
+  select x, case when x % 2 = 0 then x * 7919 % 1000003 else (x * 7919 % 1000003) + 0.5 end as mixed from n;
+  select 1;
+  ```
+  rồi sort Result 1 theo `mixed`.
+  **Đúng:** xong trong khoảng 1 giây; số nguyên và số thực xen nhau đúng giá trị (3, 3.5, 4).
 
 ---
 
