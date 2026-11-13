@@ -1,0 +1,92 @@
+name: Issue
+description: Report a bug, suggest a feature, or ask a question
+title: "[Issue]: "
+labels: ["needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to open an issue!
+
+        Please search existing issues before creating a new one.
+
+        **Pull requests are welcome.** For anything large, open an issue first so we can agree on the approach.
+        Your first pull request asks you to sign the [Contributor License Agreement](https://github.com/SoleBuilt/Kemable/blob/main/CLA.md).
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      description: What kind of issue is this?
+      options:
+        - Bug report
+        - Feature request
+        - Question
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the bug, the feature you want, or your question. For features, explain the problem you are trying to solve.
+      placeholder: A clear and concise description...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce (bugs only)
+      description: How can we reproduce the problem?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs. actual behavior (bugs only)
+      description: What did you expect to happen, and what happened instead?
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Which version or commit are you using?
+      placeholder: e.g. v1.0.0 or commit hash
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser, Node.js version, deployment platform, etc.
+      placeholder: |
+        - OS: Windows 11
+        - Browser: Chrome 130
+        - Node.js: 22
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Paste any relevant error messages or drag in screenshots. Do not include secrets or API keys.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and found no duplicate.
+          required: true
