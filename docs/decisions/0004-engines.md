@@ -30,7 +30,7 @@ The Live tab, one kind of tab for every engine that pushes changes (`docs/decisi
 | PostgreSQL, Neon, Supabase | Done: `LISTEN` / `NOTIFY` on a session of its own, not through a pooler in transaction mode. Supabase also through Realtime over its WebSocket: tables' changes and broadcast channels (`docs/decisions/0025-supabase-realtime.md`) |
 | Redis | Done: `SUBSCRIBE`, `PSUBSCRIBE`, keyspace notifications as the channels they are, with a `PING` every 30 s |
 | RabbitMQ | Done: a consumer on a queue (it takes), or on a queue of its own bound to exchanges (a copy) |
-| Firebase | the Realtime Database's server-sent events; Firestore listens over gRPC, which is added only if its size is worth it |
+| Firebase | Done: the Realtime Database's paths, as server-sent events (`docs/decisions/0027-firebase.md`). Firestore listens over gRPC, which is added only if its size is worth it |
 | D1, SQLite | none; a Live tab is not offered |
 
 Any network engine can go through an SSH server (`docs/decisions/0024-ssh-tunnels.md`): the app opens a tunnel and the driver dials its local end, keeping the host for TLS. SQL Server's named instances need a port there.

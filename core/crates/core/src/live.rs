@@ -27,6 +27,9 @@ pub enum LiveTopicKind {
     /// A queue by its name, consumed: what the listener takes, it acknowledges,
     /// and the queue no longer holds. RabbitMQ.
     Queue,
+    /// A path of a JSON tree, and everything below it: the Firebase Realtime
+    /// Database's server-sent events (`docs/decisions/0027-firebase.md`).
+    Path,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

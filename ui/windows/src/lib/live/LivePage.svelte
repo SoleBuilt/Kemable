@@ -51,12 +51,15 @@
   const takesChannels = $derived(engine.liveTopics.includes("channel"));
   /** RabbitMQ: exchanges to watch, and queues to take from (docs/decisions/0026-rabbitmq.md). */
   const takesBindings = $derived(engine.liveTopics.includes("binding"));
+  /** Firebase: the Realtime Database's paths. */
+  const takesPaths = $derived(engine.liveTopics.includes("path"));
 
   /** How to send a first event, in the engine's own words. */
   const HINTS: Record<string, string> = {
     postgres: "Type the channels and press Listen. Then send one from a query tab: NOTIFY orders, 'hello'",
     redis: "Type the channels or patterns and press Listen. Then send one from a query tab: PUBLISH news hello",
     rabbitmq: "Type an exchange to watch (amq.topic:orders.#) and press Listen. Then send one from a query tab: publish amq.topic orders.new hello",
+    firebase: "Type the Realtime Database's paths (/chats/room1) and press Listen. Then change one from the Firebase console or your app.",
   };
 
   let grid: DataGrid | undefined = $state();
@@ -174,6 +177,19 @@
           disabled={session.busy}
           tip="Consumes them: each message heard is acknowledged and the queue no longer holds it. Enter listens"
           bind:value={session.queues}
+        />
+      </label>
+    {:else if takesPaths}
+      <label class="pb-live-topic">
+        <span>Paths</span>
+        <Input
+          size="sm"
+          mono
+          placeholder="/chats/room1, /presence"
+          disabled={session.busy}
+          tip="Realtime Database paths: every change at or below each. Enter listens"
+          tipAt="start"
+          bind:value={session.paths}
         />
       </label>
     {:else if takesChannels}

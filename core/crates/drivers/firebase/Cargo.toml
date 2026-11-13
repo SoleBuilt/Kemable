@@ -12,13 +12,16 @@ homepage.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+futures-util.workspace = true
 kemable-core.workspace = true
-reqwest.workspace = true
+# The Realtime Database's server-sent events are read as a stream of bytes.
+reqwest = { workspace = true, features = ["stream"] }
 ring.workspace = true
 rustls.workspace = true
 rustls-platform-verifier.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 kemable-store.workspace = true

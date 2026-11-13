@@ -60,12 +60,12 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 
 ## Phase 3: everything else
 
-- [ ] The Live tab (`docs/decisions/0020-live-tab.md`): a page that listens on a link of its own, its events a result set, and goes on listening while another page is shown.
+- [x] The Live tab (`docs/decisions/0020-live-tab.md`): a page that listens on a link of its own, its events a result set, and goes on listening while another page is shown. Every source below built by 2026-11-14.
   - [x] PostgreSQL `LISTEN` (also Neon and Supabase, connected directly). Tested against a PostgreSQL backend in the tests; the live test waits for `$KEMABLE_POSTGRES_URL`.
   - [x] Redis pub/sub: channels, patterns, key events. Tested against a pub/sub server in the tests; the live test waits for `$KEMABLE_REDIS_URL`.
   - [x] Supabase Realtime, over its WebSocket. Built 2026-11-14 (`docs/decisions/0025-supabase-realtime.md`): a Supabase connection's Live tab listens through LISTEN or Realtime, to tables' changes and broadcast channels, with the API key kept in Credential Manager. Tested against a Phoenix server in the tests.
   - [x] RabbitMQ consumers, with the RabbitMQ driver. Built 2026-11-14 (`docs/decisions/0026-rabbitmq.md`): a Live tab binds a queue of its own to exchanges (a copy) or takes from queues by name; the console publishes. Not run against a broker yet.
-  - [ ] Firebase, with the Firebase driver.
+  - [x] Firebase, with the Firebase driver. Built 2026-11-14 (`docs/decisions/0027-firebase.md`, The Live tab): the Realtime Database's paths, each change after Listen a row; Firestore's listening (gRPC) is not built.
 - [ ] RabbitMQ: queues, exchanges, peek, publish. The driver is in (ADR 0026) and its console publishes; queues and exchanges in the sidebar and peeking through the management API are still to build.
 - [x] Firebase: Firestore collections and documents, Realtime Database. Built 2026-11-14 (`docs/decisions/0027-firebase.md`): a service account's key file, the tree's collections and paths, and a console that reads (`get` a collection, a document or a query; `rtdb` a path). Writing is not built. Tested against an HTTP server in the tests.
 - [ ] PGlite through a pglite-socket sidecar.

@@ -5,11 +5,14 @@
 //! The tree shows Firestore's collections and the Realtime Database's
 //! children of its root. The console (`console`) reads: `get` a collection,
 //! a document or a query, `rtdb` a path. A document is a row: its id, one
-//! column per field the first page has, the rest as JSON, and when it changed.
+//! column per field the first page has (by name, as Firestore sends them),
+//! the rest as JSON, and when it changed. A Live tab listens to the Realtime
+//! Database's paths (`live`).
 
 mod api;
 mod auth;
 mod console;
+mod live;
 mod values;
 
 #[cfg(test)]
@@ -25,6 +28,7 @@ use kemable_core::config::ConnectionConfig;
 use kemable_core::connection::Connection;
 use kemable_core::driver::Driver;
 use kemable_core::engine::{DataModel, EngineInfo, TargetKind, TreeFolder};
+use kemable_core::live::{LiveTopic, LiveTopicKind};
 use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
 use kemable_core::value::{Value, ValueKind};
 use kemable_core::{CallOptions, DriverError, Result};
@@ -44,7 +48,7 @@ pub static INFO: EngineInfo = EngineInfo {
     targets: &[TargetKind::Http],
     default_port: None,
     sql_grammar: None,
-    live_topics: &[],
+    live_topics: &[LiveTopicKind::Path],
     has_databases: false,
     tree_folders: &[
         TreeFolder {
@@ -74,6 +78,18 @@ impl Driver for FirebaseDriver {
         let firebase = Firebase::new(config)?;
         options.run(firebase.sign_in()).await?;
         Ok(Arc::new(FirebaseConnection { firebase }))
+    }
+
+    /// The Realtime Database's paths, each a stream of server-sent events (`live`).
+    async fn listen(
+        &self,
+        config: &ConnectionConfig,
+        topics: &[LiveTopic],
+        sink: Arc<dyn ResultSink>,
+        options: CallOptions,
+    ) -> Result<ExecOutcome> {
+        let firebase = Firebase::new(config)?;
+        live::listen(&firebase, topics, sink.as_ref(), &options).await
     }
 }
 

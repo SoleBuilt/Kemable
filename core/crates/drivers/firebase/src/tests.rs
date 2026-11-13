@@ -565,3 +565,157 @@ async fn a_key_file_is_read_at_connect_and_a_missing_one_says_where() {
     assert!(error.message.contains("gone.json"));
     std::fs::remove_dir_all(&folder).unwrap();
 }
+
+/// The events one stream sends, by path: its first value, then changes, a
+/// keep-alive between them. `/denied` is cut off by the rules.
+fn events(path: &str) -> Option<String> {
+    let event = |name: &str, data: &str| format!("event: {name}\ndata: {data}\n\n");
+    Some(match path {
+        "/rtdb/chats.json" => [
+            event("put", r#"{"path":"/","data":{"room1":{"title":"Chung"}}}"#),
+            event("keep-alive", "null"),
+            event("put", r#"{"path":"/room2","data":{"title":"Mới"}}"#),
+            // A data line split across two `data:` lines, and \r\n endings.
+            "event: patch\r\ndata: {\"path\":\"/room1\",\r\ndata: \"data\":{\"count\":3}}\r\n\r\n".to_owned(),
+            event("put", r#"{"path":"/room2/title","data":null}"#),
+        ]
+        .concat(),
+        "/rtdb/flags.json" => [
+            event("put", r#"{"path":"/","data":true}"#),
+            event("put", r#"{"path":"/","data":false}"#),
+        ]
+        .concat(),
+        "/rtdb/denied.json" => [event("put", r#"{"path":"/","data":1}"#), event("cancel", "null")].concat(),
+        _ => return None,
+    })
+}
+
+/// A server that answers an event-stream request with `events`, then keeps it open.
+async fn stream_server() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buffer = Vec::new();
+                let mut chunk = [0u8; 4096];
+                while !buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+                    let Ok(read) = socket.read(&mut chunk).await else {
+                        return;
+                    };
+                    if read == 0 {
+                        return;
+                    }
+                    buffer.extend_from_slice(&chunk[..read]);
+                }
+                let head = String::from_utf8_lossy(&buffer).into_owned();
+                let target = head.split_whitespace().nth(1).unwrap_or_default().to_owned();
+                let (path, query) = target.split_once('?').unwrap_or((&target, ""));
+                let streaming = head
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("accept: text/event-stream"));
+                let Some(body) = events(path).filter(|_| streaming && query.contains("access_token=good-token")) else {
+                    let _ = socket
+                        .write_all(b"HTTP/1.1 401 X\r\ncontent-type: application/json\r\ncontent-length: 33\r\nconnection: close\r\n\r\n{\"error\":\"Unauthorized request.\"}")
+                        .await;
+                    return;
+                };
+                let _ = socket
+                    .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\n")
+                    .await;
+                let _ = socket.write_all(body.as_bytes()).await;
+                std::future::pending::<()>().await;
+            });
+        }
+    });
+    base
+}
+
+#[tokio::test]
+async fn a_live_path_turns_each_change_after_the_first_value_into_a_row() {
+    use kemable_core::live::{LiveTopicKind, topics_of};
+    let (base, _) = serve().await;
+    let streams = stream_server().await;
+    let mut listening = config(&base, KEY);
+    listening
+        .options
+        .insert("database_url".into(), format!("{streams}/rtdb"));
+    let heard = Arc::new(Rows {
+        limit: 4,
+        ..Rows::default()
+    });
+    let topics = topics_of(&[(LiveTopicKind::Path, "/chats flags")]);
+    let outcome = FirebaseDriver
+        .listen(&listening, &topics, heard.clone(), options())
+        .await
+        .unwrap();
+    assert!(outcome.limited);
+    assert_eq!(heard.names(), ["received", "path", "event", "data"]);
+    let mut rows: Vec<Vec<Value>> = (0..4).map(|at| heard.row(at)[1..].to_vec()).collect();
+    // The two paths' events interleave; each path's keep their order.
+    rows.sort_by_key(|row| format!("{:?}", row[0]));
+    assert_eq!(
+        rows,
+        [
+            vec![
+                Value::Text("/chats/room1".into()),
+                Value::Text("patch".into()),
+                Value::Json(r#"{"count":3}"#.into())
+            ],
+            vec![
+                Value::Text("/chats/room2".into()),
+                Value::Text("put".into()),
+                Value::Json(r#"{"title":"Mới"}"#.into())
+            ],
+            vec![
+                Value::Text("/chats/room2/title".into()),
+                Value::Text("put".into()),
+                Value::Null
+            ],
+            vec![
+                Value::Text("/flags".into()),
+                Value::Text("put".into()),
+                Value::Bool(false)
+            ],
+        ]
+    );
+
+    let denied = FirebaseDriver
+        .listen(
+            &listening,
+            &topics_of(&[(LiveTopicKind::Path, "/denied")]),
+            Arc::new(Rows::default()),
+            options(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(denied.code, ErrorCode::Query);
+    assert!(denied.message.contains("denied"));
+
+    let refused = FirebaseDriver
+        .listen(
+            &listening,
+            &topics_of(&[(LiveTopicKind::Path, "/nowhere")]),
+            Arc::new(Rows::default()),
+            options(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::Auth);
+}
+
+#[test]
+fn server_sent_events_read_across_chunks_and_paths_join() {
+    let mut reader = super::live::EventReader::default();
+    assert!(reader.feed(b"event: put\nda").is_empty());
+    assert_eq!(
+        reader.feed(b"ta: 1\n\nevent: keep-alive\ndata: null\n\n"),
+        [
+            ("put".to_owned(), "1".to_owned()),
+            ("keep-alive".to_owned(), "null".to_owned())
+        ]
+    );
+    assert_eq!(super::live::joined("/chats/", "/room1"), "/chats/room1");
+    assert_eq!(super::live::joined("", "/"), "/");
+    assert_eq!(super::live::joined("a", "/"), "/a");
+}
