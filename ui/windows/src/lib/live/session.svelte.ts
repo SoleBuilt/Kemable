@@ -13,6 +13,15 @@ export class LiveSession {
   /** The names as typed: split at spaces and commas by the core, "quoted" to keep a name as written. */
   channels = $state("");
   patterns = $state("");
+  /**
+   * A Supabase project's Live page listens through the database (LISTEN) or through
+   * Realtime: its tables' changes and its broadcast channels (docs/decisions/0025-supabase-realtime.md).
+   */
+  source: "listen" | "realtime" = $state("listen");
+  tables = $state("");
+  broadcasts = $state("");
+  /** The API key typed; kept in Windows Credential Manager once it worked, and blank after. */
+  apiKey = $state("");
   status: LiveStatus = $state("idle");
   /** The database the listening started in. */
   database: string | null = $state(null);
@@ -43,6 +52,7 @@ export class LiveSession {
   }
 
   get hasTopics(): boolean {
+    if (this.source === "realtime") return this.tables.trim() !== "" || this.broadcasts.trim() !== "";
     return this.channels.trim() !== "" || this.patterns.trim() !== "";
   }
 
@@ -55,7 +65,11 @@ export class LiveSession {
     this.notices = [];
     this.database = database;
     try {
-      this.run = await ipc.startLive(conn, database, this.channels, this.patterns, (event) => this.onEvent(event));
+      const realtime =
+        this.source === "realtime" ? { tables: this.tables, broadcasts: this.broadcasts, apiKey: this.apiKey.trim() || null } : null;
+      this.run = await ipc.startLive(conn, database, this.channels, this.patterns, (event) => this.onEvent(event), realtime);
+      // The key went to Credential Manager: the box need not hold it any more.
+      if (realtime) this.apiKey = "";
       // The page closed, or Stop was pressed, before the id came back. (The
       // cast undoes the narrowing from the assignment above: events and Stop
       // change the status while the call waits.)

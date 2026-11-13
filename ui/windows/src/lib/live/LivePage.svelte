@@ -10,6 +10,7 @@
   import EmptyState from "../ui/EmptyState.svelte";
   import InfoBar from "../ui/InfoBar.svelte";
   import Input from "../ui/Input.svelte";
+  import Segmented from "../ui/Segmented.svelte";
   import type { LiveSession } from "./session.svelte";
 
   /**
@@ -21,6 +22,8 @@
     engine: EngineInfo;
     /** The database the toolbar shows, which a query page runs in. */
     database: string | null;
+    /** A Supabase project's URL: the page can listen through Realtime too. */
+    realtimeUrl?: string | null;
     detailOpen: boolean;
     /** Starts the listening, as the page bar's Listen does. */
     onListen: () => void;
@@ -29,11 +32,19 @@
     onNote: (text: string) => void;
   }
 
-  let { session, engine, database, detailOpen, onListen, onCopy, onNote }: Props = $props();
+  let { session, engine, database, realtimeUrl = null, detailOpen, onListen, onCopy, onNote }: Props = $props();
+
+  const SOURCES = [
+    { value: "listen" as const, label: "LISTEN" },
+    { value: "realtime" as const, label: "Realtime" },
+  ];
+  const realtime = $derived(realtimeUrl !== null && session.source === "realtime");
 
   // An event reaches only listeners in the database it was sent in. Once the
   // toolbar moves to another one, what a query page sends no longer comes here.
-  const elsewhere = $derived(engine.hasDatabases && session.busy && session.database !== null && database !== null && session.database !== database);
+  const elsewhere = $derived(
+    !realtime && engine.hasDatabases && session.busy && session.database !== null && database !== null && session.database !== database,
+  );
 
   const numberFormat = new Intl.NumberFormat();
   const takesPatterns = $derived(engine.liveTopics.includes("pattern"));
@@ -106,6 +117,38 @@
 <section class="pb-live" aria-label="Live">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="pb-filters" bind:this={topics} onkeydown={onTopicKey}>
+    {#if realtimeUrl}
+      <Segmented label="Listen through" options={SOURCES} value={session.source} onChange={(next) => (session.source = next)} />
+    {/if}
+    {#if realtime}
+      <label class="pb-live-topic">
+        <span>Tables</span>
+        <Input
+          size="sm"
+          mono
+          placeholder="public.orders, audit.*"
+          disabled={session.busy}
+          tip="schema.table, schema.* or *: their inserts, updates and deletes. Enter listens"
+          tipAt="start"
+          bind:value={session.tables}
+        />
+      </label>
+      <label class="pb-live-topic">
+        <span>Broadcast</span>
+        <Input size="sm" mono placeholder="room1" disabled={session.busy} tip="Broadcast channels, by name. Enter listens" bind:value={session.broadcasts} />
+      </label>
+      <label class="pb-live-topic">
+        <span>API key</span>
+        <Input
+          size="sm"
+          type="password"
+          placeholder="Kept once it works"
+          disabled={session.busy}
+          tip={`The anon or service_role key of ${realtimeUrl}. Kept in Windows Credential Manager`}
+          bind:value={session.apiKey}
+        />
+      </label>
+    {:else}
     <label class="pb-live-topic">
       <span>Channels</span>
       <Input
@@ -130,6 +173,7 @@
           bind:value={session.patterns}
         />
       </label>
+    {/if}
     {/if}
   </div>
 
@@ -199,7 +243,9 @@
         compact
         icon="radio"
         title={session.status === "starting" ? "Starting to listen…" : "Nothing heard yet"}
-        text={HINTS[engine.id] ?? "Type what to listen to and press Listen."}
+        text={realtime
+          ? "Type the tables (public.orders) or broadcast channels, and the project's API key, then press Listen. The table must be in the supabase_realtime publication."
+          : (HINTS[engine.id] ?? "Type what to listen to and press Listen.")}
         keys={[
           { keys: ["F5"], label: "Listen" },
           { keys: ["Shift", "F5"], label: "Stop" },

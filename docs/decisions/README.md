@@ -52,3 +52,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0022 | [The app is Kemable, and starts with no data from Paboable](0022-rename-to-kemable.md) |
 | 0023 | [AGPL-3.0-only and a commercial license; permissive dependencies only, their notices shipped with the app](0023-licensing.md) |
 | 0024 | [An SSH tunnel is a local port the app opens; drivers only dial it](0024-ssh-tunnels.md) |
+| 0025 | [A Supabase project's Live tab also listens through Realtime](0025-supabase-realtime.md) |

@@ -94,6 +94,13 @@ impl OpenServer {
         }
     }
 
+    /// A Supabase project's URL, when this server is one.
+    pub fn realtime_url(&self) -> Option<String> {
+        (self.config.engine == "postgres")
+            .then(|| kemable_driver_postgres::realtime::project_url(&self.config))
+            .flatten()
+    }
+
     /// Keeps `tunnel` open as long as this server is.
     #[must_use]
     pub fn with_tunnel(self, tunnel: Option<kemable_tunnel::Tunnel>) -> Self {

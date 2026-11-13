@@ -11,6 +11,7 @@ mod ddl;
 mod decode;
 mod errors;
 mod live;
+pub mod realtime;
 mod tls;
 
 use std::sync::Arc;

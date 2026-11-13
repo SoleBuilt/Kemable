@@ -15,6 +15,11 @@ pub enum LiveTopicKind {
     Channel,
     /// Every channel a glob matches: Redis `PSUBSCRIBE`.
     Pattern,
+    /// A table's changes (`schema.table`, `schema.*`, `*`): Supabase Realtime's
+    /// postgres_changes (`docs/decisions/0025-supabase-realtime.md`).
+    Table,
+    /// A broadcast channel by its name: Supabase Realtime's broadcast.
+    Broadcast,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -32,8 +37,13 @@ pub struct LiveTopic {
 /// keeps its spaces and commas, with `""` for a quote inside it. A name
 /// given twice is listened to once.
 pub fn topics(channels: &str, patterns: &str) -> Vec<LiveTopic> {
+    topics_of(&[(LiveTopicKind::Channel, channels), (LiveTopicKind::Pattern, patterns)])
+}
+
+/// The topics in each text typed for a kind, read as [`topics`] reads them.
+pub fn topics_of(texts: &[(LiveTopicKind, &str)]) -> Vec<LiveTopic> {
     let mut found: Vec<LiveTopic> = Vec::new();
-    for (text, kind) in [(channels, LiveTopicKind::Channel), (patterns, LiveTopicKind::Pattern)] {
+    for &(kind, text) in texts {
         for (name, exact) in names(text) {
             let topic = LiveTopic { kind, name, exact };
             if !found.contains(&topic) {

@@ -63,7 +63,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
 - [ ] The Live tab (`docs/decisions/0020-live-tab.md`): a page that listens on a link of its own, its events a result set, and goes on listening while another page is shown.
   - [x] PostgreSQL `LISTEN` (also Neon and Supabase, connected directly). Tested against a PostgreSQL backend in the tests; the live test waits for `$KEMABLE_POSTGRES_URL`.
   - [x] Redis pub/sub: channels, patterns, key events. Tested against a pub/sub server in the tests; the live test waits for `$KEMABLE_REDIS_URL`.
-  - [ ] Supabase Realtime, over its WebSocket.
+  - [x] Supabase Realtime, over its WebSocket. Built 2026-11-14 (`docs/decisions/0025-supabase-realtime.md`): a Supabase connection's Live tab listens through LISTEN or Realtime, to tables' changes and broadcast channels, with the API key kept in Credential Manager. Tested against a Phoenix server in the tests.
   - [ ] RabbitMQ consumers, with the RabbitMQ driver.
   - [ ] Firebase, with the Firebase driver.
 - [ ] RabbitMQ: queues, exchanges, peek, publish.

@@ -265,10 +265,29 @@ export const ipc = {
    * `onEvent` until one of type `finished`; what was heard is a result set
    * the grid reads, kept until `releaseResult`.
    */
-  startLive(conn: number, database: string | null, channels: string, patterns: string, onEvent: (event: LiveEvent) => void) {
+  /**
+   * Starts a Live tab's listening: channels and patterns through the driver, or a Supabase
+   * project's tables and broadcast channels through Realtime (`realtime`, with the API key
+   * typed now, or null for the one kept).
+   */
+  startLive(
+    conn: number,
+    database: string | null,
+    channels: string,
+    patterns: string,
+    onEvent: (event: LiveEvent) => void,
+    realtime: { tables: string; broadcasts: string; apiKey: string | null } | null = null,
+  ) {
     const channel = new Channel<LiveEvent>();
     channel.onmessage = onEvent;
-    return invoke<number>("start_live", { conn, database, channels, patterns, onEvent: channel });
+    return invoke<number>("start_live", {
+      conn,
+      database,
+      channels,
+      patterns,
+      realtime,
+      onEvent: channel,
+    });
   },
 
   /** One packed window of display text (lib/grid/window.ts reads it). */

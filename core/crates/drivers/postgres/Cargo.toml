@@ -13,13 +13,15 @@ homepage.workspace = true
 [dependencies]
 async-trait.workspace = true
 fallible-iterator.workspace = true
-futures-util.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
 kemable-core.workspace = true
 postgres-protocol.workspace = true
 rustls.workspace = true
 rustls-pki-types.workspace = true
 rustls-platform-verifier.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
+tokio-tungstenite.workspace = true
 tokio-postgres.workspace = true
 tokio-postgres-rustls.workspace = true
 
