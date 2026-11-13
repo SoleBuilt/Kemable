@@ -295,6 +295,177 @@ fn clearing_the_filter_shows_every_row_and_keeps_the_sort() {
 }
 
 #[test]
+fn a_sort_by_text_or_by_several_columns_keeps_equal_rows_in_arrival_order_both_ways() {
+    // Texts that share long starts, differ only past a key's width, or are
+    // equal: the rows keys cannot tell apart, which the comparison settles.
+    let names = [
+        "khách 12345678901234567890",
+        "khách 12345678901234567891",
+        "https://example.com/a/very/long/path/that/goes/on/2",
+        "https://example.com/a/very/long/path/that/goes/on/10",
+        "item2",
+        "item10",
+        "item02",
+        "Item1",
+        "",
+        "item2",
+    ];
+    let store = ResultStore::new(vec![column("name", ValueKind::Text), column("n", ValueKind::Int)], None);
+    let values: Vec<Value> = (0..600usize)
+        .flat_map(|row| {
+            let name = if row % 11 == 0 {
+                Value::Null
+            } else {
+                Value::Text(names[row * 7 % names.len()].to_owned())
+            };
+            [name, Value::Int(i64::try_from(row % 3).unwrap())]
+        })
+        .collect();
+    assert!(store.push_rows(&values));
+    let row = |index: u64| (store.cell_text(index, 0).unwrap(), store.cell_text(index, 1).unwrap());
+    // What a stable sort by the documented order gives, from the same cells.
+    let arrival: Vec<_> = (0..600).map(row).collect();
+    let by_name = |a: &Option<String>, b: &Option<String>| match (a, b) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (Some(a), Some(b)) => crate::order::natural(a, b),
+    };
+    let number = |text: &Option<String>| text.as_deref().unwrap_or("0").parse::<i64>().unwrap();
+
+    for descending in [false, true] {
+        store.sort(&[SortKey { column: 0, descending }]);
+        let mut expected = arrival.clone();
+        expected.sort_by(|a, b| {
+            let order = by_name(&a.0, &b.0);
+            if descending { order.reverse() } else { order }
+        });
+        assert_eq!(
+            (0..600).map(row).collect::<Vec<_>>(),
+            expected,
+            "descending {descending}"
+        );
+
+        // The number first, then the name the other way: the keys order the
+        // first column and the comparison the second.
+        store.sort(&[
+            SortKey { column: 1, descending },
+            SortKey {
+                column: 0,
+                descending: !descending,
+            },
+        ]);
+        let mut expected = arrival.clone();
+        expected.sort_by(|a, b| {
+            let first = number(&a.1).cmp(&number(&b.1));
+            let second = by_name(&a.0, &b.0);
+            if descending {
+                first.reverse().then(second)
+            } else {
+                first.then(second.reverse())
+            }
+        });
+        assert_eq!(
+            (0..600).map(row).collect::<Vec<_>>(),
+            expected,
+            "two keys, descending {descending}"
+        );
+    }
+}
+
+#[test]
+fn a_sort_by_several_columns_orders_as_a_stable_sort_of_the_cells_would() {
+    // Enough rows that a group is dealt out by the radix sort again, texts
+    // that share a start longer than a key, texts that are the same, numbers
+    // that end what the texts share, and NULLs.
+    const ROWS: usize = 20_000;
+    let store = ResultStore::new(
+        vec![
+            column("group", ValueKind::Int),
+            column("site", ValueKind::Text),
+            column("n", ValueKind::Int),
+            column("at", ValueKind::Timestamp),
+        ],
+        None,
+    );
+    let mut reference: Vec<(Option<i64>, Option<String>, i64, i64)> = Vec::with_capacity(ROWS);
+    for row in 0..ROWS {
+        let mixed = i64::try_from(row * 7919 % 20_011).unwrap();
+        let group = (row % 13 != 0).then_some(mixed % 7);
+        let site = match row % 5 {
+            0 => None,
+            1 => Some("https://example.com/khach-hang/chi-tiet/trang-chu".to_owned()),
+            2 => Some(format!("https://example.com/khach-hang/chi-tiet/{}", mixed % 400)),
+            3 => Some(format!("https://example.com/khach-hang/chi-tiet/0{}/sua", mixed % 50)),
+            _ => Some(format!("khách {}", mixed % 3)),
+        };
+        reference.push((group, site, mixed, mixed % 97 - 40));
+    }
+    let values: Vec<Value> = reference
+        .iter()
+        .flat_map(|(group, site, n, at)| {
+            [
+                group.map_or(Value::Null, Value::Int),
+                site.clone().map_or(Value::Null, Value::Text),
+                Value::Int(*n),
+                Value::Timestamp(*at),
+            ]
+        })
+        .collect();
+    assert!(store.push_rows(&values));
+
+    // NULL first; a text by the natural order.
+    fn nullable<T>(a: &Option<T>, b: &Option<T>, order: impl Fn(&T, &T) -> std::cmp::Ordering) -> std::cmp::Ordering {
+        match (a, b) {
+            (None, None) => std::cmp::Ordering::Equal,
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (Some(a), Some(b)) => order(a, b),
+        }
+    }
+    let by_column =
+        |column: usize, a: &(Option<i64>, Option<String>, i64, i64), b: &(Option<i64>, Option<String>, i64, i64)| {
+            match column {
+                0 => nullable(&a.0, &b.0, i64::cmp),
+                1 => nullable(&a.1, &b.1, |a, b| crate::order::natural(a, b)),
+                2 => a.2.cmp(&b.2),
+                _ => a.3.cmp(&b.3),
+            }
+        };
+    let key = |column, descending| SortKey { column, descending };
+    for keys in [
+        vec![key(1, false)],
+        vec![key(1, true)],
+        vec![key(0, false), key(2, true)],
+        vec![key(0, true), key(1, false)],
+        vec![key(1, false), key(3, true), key(0, false)],
+        vec![key(3, false), key(1, true), key(2, false)],
+        vec![key(0, false), key(3, false), key(1, false), key(2, true)],
+    ] {
+        store.sort(&keys);
+        // The order rows arrived in, sorted stably: what the store must show.
+        let mut expected: Vec<usize> = (0..ROWS).collect();
+        expected.sort_by(|&a, &b| {
+            keys.iter()
+                .map(|key| {
+                    let order = by_column(key.column, &reference[a], &reference[b]);
+                    if key.descending { order.reverse() } else { order }
+                })
+                .find(|order| order.is_ne())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        for (shown, &row) in expected.iter().enumerate() {
+            // `n` is different in every row, so it names the row shown.
+            assert_eq!(
+                store.cell_text(shown as u64, 2),
+                Some(Some(reference[row].2.to_string())),
+                "row {shown} of the sort by {keys:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn copies_and_row_reads_go_through_the_filter() {
     let store = people();
     store.filter(&[condition(1, FilterOp::Contains, "a")], false).unwrap();
@@ -400,6 +571,63 @@ fn a_million_rows_filter_and_sort_in_time() {
         store.state().shown_rows,
         started.elapsed() - filtered
     );
+}
+
+#[test]
+#[ignore = "a timing to read by hand: cargo test -p paboable-store --release -- --ignored --nocapture"]
+fn two_million_rows_sort_by_a_number_a_text_and_a_time() {
+    let store = ResultStore::new(
+        vec![
+            column("n", ValueKind::Int),
+            column("name", ValueKind::Text),
+            column("at", ValueKind::TimestampTz),
+            column("group", ValueKind::Int),
+            column("site", ValueKind::Text),
+        ],
+        None,
+    );
+    // Shuffled so no column arrives sorted: n * 7919 mod a prime visits every value once.
+    let values: Vec<Value> = (0..2_000_000i64)
+        .flat_map(|n| {
+            let mixed = n * 7919 % 2_000_003;
+            [
+                Value::Int(mixed),
+                Value::Text(format!("khách {mixed}")),
+                Value::TimestampTz {
+                    micros: 1_700_000_000_000_000 + mixed * 1_000,
+                    offset_seconds: 0,
+                },
+                // A hundred groups of 20,000 rows each, for a sort by two columns.
+                Value::Int(mixed % 100),
+                // Texts alike past a key's width, which only a comparison of the cells tells apart.
+                Value::Text(format!("https://example.com/khach-hang/chi-tiet/{mixed}")),
+            ]
+        })
+        .collect();
+    assert!(store.push_rows(&values));
+    for (column, what) in [(0, "number"), (1, "text"), (2, "time")] {
+        let started = std::time::Instant::now();
+        store.sort(&[SortKey {
+            column,
+            descending: false,
+        }]);
+        println!("sort 2,000,000 rows by a {what}: {:?}", started.elapsed());
+    }
+    // The paths that still compare cells: several sort columns, and texts
+    // that share more than a key holds.
+    let key = |column| SortKey {
+        column,
+        descending: false,
+    };
+    for (keys, what) in [
+        (vec![key(3), key(0)], "a group, then a number"),
+        (vec![key(3), key(1)], "a group, then a text"),
+        (vec![key(4)], "a text with a long shared start"),
+    ] {
+        let started = std::time::Instant::now();
+        store.sort(&keys);
+        println!("sort 2,000,000 rows by {what}: {:?}", started.elapsed());
+    }
 }
 
 #[test]

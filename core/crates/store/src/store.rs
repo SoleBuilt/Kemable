@@ -7,7 +7,10 @@ use paboable_core::sql::ResultFilter;
 use paboable_core::value::{Value, ValueKind};
 
 use crate::filter::{RowFilter, Scratch};
-use crate::order::{SortCell, compare};
+use crate::order::{
+    KeyBuilder, Keyed, NARROW_KEY, SortCell, WIDE_KEY, compare, key_order, radix_sort, shared_start, skippable,
+    wants_wide_key,
+};
 use crate::window::{self, WindowRequest};
 
 /// Rows per chunk. A chunk is the unit a store grows by, so appending never
@@ -475,32 +478,170 @@ fn kept_rows(inner: &Inner, filter: &RowFilter) -> Vec<u64> {
 /// Sorts stored rows by `keys`, stably; keys past the last column are skipped.
 fn sort_rows(inner: &Inner, rows: &mut [u64], keys: &[SortKey], width: usize) {
     let keys: Vec<SortKey> = keys.iter().copied().filter(|key| key.column < width).collect();
-    if keys.is_empty() {
-        return;
-    }
-    let cell = |row: u64, column: usize| -> SortCell<'_> {
-        match inner.locate(row) {
-            Some((chunk, local)) => {
-                let data = &inner.chunks[chunk].columns[column];
-                SortCell::read(
-                    data.kinds[local],
-                    data.raw[local],
-                    data.bytes(local),
-                    data.is_null(local),
-                )
-            }
+    // A column that holds text or bytes anywhere takes the wide key.
+    let wide = keys
+        .iter()
+        .map(|key| {
+            inner.chunks.iter().any(|chunk| {
+                chunk
+                    .columns
+                    .get(key.column)
+                    .is_some_and(|data| data.kinds.iter().any(|&kind| wants_wide_key(kind)))
+            })
+        })
+        .collect();
+    RowSort { inner, keys, wide }.sort(rows, 0, 0);
+}
+
+/// Below this many rows a sort compares cells at once: keys would cost more
+/// to build than they save.
+const FEW_ROWS: usize = 32;
+/// From this many rows on, narrow keys are dealt out by the radix sort; fewer
+/// are quicker to compare than to deal.
+const RADIX_FROM: usize = 1024;
+
+/// A sort of stored rows, one sort column at a time (`order.rs`, Sort keys).
+///
+/// The rows are sorted by keys of the first column, which reads each cell
+/// once. Rows whose keys are the same form a run, and each run is settled by
+/// itself: when the cells are equal, by the next sort column, in the same
+/// way; when they are texts alike past the key's width, by keys of what
+/// follows the start they share. Only what keys cannot say is left to a
+/// comparison of the cells.
+struct RowSort<'a> {
+    inner: &'a Inner,
+    keys: Vec<SortKey>,
+    /// For each sort column, whether it takes the wide key.
+    wide: Vec<bool>,
+}
+
+impl<'a> RowSort<'a> {
+    fn cell(&self, row: u64, column: usize) -> SortCell<'a> {
+        let Some((chunk, local)) = self.inner.locate(row) else {
+            return SortCell::Null;
+        };
+        match self.inner.chunks.get(chunk).and_then(|chunk| chunk.columns.get(column)) {
+            Some(data) => SortCell::read(
+                data.kinds.get(local).copied().unwrap_or(0),
+                data.raw.get(local).copied().unwrap_or(0),
+                data.bytes(local),
+                data.is_null(local),
+            ),
             None => SortCell::Null,
         }
-    };
-    rows.sort_by(|&a, &b| {
-        keys.iter()
+    }
+
+    /// The order of two rows by the sort columns from `level` on.
+    fn by_cells(&self, a: u64, b: u64, level: usize) -> std::cmp::Ordering {
+        self.keys
+            .iter()
+            .skip(level)
             .map(|key| {
-                let order = compare(cell(a, key.column), cell(b, key.column));
+                let order = compare(self.cell(a, key.column), self.cell(b, key.column));
                 if key.descending { order.reverse() } else { order }
             })
             .find(|order| order.is_ne())
             .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    }
+
+    /// Sorts `rows`, which are equal in every sort column before `level`, by
+    /// the columns from `level` on. Their texts in column `level` are alike up
+    /// to byte `past`, so keys are read from there.
+    fn sort(&self, rows: &mut [u64], level: usize, past: usize) {
+        if level >= self.keys.len() || rows.len() < 2 {
+            return;
+        }
+        if rows.len() < FEW_ROWS || u32::try_from(rows.len()).is_err() {
+            rows.sort_by(|&a, &b| self.by_cells(a, b, level));
+        } else if self.wide.get(level) == Some(&true) {
+            self.sort_keyed::<WIDE_KEY>(rows, level, past);
+        } else {
+            self.sort_keyed::<NARROW_KEY>(rows, level, past);
+        }
+    }
+
+    fn sort_keyed<const N: usize>(&self, rows: &mut [u64], level: usize, past: usize) {
+        let Some(&SortKey { column, descending }) = self.keys.get(level) else {
+            return;
+        };
+        let mut builder = KeyBuilder::default();
+        let mut keyed: Vec<Keyed<N>> = rows
+            .iter()
+            .zip(0u32..)
+            .map(|(&row, place)| Keyed {
+                key: builder.key(self.cell(row, column), past),
+                place,
+            })
+            .collect();
+        for entry in &mut keyed {
+            builder.settle(&mut entry.key, descending);
+        }
+        // By key alone, which reads no cell. Equal keys stay in the order they
+        // came: by the radix sort's nature, or by `place`.
+        if N == NARROW_KEY && keyed.len() >= RADIX_FROM {
+            radix_sort(&mut keyed);
+        } else {
+            keyed.sort_unstable_by(|a, b| key_order(&a.key, &b.key).then(a.place.cmp(&b.place)));
+        }
+        let sorted: Vec<u64> = keyed
+            .iter()
+            .map(|entry| rows.get(entry.place as usize).copied().unwrap_or(0))
+            .collect();
+        rows.copy_from_slice(&sorted);
+
+        let mut start = 0;
+        while let Some(head) = keyed.get(start) {
+            let run = keyed[start..].iter().take_while(|entry| entry.key == head.key).count();
+            if run > 1
+                && let Some(alike) = rows.get_mut(start..start + run)
+            {
+                self.settle(alike, level, past, &builder);
+            }
+            start += run;
+        }
+    }
+
+    /// Orders rows whose keys in column `level` are the same.
+    fn settle(&self, alike: &mut [u64], level: usize, past: usize, builder: &KeyBuilder) {
+        let (Some(key), Some(&first)) = (self.keys.get(level), alike.first()) else {
+            return;
+        };
+        let head = self.cell(first, key.column);
+        if builder.whole(head) {
+            // The key was the whole cell, so the cells are equal: the next column orders them.
+            return self.sort(alike, level + 1, 0);
+        }
+        if let SortCell::Text(head) = head {
+            let head = head.as_bytes();
+            let rest = |text: &'a [u8]| text.get(past..).unwrap_or_default();
+            // How far every text of the run is the same, and whether they all are, whole.
+            let mut shared = head.len();
+            let mut same = true;
+            for &row in alike.iter().skip(1) {
+                let SortCell::Text(text) = self.cell(row, key.column) else {
+                    (shared, same) = (past, false);
+                    break;
+                };
+                let text = text.as_bytes();
+                let common = past + shared_start(rest(head), rest(text));
+                same &= text.len() == head.len() && common == head.len();
+                shared = shared.min(common);
+                if !same && shared <= past {
+                    break;
+                }
+            }
+            if same {
+                return self.sort(alike, level + 1, 0);
+            }
+            // Alike past the key's width: key them again from what follows the shared start.
+            let further = skippable(head, shared, past);
+            if further > past {
+                return self.sort(alike, level, further);
+            }
+        }
+        // What a key cannot say: numbers of several kinds, bytes, digits past a key's width.
+        alike.sort_by(|&a, &b| self.by_cells(a, b, level));
+    }
 }
 
 /// The most cells one copy takes, so selecting everything in a huge result
