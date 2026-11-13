@@ -54,3 +54,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0024 | [An SSH tunnel is a local port the app opens; drivers only dial it](0024-ssh-tunnels.md) |
 | 0025 | [A Supabase project's Live tab also listens through Realtime](0025-supabase-realtime.md) |
 | 0026 | [RabbitMQ: an AMQP connection, a console that publishes, and Live tabs that watch or take](0026-rabbitmq.md) |
+| 0027 | [Firebase: Firestore and the Realtime Database over REST, signed in with a service account's key file](0027-firebase.md) |

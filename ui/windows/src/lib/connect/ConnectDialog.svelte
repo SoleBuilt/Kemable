@@ -2,10 +2,10 @@
   import type { ConnectionConfig } from "../types";
 
   /** The engines this dialog connects to over the network. */
-  export type NetworkEngine = "postgres" | "mssql" | "redis" | "rabbitmq" | "d1";
+  export type NetworkEngine = "postgres" | "mssql" | "redis" | "rabbitmq" | "d1" | "firebase";
 
   export function isNetworkEngine(id: string): id is NetworkEngine {
-    return id === "postgres" || id === "mssql" || id === "redis" || id === "rabbitmq" || id === "d1";
+    return id === "postgres" || id === "mssql" || id === "redis" || id === "rabbitmq" || id === "d1" || id === "firebase";
   }
 
   /** What Connect asks for: a saved connection by id, or a config as typed. */
@@ -101,6 +101,12 @@
       urlHint: "",
       hostHint: "",
     },
+    firebase: {
+      title: "Firebase",
+      port: 0,
+      urlHint: "",
+      hostHint: "",
+    },
   };
 
   // svelte-ignore state_referenced_locally
@@ -116,8 +122,12 @@
   let tls: TlsMode = $state("prefer");
   // Query parameters from a pasted URL that the form has no field for.
   let options: Record<string, string> = $state({});
-  /** D1: the Cloudflare account the databases belong to. */
+  /** D1: the Cloudflare account the databases belong to. Firebase: the project id. */
   let account = $state("");
+  /** Firebase: the service account key file, the Realtime Database's address, the Firestore emulator. */
+  let keyFile = $state("");
+  let databaseUrl = $state("");
+  let emulator = $state("");
   let name = $state("");
   /** The colour of its dot in Ctrl+K and the saved list (design system D8). */
   let color = $state("gray");
@@ -170,6 +180,11 @@
       user: sshUser.trim(),
       auth: sshWithKey ? { kind: "key", path: sshKeyPath.trim(), passphrase: sshPassphrase } : { kind: "password", password: sshPassword },
     };
+  }
+
+  async function pickKeyFile() {
+    const path = await open({ multiple: false, directory: false, title: "A service account key", filters: [{ name: "JSON key", extensions: ["json"] }] });
+    if (typeof path === "string") keyFile = path;
   }
 
   async function pickKey() {
@@ -249,13 +264,16 @@
     savePassword = saved.savePassword;
   }
   if (saved.config.target.kind === "http") {
-    engine = "d1";
+    engine = saved.config.engine === "firebase" ? "firebase" : "d1";
     savedId = saved.id;
     name = saved.name;
     account = saved.config.target.endpoint;
     database = saved.config.options?.database ?? "";
+    keyFile = saved.config.options?.key_file ?? "";
+    databaseUrl = saved.config.options?.database_url ?? "";
+    emulator = saved.config.options?.emulator ?? "";
     options = { ...(saved.config.options ?? {}) };
-    delete options.database;
+    for (const kept of ["database", "key_file", "database_url", "emulator"]) delete options[kept];
     savePassword = saved.savePassword;
   }
   }
@@ -271,6 +289,7 @@
   /** A name for a connection the user did not name. */
   function defaultName(): string {
     if (engine === "d1") return `D1 ${database.trim() || account.trim().slice(0, 8)}`;
+    if (engine === "firebase") return `Firebase ${account.trim() || keyFile.split(/[\\/]/).pop()?.replace(/\.json$/i, "") || "project"}`;
     const login = withProfile ? (profile?.user ?? "") : user.trim();
     const who = usesLogin && login ? `${login}@` : "";
     return `${who}${host.trim()}${database.trim() ? `/${database.trim()}` : ""}`;
@@ -283,14 +302,19 @@
 
   const info = $derived(ENGINES[engine]);
   const usesLogin = $derived(engine !== "mssql" || !windowsLogin);
-  /** D1 is reached through Cloudflare's API: an account and a token, no host. */
-  const http = $derived(engine === "d1");
+  /** D1 is reached through Cloudflare's API: an account and a token, no host. Firebase through Google's. */
+  const http = $derived(engine === "d1" || engine === "firebase");
+  const firebase = $derived(engine === "firebase");
   /** Credential profiles hold SQL logins: PostgreSQL, and SQL Server signing in with a login. */
   const profileEngine = $derived((engine === "postgres" || engine === "mssql") && usesLogin);
   const withProfile = $derived(profileEngine && useProfile);
   const profile = $derived(profiles.find((entry) => entry.id === profileId) ?? null);
   const sshReady = $derived(!sshOn || (sshHost.trim() !== "" && sshUser.trim() !== "" && (!sshWithKey || sshKeyPath.trim() !== "")));
-  const ready = $derived((http ? account.trim() !== "" : host.trim() !== "") && (!withProfile || profile !== null) && sshReady);
+  const ready = $derived(
+    (firebase ? keyFile.trim() !== "" || emulator.trim() !== "" : http ? account.trim() !== "" : host.trim() !== "") &&
+      (!withProfile || profile !== null) &&
+      sshReady,
+  );
 
   const TLS_MODES: { value: TlsMode; label: string }[] = [
     { value: "disable", label: "Disable" },
@@ -384,7 +408,7 @@
   function where(entry: SavedConnection): string {
     const target = entry.config.target;
     const kind = isNetworkEngine(entry.config.engine) ? ENGINES[entry.config.engine].title : entry.config.engine;
-    return `${kind} · ${target.kind === "network" ? target.host : target.kind === "http" ? "Cloudflare API" : "file"}`;
+    return `${kind} · ${target.kind === "network" ? target.host : target.kind === "http" ? (entry.config.engine === "firebase" ? target.endpoint || "Google Cloud" : "Cloudflare API") : "file"}`;
   }
 
   const savedOptions = $derived([
@@ -433,6 +457,13 @@
   }
 
   function buildConfig(): ConnectionConfig | null {
+    if (firebase) {
+      const extra: Record<string, string> = { ...options };
+      if (keyFile.trim()) extra.key_file = keyFile.trim();
+      if (databaseUrl.trim()) extra.database_url = databaseUrl.trim();
+      if (emulator.trim()) extra.emulator = emulator.trim();
+      return { engine, target: { kind: "http", endpoint: account.trim(), token: "" }, options: extra };
+    }
     if (http) {
       const extra: Record<string, string> = { ...options };
       if (database.trim()) extra.database = database.trim();
@@ -640,7 +671,21 @@
     </Field>
   </div>
 
-  {#if http}
+  {#if firebase}
+    <Field label="Service account key file" hint="Firebase console › Project settings › Service accounts › Generate new private key. Kemable keeps only where the file is.">
+      <div class="pb-row">
+        <Input mono bind:value={keyFile} placeholder="C:\Users\me\keys\my-project-firebase-adminsdk.json" />
+        <Button icon="file" onclick={() => void pickKeyFile()}>Browse…</Button>
+      </div>
+    </Field>
+    <div class="pb-form-2">
+      <Field label="Project ID"><Input mono bind:value={account} placeholder="From the key file" /></Field>
+      <Field label="Realtime Database URL"><Input mono bind:value={databaseUrl} placeholder="https://<project>-default-rtdb.firebaseio.com" /></Field>
+    </div>
+    <Field label="Firestore emulator" hint="Optional: host:port of the Firestore emulator, which needs no key.">
+      <Input mono bind:value={emulator} placeholder="localhost:8080" />
+    </Field>
+  {:else if http}
     <div class="pb-form-2">
       <Field label="Account ID">
         <Input mono bind:ref={accountInput} bind:value={account} required placeholder="32 letters and digits, from the dashboard" />
@@ -789,7 +834,7 @@
 
   <div class="pb-checks">
     <Checkbox bind:checked={save}>Save this connection</Checkbox>
-    {#if save && usesLogin && !withProfile}
+    {#if save && usesLogin && !withProfile && !firebase}
       <Checkbox class="pb-check--indent" bind:checked={savePassword}>Keep the {http ? "token" : "password"} in Windows Credential Manager</Checkbox>
     {/if}
   </div>

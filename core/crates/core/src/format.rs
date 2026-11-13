@@ -111,6 +111,18 @@ pub fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (year, u32::try_from(month).unwrap_or(1), u32::try_from(day).unwrap_or(1))
 }
 
+/// Days since 1970-01-01 of a proleptic Gregorian date, from Howard
+/// Hinnant's `days_from_civil`; the inverse of [`civil_from_days`].
+pub fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let month_index = (month + 9) % 12;
+    let day_of_year = (153 * month_index + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
 fn write_date(days: i64, out: &mut String) {
     let (year, month, day) = civil_from_days(days);
     if (0..=9999).contains(&year) {

@@ -1,0 +1,28 @@
+[package]
+name = "kemable-driver-firebase"
+description = "Firebase: Firestore and the Realtime Database through their REST APIs, signed in as a service account."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+kemable-core.workspace = true
+reqwest.workspace = true
+ring.workspace = true
+rustls.workspace = true
+rustls-platform-verifier.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+kemable-store.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
+
+[lints]
+workspace = true

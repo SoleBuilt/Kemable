@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use kemable_core::registry::DriverRegistry;
 use kemable_driver_d1::D1Driver;
+use kemable_driver_firebase::FirebaseDriver;
 use kemable_driver_mssql::MssqlDriver;
 use kemable_driver_postgres::PostgresDriver;
 use kemable_driver_rabbitmq::RabbitmqDriver;
@@ -39,6 +40,7 @@ fn registry() -> DriverRegistry {
         .with(Arc::new(MssqlDriver))
         .with(Arc::new(RedisDriver))
         .with(Arc::new(RabbitmqDriver))
+        .with(Arc::new(FirebaseDriver))
         .with(Arc::new(D1Driver))
 }
 

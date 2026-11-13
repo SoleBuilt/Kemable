@@ -67,7 +67,7 @@ Found while trying the app on a local PostgreSQL (2026-11-09). To do before Phas
   - [x] RabbitMQ consumers, with the RabbitMQ driver. Built 2026-11-14 (`docs/decisions/0026-rabbitmq.md`): a Live tab binds a queue of its own to exchanges (a copy) or takes from queues by name; the console publishes. Not run against a broker yet.
   - [ ] Firebase, with the Firebase driver.
 - [ ] RabbitMQ: queues, exchanges, peek, publish. The driver is in (ADR 0026) and its console publishes; queues and exchanges in the sidebar and peeking through the management API are still to build.
-- [ ] Firebase: Firestore collections and documents, Realtime Database.
+- [x] Firebase: Firestore collections and documents, Realtime Database. Built 2026-11-14 (`docs/decisions/0027-firebase.md`): a service account's key file, the tree's collections and paths, and a console that reads (`get` a collection, a document or a query; `rtdb` a path). Writing is not built. Tested against an HTTP server in the tests.
 - [ ] PGlite through a pglite-socket sidecar.
 - [x] SSH tunnels. Built 2026-11-14 (`docs/decisions/0024-ssh-tunnels.md`): PostgreSQL, SQL Server and Redis through an SSH server, with a password or a private key; the server's key checked against `known_hosts` and an unknown one shown to trust. Not yet: an SSH agent, a jump host.
 - [x] Export and import. Built in the UX backlog as the tree menu's Export, Import and Generate Rows (`docs/decisions/0018-export-import-generate.md`); Transfer To and Copy To stay there.

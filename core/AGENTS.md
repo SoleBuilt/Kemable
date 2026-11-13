@@ -17,7 +17,7 @@ The Rust crates every UI builds on: the domain types and the driver contract, on
 - `crates/store`: `ResultStore` (columnar chunks, with its sort and filter as row orders over them: `order.rs`, `filter.rs`) and `window` (the packed window format and its reader).
 - `crates/storage`: `ConnectionLibrary` (saved connections, `connections.json`, atomic writes, never over a file it cannot read), `profiles` (credential profiles, `profiles.json`, ADR 0015), `queries`, `history`, and the `SecretVault` trait.
 - `crates/tunnel`: SSH tunnels (`HostKeys`, `open`, `Tunnel`), on russh with ring (ADR 0024). The app opens one and sets `ConnectionConfig::dial`; a driver connects there and keeps the host for TLS.
-- `crates/drivers/<engine>`: one crate per engine, each exporting a `Driver` and its `EngineInfo`. Today: `sqlite`, `postgres`, `mssql`, `redis`, `d1`, `rabbitmq`.
+- `crates/drivers/<engine>`: one crate per engine, each exporting a `Driver` and its `EngineInfo`. Today: `sqlite`, `postgres`, `mssql`, `redis`, `d1`, `rabbitmq`, `firebase`.
 
 ## Commands
 

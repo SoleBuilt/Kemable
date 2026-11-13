@@ -10,6 +10,7 @@ members = [
     "core/crates/drivers/redis",
     "core/crates/drivers/d1",
     "core/crates/drivers/rabbitmq",
+    "core/crates/drivers/firebase",
     "core/crates/tunnel",
     "ui/windows/src-tauri",
 ]
@@ -34,6 +35,7 @@ kemable-driver-mssql = { path = "core/crates/drivers/mssql" }
 kemable-driver-redis = { path = "core/crates/drivers/redis" }
 kemable-driver-d1 = { path = "core/crates/drivers/d1" }
 kemable-driver-rabbitmq = { path = "core/crates/drivers/rabbitmq" }
+kemable-driver-firebase = { path = "core/crates/drivers/firebase" }
 kemable-tunnel = { path = "core/crates/tunnel" }
 
 async-trait = "0.1"
@@ -54,6 +56,8 @@ russh = { version = "0.65", default-features = false, features = ["ring", "flate
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "__rustls-tls"] }
 # AMQP for RabbitMQ: tokio, and rustls with ring and the platform's trust store, as every driver here.
 lapin = { version = "4.12", default-features = false, features = ["tokio", "rustls--ring", "rustls-platform-verifier"] }
+# Signing a service account's JWT (RS256) for Firebase; already in the app for rustls.
+ring = "0.17"
 rusqlite = { version = "0.41", features = ["bundled", "column_decltype"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
