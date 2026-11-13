@@ -11,7 +11,7 @@ use paboable_core::command::select_database;
 use paboable_core::connection::Connection;
 use paboable_core::sink::ResultSink;
 use paboable_core::sql::{
-    DatabaseChange, SqlGrammar, StatementKind, StatementSpan, batch_queries, database_change,
+    DatabaseChange, SqlGrammar, StatementKind, StatementSpan, batch_queries, database_change, may_change_schema,
     split_after_created_databases,
 };
 use paboable_core::value::Value;
@@ -63,6 +63,9 @@ pub enum RunEvent {
     CommandDone {
         statement: usize,
         rows_affected: Option<u64>,
+        /// The statement may have changed the objects the tree lists, so the
+        /// UI reads them again; a console's command always says yes.
+        changes_schema: bool,
     },
     Notice {
         statement: usize,
@@ -209,9 +212,15 @@ impl ResultSink for RunSink {
             *self.rows.lock().unwrap_or_else(PoisonError::into_inner) =
                 Some(i64::try_from(affected).unwrap_or(i64::MAX));
         }
+        let origin = self.origin.lock().unwrap_or_else(PoisonError::into_inner);
+        let changes_schema = origin
+            .grammar
+            .is_none_or(|grammar| may_change_schema(&origin.statement, grammar));
+        drop(origin);
         self.send(RunEvent::CommandDone {
             statement: self.statement(),
             rows_affected,
+            changes_schema,
         });
     }
 

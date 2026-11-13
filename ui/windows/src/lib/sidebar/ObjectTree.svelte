@@ -86,7 +86,10 @@
   let filter = $state("");
   let selected: string | null = $state(null);
 
-  /** Reads the tree again, keeping which nodes were open. */
+  /**
+   * Reads the tree again, keeping which nodes were open. A node shows what it
+   * held until its new objects arrive, so a refresh never blinks to "Loading…".
+   */
   export async function refresh() {
     const conn = connection.id;
     topError = null;
@@ -99,10 +102,10 @@
           open: (before.get(info.name)?.open ?? false) || info.name === database,
           loading: false,
           error: null,
-          groups: null,
+          groups: before.get(info.name)?.groups ?? null,
         }));
       } else {
-        nodes = [{ name: null, open: true, loading: false, error: null, groups: null }];
+        nodes = [{ name: null, open: true, loading: false, error: null, groups: before.get(null)?.groups ?? null }];
       }
       await Promise.all(
         nodes.filter((node) => node.open).map((node) => loadNode(node, before.get(node.name)?.groups ?? null)),

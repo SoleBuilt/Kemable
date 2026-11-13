@@ -1147,7 +1147,7 @@
         sets = sets.map((set) => (set.statement === event.statement ? { ...set, part: null } : set));
         break;
       case "commandDone":
-        messages.push({ kind: "command", statement: event.statement, rowsAffected: event.rowsAffected });
+        messages.push({ kind: "command", statement: event.statement, rowsAffected: event.rowsAffected, changesSchema: event.changesSchema });
         break;
       case "notice":
         messages.push({ kind: "notice", statement: event.statement, text: event.text });
@@ -1173,7 +1173,9 @@
         countAfterPage = false;
         elapsedMs = event.elapsedMs;
         if (sets.length === 0 || event.failed) activeTab = "messages";
-        if (messages.some((message) => message.kind === "command" || message.kind === "switched")) refreshKey++;
+        // Only a statement that may have changed the objects reads the tree again (sql::may_change_schema):
+        // a NOTIFY or an INSERT leaves it as it was.
+        if (messages.some((message) => (message.kind === "command" && message.changesSchema) || message.kind === "switched")) refreshKey++;
         break;
     }
   }
