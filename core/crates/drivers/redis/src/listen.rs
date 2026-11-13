@@ -16,7 +16,7 @@ use kemable_core::sink::{ExecOutcome, ResultSink};
 use kemable_core::value::{Value, ValueKind};
 use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
-use tokio::time::{Instant, interval_at};
+use tokio::time::{Instant, MissedTickBehavior, interval_at};
 
 use crate::link::{self, Endpoint, Stream, lost, query_error, read_error};
 use crate::reply::bytes_value;
@@ -60,6 +60,10 @@ pub(crate) async fn listen(
     let mut waiting = channels.len() + patterns.len();
     let mut early: Vec<[Value; 4]> = Vec::new();
     let mut pings = interval_at(Instant::now() + keepalive, keepalive);
+    // A late tick (a busy machine, a laptop waking up) must not be followed at
+    // once by the next: that one would find the PING just sent still unanswered
+    // and end a healthy link as lost. Each PING gets a whole `keepalive` to come back.
+    pings.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let mut unanswered = false;
     let outcome = loop {
         let event = tokio::select! {
