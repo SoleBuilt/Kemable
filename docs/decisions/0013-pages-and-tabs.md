@@ -2,6 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-11-11
+- **Added to by**: `docs/decisions/0020-live-tab.md` (a third kind of page, the Live page, which goes on listening while another page is shown).
 - **Follows**: `docs/decisions/0012-design-system.md` (decisions D13 to D25 of the design system). **Changes**: how `docs/decisions/0006-table-browsing.md` shows a table. It now opens on a page of its own, not as a tab in the results.
 
 ## Context

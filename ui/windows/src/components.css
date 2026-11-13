@@ -523,6 +523,11 @@ span.pb-cond-lead { display: inline-flex; color: var(--fg-muted); font-size: 12p
 .pb-editor-host[hidden] { display: none; }
 .pb-editor-host > * { flex: 1 1 auto; min-width: 0; }
 .pb-keybar { gap: var(--space-2); padding-left: var(--space-3); }
+/* A Live page: the channels to listen to, then the events, in the results grid (ADR 0020) */
+.pb-live { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--canvas); }
+.pb-live > .pb-results { flex: 1 1 auto; }
+.pb-live-topic { display: flex; flex: 1 1 260px; align-items: center; gap: var(--space-2); min-width: 0; color: var(--fg-muted); font-size: 12px; }
+.pb-live-topic > .pb-input { flex: 1 1 auto; min-width: 0; }
 .pb-key-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .pb-results-grid { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
 .pb-detail-pane { display: flex; flex: none; min-height: 0; }

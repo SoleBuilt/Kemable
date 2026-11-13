@@ -22,7 +22,7 @@ tokio-postgres-rustls.workspace = true
 [dev-dependencies]
 bytes = "1"
 paboable-store.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
 
 [lints]
 workspace = true

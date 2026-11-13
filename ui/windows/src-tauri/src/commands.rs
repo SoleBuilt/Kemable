@@ -1122,6 +1122,47 @@ pub async fn delete_query(library: State<'_, Library>, id: String) -> CommandRes
     library.with_queries(|queries| queries.delete(&id))
 }
 
+/// Starts a Live tab's listening in `database` and returns at once with an id
+/// `cancel_run` stops (`docs/decisions/0020-live-tab.md`). `channels` and
+/// `patterns` are what the user typed; the core reads the names in them.
+/// Events arrive on `on_event` until one of type `finished`.
+#[tauri::command]
+pub async fn start_live(
+    state: State<'_, Arc<AppState>>,
+    conn: u64,
+    database: Option<String>,
+    channels: String,
+    patterns: String,
+    on_event: Channel<crate::live::LiveEvent>,
+) -> CommandResult<u64> {
+    let server = state.server(conn)?;
+    let topics = paboable_core::live::topics(&channels, &patterns);
+    if topics.is_empty() {
+        return Err(DriverError::config("no channel or pattern to listen to"));
+    }
+    if topics
+        .iter()
+        .any(|topic| !server.engine.live_topics.contains(&topic.kind))
+    {
+        return Err(DriverError::unsupported(
+            "this engine does not listen to that kind of topic",
+        ));
+    }
+    let cancel = server.closing.child_token();
+    let id = state.add_run(cancel.clone());
+    let live = crate::live::Live {
+        id,
+        server,
+        database,
+        topics,
+        max_events: crate::live::MAX_EVENTS,
+        cancel,
+        channel: on_event,
+    };
+    tauri::async_runtime::spawn(crate::live::listen(Arc::clone(&state), live));
+    Ok(id)
+}
+
 #[tauri::command]
 pub async fn cancel_run(state: State<'_, Arc<AppState>>, run: u64) -> CommandResult<()> {
     state.cancel_run(run);

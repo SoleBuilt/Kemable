@@ -17,6 +17,7 @@ pub mod format;
 pub mod generate;
 pub mod import;
 pub mod keys;
+pub mod live;
 pub mod registry;
 pub mod sink;
 pub mod sql;

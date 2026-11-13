@@ -25,7 +25,7 @@ pub static INFO: EngineInfo = EngineInfo {
     targets: &[TargetKind::File],
     default_port: None,
     sql_grammar: Some(SqlGrammar::Sqlite),
-    live: false,
+    live_topics: &[],
     has_databases: false,
     tree_folders: paboable_core::engine::SQL_TREE_FOLDERS,
 };

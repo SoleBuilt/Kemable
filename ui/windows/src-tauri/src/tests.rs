@@ -1373,3 +1373,362 @@ async fn the_connect_form_keeps_a_connection_only_once_it_connects() {
 fn rusqlite_file(path: &std::path::Path) {
     std::fs::write(path, b"").unwrap();
 }
+
+// --- The Live tab (docs/decisions/0020-live-tab.md) -----------------------------
+
+/// A driver whose `listen` gives `events` rows at once, then waits to be
+/// stopped, or fails as a lost link does.
+struct Listener {
+    events: i64,
+    then_lost: bool,
+}
+
+#[async_trait::async_trait]
+impl paboable_core::driver::Driver for Listener {
+    fn info(&self) -> &'static paboable_core::engine::EngineInfo {
+        &paboable_driver_sqlite::INFO
+    }
+
+    async fn connect(
+        &self,
+        _config: &paboable_core::config::ConnectionConfig,
+        _options: CallOptions,
+    ) -> paboable_core::Result<Arc<dyn paboable_core::connection::Connection>> {
+        Err(paboable_core::DriverError::unsupported("this driver only listens"))
+    }
+
+    async fn listen(
+        &self,
+        _config: &paboable_core::config::ConnectionConfig,
+        topics: &[paboable_core::live::LiveTopic],
+        sink: Arc<dyn paboable_core::sink::ResultSink>,
+        options: CallOptions,
+    ) -> paboable_core::Result<paboable_core::sink::ExecOutcome> {
+        use paboable_core::value::{Value, ValueKind};
+        sink.notice(&format!("listening to {}", topics[0].name));
+        sink.begin_set(vec![paboable_core::catalog::ColumnMeta {
+            name: "n".into(),
+            type_name: String::new(),
+            kind: ValueKind::Int,
+        }]);
+        for n in 0..self.events {
+            if !sink.push_rows(&[Value::Int(n)]) {
+                sink.end_set();
+                return Ok(paboable_core::sink::ExecOutcome { limited: true });
+            }
+        }
+        if self.then_lost {
+            sink.end_set();
+            return Err(paboable_core::DriverError::new(paboable_core::ErrorCode::Lost, "gone"));
+        }
+        options.stopped().await;
+        sink.end_set();
+        Err(options.stop_reason())
+    }
+}
+
+struct LiveTab {
+    state: Arc<AppState>,
+    server: Arc<OpenServer>,
+    run: u64,
+    events: tokio::sync::mpsc::UnboundedReceiver<Json>,
+    listening: tokio::task::JoinHandle<()>,
+}
+
+impl LiveTab {
+    /// The events up to and with the first one `last` accepts.
+    async fn until(&mut self, last: impl Fn(&Json) -> bool) -> Vec<Json> {
+        let mut seen = Vec::new();
+        loop {
+            let event = self.events.recv().await.expect("the listening is still reporting");
+            let done = last(&event);
+            seen.push(event);
+            if done {
+                return seen;
+            }
+        }
+    }
+
+    async fn finished(&mut self) -> Json {
+        let mut seen = self.until(|event| event["type"] == "finished").await;
+        seen.pop().unwrap()
+    }
+}
+
+/// A Live tab on `listener`, as `start_live` starts one, keeping `max_events`.
+async fn live_tab(listener: Listener, max_events: u64) -> LiveTab {
+    use paboable_core::config::{ConnectionConfig, Target};
+    let state = Arc::new(AppState::new(
+        DriverRegistry::new().with(Arc::new(paboable_driver_sqlite::SqliteDriver)),
+    ));
+    let config = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: ":memory:".into(),
+            read_only: false,
+        },
+        options: Default::default(),
+    };
+    let sqlite = state.registry.get("sqlite").cloned().unwrap();
+    let first = sqlite.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(Arc::new(listener), config, first, "test".into()));
+
+    let (sender, events) = tokio::sync::mpsc::unbounded_channel();
+    let channel = Channel::new(move |body| {
+        if let InvokeResponseBody::Json(json) = body {
+            let _ = sender.send(serde_json::from_str::<Json>(&json).unwrap());
+        }
+        Ok(())
+    });
+    let cancel = server.closing.child_token();
+    let run = state.add_run(cancel.clone());
+    let live = crate::live::Live {
+        id: run,
+        server: Arc::clone(&server),
+        database: None,
+        topics: paboable_core::live::topics("orders", ""),
+        max_events,
+        cancel,
+        channel,
+    };
+    let listening = tokio::spawn(crate::live::listen(Arc::clone(&state), live));
+    LiveTab {
+        state,
+        server,
+        run,
+        events,
+        listening,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_live_tab_counts_its_events_in_a_few_reports_and_a_stop_ends_it_clean() {
+    let listener = Listener {
+        events: 1000,
+        then_lost: false,
+    };
+    let mut tab = live_tab(listener, crate::live::MAX_EVENTS).await;
+    // The last count arrives though nothing follows it to push it out.
+    let seen = tab
+        .until(|event| event["type"] == "events" && event["total"] == 1000)
+        .await;
+    assert_eq!(seen[0]["type"], "notice");
+    assert_eq!(seen[0]["text"], "listening to orders");
+    assert_eq!(seen[1]["type"], "listening");
+    assert_eq!(seen[1]["columns"][0]["name"], "n");
+    assert!(
+        of_type(&seen, "events").len() <= 10,
+        "one report an event: {}",
+        seen.len()
+    );
+    let result = seen[1]["result"].as_u64().unwrap();
+    assert_eq!(
+        tab.state.result(result).unwrap().cell_text(999, 0),
+        Some(Some("999".into()))
+    );
+
+    tab.state.cancel_run(tab.run);
+    let finished = tab.finished().await;
+    assert_eq!(finished["total"], 1000);
+    assert_eq!(finished["shown"], 1000);
+    assert_eq!(finished["limited"], false);
+    assert!(finished["error"].is_null(), "a stop is not an error: {finished}");
+    tab.listening.await.unwrap();
+    // The events stay to read after the listening ends, until the tab releases them.
+    assert!(tab.state.result(result).unwrap().state().finished);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_live_tab_stops_at_its_cap_and_says_so() {
+    let listener = Listener {
+        events: 50,
+        then_lost: false,
+    };
+    let mut tab = live_tab(listener, 10).await;
+    let finished = tab.finished().await;
+    assert_eq!(finished["total"], 10);
+    assert_eq!(finished["limited"], true);
+    assert!(finished["error"].is_null());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_live_tab_whose_link_fails_keeps_its_events_and_reports_the_error() {
+    let listener = Listener {
+        events: 3,
+        then_lost: true,
+    };
+    let mut tab = live_tab(listener, crate::live::MAX_EVENTS).await;
+    let finished = tab.finished().await;
+    assert_eq!(finished["total"], 3);
+    assert_eq!(finished["error"]["code"], "driver.lost");
+    assert_eq!(finished["error"]["message"], "gone");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn closing_a_connection_stops_its_live_tabs() {
+    let listener = Listener {
+        events: 1,
+        then_lost: false,
+    };
+    let mut tab = live_tab(listener, crate::live::MAX_EVENTS).await;
+    tab.until(|event| event["type"] == "listening").await;
+    tab.server.close().await;
+    let finished = tab.finished().await;
+    assert!(finished["error"].is_null());
+    tab.listening.await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_link_beside_the_sessions_goes_to_the_database_asked_for() {
+    use paboable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+    let state = Arc::new(AppState::new(
+        DriverRegistry::new().with(Arc::new(paboable_driver_sqlite::SqliteDriver)),
+    ));
+    let (server, folder) = sqlite_server(&state, "config-for").await;
+    // SQLite has no databases: a name is not put into its config.
+    assert_eq!(server.config_for(Some("other")), server.config_for(None));
+    server.close().await;
+    let _ = std::fs::remove_dir_all(folder);
+
+    let config = ConnectionConfig {
+        engine: "postgres".into(),
+        target: Target::Network {
+            host: "db".into(),
+            port: None,
+            user: None,
+            password: Secret::default(),
+            database: Some("home".into()),
+            tls: TlsMode::Disable,
+        },
+        options: Default::default(),
+    };
+    let moved = crate::state::with_database(&config, "other");
+    assert!(matches!(moved.target, Target::Network { database: Some(name), .. } if name == "other"));
+}
+
+/// Runs `script` on `server` as a query page does, with the default row cap.
+async fn run_capped(state: &Arc<AppState>, server: &Arc<OpenServer>, script: &str) -> Vec<Json> {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let collected = Arc::clone(&events);
+    let channel = Channel::new(move |body| {
+        if let InvokeResponseBody::Json(json) = body {
+            collected
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str::<Json>(&json).unwrap());
+        }
+        Ok(())
+    });
+    let statements = split(script, SqlGrammar::Postgres)
+        .iter()
+        .map(|span| Statement {
+            text: span.text(script).to_owned(),
+            kind: span.kind,
+        })
+        .collect();
+    let run = Run {
+        id: state.add_run(CancellationToken::new()),
+        server: Arc::clone(server),
+        database: None,
+        grammar: Some(SqlGrammar::Postgres),
+        statements,
+        follow_created_database: true,
+        row_limit: Some(1_000),
+        record: false,
+        cancel: CancellationToken::new(),
+        channel,
+    };
+    run::execute(Arc::clone(state), run).await;
+    events.lock().unwrap().clone()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $PABOABLE_POSTGRES_URL"]
+async fn a_live_tab_keeps_hearing_notify_after_a_filter_and_a_sort() {
+    let url = std::env::var("PABOABLE_POSTGRES_URL").expect("PABOABLE_POSTGRES_URL is set");
+    let config = paboable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
+    let driver = state.registry.get("postgres").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+
+    let (sender, mut events) = tokio::sync::mpsc::unbounded_channel();
+    let channel = Channel::new(move |body| {
+        if let InvokeResponseBody::Json(json) = body {
+            let _ = sender.send(serde_json::from_str::<Json>(&json).unwrap());
+        }
+        Ok(())
+    });
+    let cancel = server.closing.child_token();
+    let id = state.add_run(cancel.clone());
+    let live = crate::live::Live {
+        id,
+        server: Arc::clone(&server),
+        database: None,
+        topics: paboable_core::live::topics("orders", ""),
+        max_events: crate::live::MAX_EVENTS,
+        cancel,
+        channel,
+    };
+    tokio::spawn(crate::live::listen(Arc::clone(&state), live));
+    let result = loop {
+        let event = events.recv().await.unwrap();
+        if event["type"] == "listening" {
+            break event["result"].as_u64().unwrap();
+        }
+    };
+    let store = state.result(result).unwrap();
+    // Waits for the reports to say `total` events are held.
+    async fn reach(events: &mut tokio::sync::mpsc::UnboundedReceiver<Json>, total: u64) -> Json {
+        let wait = async {
+            loop {
+                let event = events.recv().await.unwrap();
+                assert_ne!(event["type"], "finished", "the listening ended: {event}");
+                if event["type"] == "events" && event["total"].as_u64() == Some(total) {
+                    return event;
+                }
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(10), wait)
+            .await
+            .unwrap_or_else(|_| panic!("never reached {total} events"))
+    }
+
+    let sent = run_capped(
+        &state,
+        &server,
+        "NOTIFY orders, 'xin chào';\nselect pg_notify('orders', g::text) from generate_series(1, 5000) g;\n\
+         NOTIFY Orders, 'chữ hoa';\nNOTIFY khac, 'x';\nNOTIFY orders, 'a';\nNOTIFY orders, 'b';",
+    )
+    .await;
+    assert!(of_type(&sent, "statementFailed").is_empty(), "{sent:?}");
+    reach(&mut events, 5004).await;
+
+    store
+        .filter(
+            &[paboable_core::sql::ResultFilter {
+                column: 2,
+                op: paboable_core::sql::FilterOp::Contains,
+                value: "99".into(),
+                second: String::new(),
+            }],
+            false,
+        )
+        .unwrap();
+    run_capped(&state, &server, "NOTIFY orders, '1990';\nNOTIFY orders, 'abc';").await;
+    let counts = reach(&mut events, 5006).await;
+    let shown = counts["shown"].as_u64().unwrap();
+    assert_eq!(
+        store.cell_text(shown - 1, 2),
+        Some(Some("1990".into())),
+        "the newest match is last"
+    );
+
+    store.sort(&[paboable_store::SortKey {
+        column: 0,
+        descending: false,
+    }]);
+    run_capped(&state, &server, "NOTIFY orders, 'abc';\nNOTIFY Orders, '6000';").await;
+    reach(&mut events, 5008).await;
+    server.close().await;
+}

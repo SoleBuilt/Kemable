@@ -64,6 +64,9 @@ pub struct OpenServer {
     /// The database the first session opened on; empty for an engine without databases.
     pub home: String,
     sessions: tokio::sync::Mutex<HashMap<String, Arc<dyn Connection>>>,
+    /// Fires when the connection closes. What listens on a link of its own
+    /// (a Live tab) takes a child of it, so it stops with its server.
+    pub closing: CancellationToken,
 }
 
 impl OpenServer {
@@ -81,6 +84,17 @@ impl OpenServer {
             config,
             sessions: tokio::sync::Mutex::new(HashMap::from([(home.clone(), first)])),
             home,
+            closing: CancellationToken::new(),
+        }
+    }
+
+    /// The config that reaches `database` on this server, for a link opened
+    /// beside the sessions. `None`, an empty name, or an engine without
+    /// databases means where the connection opened.
+    pub fn config_for(&self, database: Option<&str>) -> ConnectionConfig {
+        match database {
+            Some(name) if self.engine.has_databases && !name.is_empty() => with_database(&self.config, name),
+            _ => self.config.clone(),
         }
     }
 
@@ -107,6 +121,7 @@ impl OpenServer {
     }
 
     pub async fn close(&self) {
+        self.closing.cancel();
         let sessions: Vec<_> = self.sessions.lock().await.drain().map(|(_, session)| session).collect();
         for session in sessions {
             let _ = session.close().await;
@@ -128,7 +143,7 @@ impl OpenServer {
 }
 
 /// The same server, pointed at another database.
-fn with_database(config: &ConnectionConfig, database: &str) -> ConnectionConfig {
+pub(crate) fn with_database(config: &ConnectionConfig, database: &str) -> ConnectionConfig {
     let mut config = config.clone();
     match &mut config.target {
         Target::Network { database: target, .. } => *target = Some(database.to_owned()),

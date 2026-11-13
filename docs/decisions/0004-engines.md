@@ -23,12 +23,12 @@ The engines the author uses: SQL Server, PostgreSQL, SQLite, PGlite, Redis, Rabb
 | Firebase | document | HTTPS | `reqwest` with a service-account token | Firestore through its REST API; the Realtime Database through REST |
 | RabbitMQ | queue | HTTPS and AMQP | management HTTP API, `lapin` | Lists and peeks through the management API (peek requeues); publish and consume through AMQP |
 
-The Live tab, one kind of tab for every engine that pushes changes:
+The Live tab, one kind of tab for every engine that pushes changes (`docs/decisions/0020-live-tab.md`):
 
 | Engine | Live source |
 |---|---|
-| PostgreSQL, Neon, Supabase | `LISTEN` / `NOTIFY`; Supabase Realtime over its WebSocket |
-| Redis | `SUBSCRIBE`, `PSUBSCRIBE`, keyspace notifications |
+| PostgreSQL, Neon, Supabase | Done: `LISTEN` / `NOTIFY` on a session of its own, not through a pooler in transaction mode. To build: Supabase Realtime over its WebSocket |
+| Redis | Done: `SUBSCRIBE`, `PSUBSCRIBE`, keyspace notifications as the channels they are, with a `PING` every 30 s |
 | RabbitMQ | a consumer on a queue, or on a temporary queue bound to an exchange |
 | Firebase | the Realtime Database's server-sent events; Firestore listens over gRPC, which is added only if its size is worth it |
 | D1, SQLite | none; a Live tab is not offered |
@@ -42,4 +42,4 @@ The Live tab, one kind of tab for every engine that pushes changes:
 
 - Key-value, document and queue engines add their own `Connection` methods, defaulting to `driver.unsupported`, when the first engine of each model lands.
 - PGlite needs Node on the machine. The app says so when it is missing.
-- The Live tab streams events through the same coalesced channel as runs.
+- The Live tab counts its events to the UI at most every 50 ms, as a run counts its rows; the events are rows of a result set (ADR 0020).

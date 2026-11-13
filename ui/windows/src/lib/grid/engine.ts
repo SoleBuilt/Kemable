@@ -107,6 +107,18 @@ export interface SortKey {
   descending: boolean;
 }
 
+/**
+ * The sort after a header click on `column`: ascending, then descending, then
+ * unsorted; with `additive` (Shift) the column is one more key of the sort.
+ */
+export function nextSortKeys(current: SortKey[], column: number, additive: boolean): SortKey[] {
+  const held = current.find((key) => key.column === column);
+  const next: SortKey | null = !held ? { column, descending: false } : !held.descending ? { column, descending: true } : null;
+  if (!additive) return next ? [next] : [];
+  if (!held) return [...current, { column, descending: false }];
+  return next ? current.map((key) => (key.column === column ? next : key)) : current.filter((key) => key.column !== column);
+}
+
 /** What a selection spans: a rectangle of cells, whole rows, whole columns, or everything. */
 type SelectionMode = "cells" | "rows" | "columns" | "all";
 
@@ -981,6 +993,11 @@ export class GridEngine {
     this.blocks.clear();
     this.pending.clear();
     this.scheduleDraw();
+  }
+
+  /** Scrolls to the last row, for a set that grows while it is watched; the selection stays. */
+  showLastRow(): void {
+    this.setRowsTop(Math.max(0, this.rowsPixels - this.bodyHeight));
   }
 
   /** Moves the cell cursor to `cell`, as a click there would, and scrolls it into view. */

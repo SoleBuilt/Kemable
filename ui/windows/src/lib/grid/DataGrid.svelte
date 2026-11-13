@@ -10,9 +10,11 @@
     callbacks: GridCallbacks;
     /** Unsaved edits drawn over the rows; null when there are none. */
     edits?: EditOverlay | null;
+    /** Keep the last row in view as rows arrive (a Live tab that follows its newest event). */
+    followEnd?: boolean;
   }
 
-  let { source, totalRows, sortKeys, callbacks, edits = null }: Props = $props();
+  let { source, totalRows, sortKeys, callbacks, edits = null, followEnd = false }: Props = $props();
 
   let scroller: HTMLDivElement;
   let spacer: HTMLDivElement;
@@ -78,7 +80,11 @@
 
   $effect(() => {
     const rows = totalRows;
-    untrack(() => engine?.setTotalRows(rows));
+    const follow = followEnd;
+    untrack(() => {
+      engine?.setTotalRows(rows);
+      if (follow) engine?.showLastRow();
+    });
   });
 </script>
 
