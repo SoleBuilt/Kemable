@@ -6,3 +6,4 @@ dist/
 .DS_Store
 /.analysis/
 ui/windows/src-tauri/gen/
+CLAUDE.local.md
