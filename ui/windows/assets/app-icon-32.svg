@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Kemable, for 24 and 32 px</title>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="#0f0f0f" stroke="#ffffff" stroke-opacity="0.2" stroke-width="24"/>
+  <path d="M272 440 V 320 A 48 48 0 0 1 320 272 H 440" fill="none" stroke="#fafafa" stroke-width="84" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M752 584 V 704 A 48 48 0 0 1 704 752 H 584" fill="none" stroke="#fafafa" stroke-width="84" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="402" y="402" width="220" height="220" rx="40" fill="#ff8a1f"/>
+</svg>

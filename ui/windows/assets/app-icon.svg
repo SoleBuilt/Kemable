@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Kemable</title>
+  <defs>
+    <linearGradient id="ember" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff5a1f"/>
+      <stop offset="1" stop-color="#ffb21a"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="#0f0f0f" stroke="#ffffff" stroke-opacity="0.14" stroke-width="10"/>
+  <path d="M272 440 V 320 A 48 48 0 0 1 320 272 H 440" fill="none" stroke="#fafafa" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M752 584 V 704 A 48 48 0 0 1 704 752 H 584" fill="none" stroke="#fafafa" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="412" y="412" width="200" height="200" rx="40" fill="url(#ember)"/>
+</svg>

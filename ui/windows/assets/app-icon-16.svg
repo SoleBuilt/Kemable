@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Kemable, for 16 px</title>
+  <rect x="32" y="32" width="960" height="960" rx="200" fill="#0f0f0f" stroke="#ffffff" stroke-opacity="0.3" stroke-width="40"/>
+  <path d="M256 460 V 256 H 460" fill="none" stroke="#fafafa" stroke-width="110" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M768 564 V 768 H 564" fill="none" stroke="#fafafa" stroke-width="110" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="392" y="392" width="240" height="240" rx="40" fill="#ff8a1f"/>
+</svg>
