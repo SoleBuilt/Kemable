@@ -50,6 +50,19 @@ Later and Skip are kept in `ui.json` as `updates: { skipped, later: { version, u
 
 Until step 3 the app checks and offers an update, and its download stops at `update.signature`: nothing unsigned is ever installed.
 
+**Authenticode** (added 2026-11-15, `docs/preview-audit.md` C19). The updater's signature proves an installer to the app; Windows knows nothing of it, so SmartScreen says "Windows protected your PC" and "Unknown publisher" on the first install. An Authenticode signature names the publisher. It needs a code-signing certificate, which only the owner can buy. The release workflow is ready for one and skips it while there is none:
+
+- When the secrets `WINDOWS_CERTIFICATE` (the PFX file, base64) and `WINDOWS_CERTIFICATE_PASSWORD` exist, the workflow imports the certificate into the runner's store and passes its thumbprint to the build (`bundle.windows.certificateThumbprint`, SHA-256, timestamped by DigiCert's RFC 3161 server). Tauri then runs signtool on `Kemable.exe`, the uninstaller and the installer as it makes them, and only then writes the updater's signature. Signing the installer after the build would change the bytes the `.sig` covers, and every update would stop at `update.signature`. A last step checks that the installer's signature is valid.
+- Without them, the build is as before, unsigned for Windows.
+
+Once a certificate is bought:
+
+1. Get it as a `.pfx` with its private key and a password. In PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\kemable-signing.pfx")) | Set-Clipboard`.
+2. GitHub › SoleBuilt/Kemable › Settings › Secrets and variables › Actions: `WINDOWS_CERTIFICATE` is the clipboard's text, `WINDOWS_CERTIFICATE_PASSWORD` the PFX's password.
+3. The next version tag builds a signed installer. Check it: the installer's Properties › Digital Signatures names SoleBuilt's certificate.
+
+Since June 2023 certificate authorities keep a new code-signing key on a hardware token or in a cloud HSM, and many no longer hand out a PFX. With such a certificate the import step is replaced by `bundle.windows.signCommand` running the provider's signing tool (a cloud HSM's, or Azure Trusted Signing's), in a change of its own; the rest stays. An OV certificate still shows a SmartScreen warning until its downloads build a reputation.
+
 ## Rationale
 
 - GitHub Releases already hosts the code and costs nothing; a static `latest.json` needs no server of our own.
@@ -62,7 +75,7 @@ Until step 3 the app checks and offers an update, and its download stops at `upd
 
 - Every release from 0.1.0 on carries the updater, so everyone who installs it can be moved forward.
 - A lost private key means installed apps can never take another update; they would need a new installer by hand. Changing the key means a release, signed with the old key, that carries the new public key.
-- Without Authenticode code signing (left for later), Windows SmartScreen warns on the first install of the downloaded installer. The updater's signature is a separate thing: it proves to the app that an installer came from CI.
+- Until a code-signing certificate is in the secrets (Authenticode, above), Windows SmartScreen warns on the first install of the downloaded installer, and `README.md` says how to go past it; that sentence goes once the installer is signed. The updater's signature is a separate thing: it proves to the app that an installer came from CI.
 - On a PC where Kemable was installed for Everyone, an account that is not an administrator cannot install the update: the installer would need admin rights it cannot get. An administrator updates it.
 - The manual checks are in `docs/testing/phase-3.md`, section 11. A real update can only be tried once a published release with a signed installer and a higher version exists.
 

@@ -61,3 +61,18 @@ Làm theo `site/README.md` (Deploying) một lần: tạo project Pages `kemable
   **Đúng:** mở `README.vi.md`; ở đầu có **English** dẫn ngược về `README.md`.
 - [ ] Làm theo phần "Chạy từ mã nguồn" của `README.vi.md` trên một máy sạch.
   **Đúng:** màn hình Welcome có đúng các nút README nhắc (**Open an in-memory database**, **Open file…**, **New connection…**); câu SQL 2 triệu dòng chạy được.
+
+---
+
+## C19. Ký Authenticode cho installer
+
+Mục này còn mở cho tới khi có chứng chỉ code signing (`docs/decisions/0028-updates.md`, Authenticode).
+
+- [ ] Khi **chưa** có secret `WINDOWS_CERTIFICATE`: đẩy một tag phiên bản (hoặc xem lần release gần nhất).
+  **Đúng:** hai bước **Import the code-signing certificate** và **Check the Authenticode signature** bị bỏ qua (skipped); bản nháp release vẫn có installer, `.sig` và `latest.json` như trước.
+- [ ] Sau khi thêm `WINDOWS_CERTIFICATE` và `WINDOWS_CERTIFICATE_PASSWORD` theo ADR 0028: đẩy tag phiên bản kế tiếp.
+  **Đúng:** bước **Check the Authenticode signature** in "signed by" kèm tên chứng chỉ; workflow xanh.
+- [ ] Tải installer từ bản nháp, chuột phải › Properties › **Digital Signatures**.
+  **Đúng:** có chữ ký của SoleBuilt, có timestamp. Chạy installer: hộp thoại UAC hoặc SmartScreen ghi tên nhà phát hành, không còn "Unknown publisher".
+- [ ] Từ bản đã cài trước đó, cập nhật lên bản đã ký (Settings › Updates › Check now › Update).
+  **Đúng:** cập nhật thành công, không dừng ở lỗi chữ ký (`update.signature`).
