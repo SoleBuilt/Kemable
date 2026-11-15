@@ -366,9 +366,13 @@ export const appWindow = {
   close: () => getCurrentWindow().close(),
   /**
    * Runs `work` when the window is asked to close (its button, Alt+F4, the taskbar),
-   * and closes once it is done, so what is kept reaches the disk first.
+   * and closes once it is done, so what is kept reaches the disk first; when `work`
+   * resolves to false the window stays open.
    */
-  onCloseRequested: (work: () => Promise<void>) => getCurrentWindow().onCloseRequested(work),
+  onCloseRequested: (work: () => Promise<boolean>) =>
+    getCurrentWindow().onCloseRequested(async (event) => {
+      if (!(await work())) event.preventDefault();
+    }),
   isMaximized: () => getCurrentWindow().isMaximized(),
   /** Calls `handler` after every resize; resolves to the function that stops it. */
   onResized: (handler: () => void) => getCurrentWindow().onResized(handler),
