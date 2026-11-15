@@ -76,3 +76,10 @@ Mục này còn mở cho tới khi có chứng chỉ code signing (`docs/decisio
   **Đúng:** có chữ ký của SoleBuilt, có timestamp. Chạy installer: hộp thoại UAC hoặc SmartScreen ghi tên nhà phát hành, không còn "Unknown publisher".
 - [ ] Từ bản đã cài trước đó, cập nhật lên bản đã ký (Settings › Updates › Check now › Update).
   **Đúng:** cập nhật thành công, không dừng ở lỗi chữ ký (`update.signature`).
+
+---
+
+## D16. Ghi chú phát hành 0.1.0
+
+- [ ] Đọc `docs/releases/0.1.0.md` (cũng là nội dung bản nháp release trên GitHub).
+  **Đúng:** không còn câu "Kemable now updates itself"; dòng cuối nói app tự hỏi GitHub một lần mỗi lần mở và cài khi người dùng chọn Update, không ngụ ý có bản trước đó.
