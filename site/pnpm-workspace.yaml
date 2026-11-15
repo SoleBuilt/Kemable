@@ -1,0 +1,8 @@
+# The site is its own pnpm project, apart from ui/windows.
+# A package version is taken only once it is two weeks old (in minutes), so a
+# release pulled for a flaw or a compromise never reaches the site first.
+minimumReleaseAge: 20160
+# The pages use plain <img> of images already sized and compressed, so Astro's image
+# optimiser, and the libvips binary (LGPL) it brings, is never needed.
+ignoredOptionalDependencies:
+  - sharp

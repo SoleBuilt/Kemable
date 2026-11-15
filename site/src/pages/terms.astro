@@ -1,0 +1,79 @@
+---
+// The terms of using Kemable. The licenses themselves are LICENSE and LICENSING.md in the repository
+// (docs/decisions/0023-licensing.md); this page points to them and never restates them.
+import DraftNotice from "../components/DraftNotice.astro";
+import Base from "../layouts/Base.astro";
+import { CONTACT, REPOSITORY } from "../links";
+---
+
+<Base title="Terms of Service · Kemable" description="The terms of using Kemable, and the licenses it is offered under.">
+  <article class="prose-page">
+    <DraftNotice />
+    <h1>Terms of Service</h1>
+    <p>Last updated 15 November 2026.</p>
+
+    <p>
+      Kemable is a database client for Windows, made by Huỳnh Trung Đức as a SoleBuilt project. These terms cover the app and this website. By
+      installing or using Kemable you accept them.
+    </p>
+
+    <h2>The license</h2>
+    <p>
+      Kemable is open source under the <a href={`${REPOSITORY}/blob/main/LICENSE`}>GNU Affero General Public License, version 3 only</a> (AGPL-3.0).
+      You may use, study, change and share it under that license. If you share it, changed or not, or let others use a changed version over a
+      network, you must offer them its source under the same license.
+    </p>
+    <p>
+      Kemable is also offered under a commercial license, for anyone who wants to use it without the AGPL's conditions, for example inside a product
+      whose source stays closed. Its terms are not published yet. <a href={`${REPOSITORY}/blob/main/LICENSING.md`}>LICENSING.md</a> says which
+      license covers what, and how to ask about the commercial one.
+    </p>
+    <p>
+      The libraries and fonts inside the app keep their own licenses. Their notices are installed beside the app, and Settings › About opens them.
+    </p>
+
+    <h2>The name and the logo</h2>
+    <p>
+      The names Kemable and SoleBuilt and the Kemable icon and logo are not covered by the licenses above. <a
+        href={`${REPOSITORY}/blob/main/TRADEMARKS.md`}>TRADEMARKS.md</a
+      > says how you may use them.
+    </p>
+
+    <h2>Your data and your servers</h2>
+    <p>
+      Kemable connects only to the servers you point it at, with the credentials you give it, and runs the statements you run. You are responsible
+      for having the right to reach those servers and for what you change on them. Kemable shows the statements an edit, an import or a drop will
+      run before it runs them; read them before you confirm. Keep backups of data that matters.
+    </p>
+    <p>What the app sends and keeps is in the <a href="/privacy">Privacy Policy</a>.</p>
+
+    <h2>Updates</h2>
+    <p>
+      At launch Kemable checks GitHub for a newer version and asks you before installing it. Updates are signed; the app installs only an installer
+      whose signature matches. You can turn the check off in Settings › Updates.
+    </p>
+
+    <h2>Preview software</h2>
+    <p>
+      Kemable is in preview. Features may change or be removed between versions, and some engines are marked as previews in the app. Report a
+      problem on <a href={`${REPOSITORY}/issues`}>GitHub</a>.
+    </p>
+
+    <h2>No warranty</h2>
+    <p>
+      Kemable is provided as is, without any warranty, to the extent the law allows, as section 15 of the AGPL-3.0 says. To the extent the law allows,
+      the author is not liable for any loss or damage from using it, including lost or corrupted data, as section 16 of the AGPL-3.0 says. A
+      commercial license may give other terms.
+    </p>
+
+    <h2>Changes</h2>
+    <p>
+      These terms may change with a new version of the app. The date above says when they last did, and the history of this page is public in <a
+        href={REPOSITORY}>Kemable's repository</a
+      >.
+    </p>
+
+    <h2>Contact</h2>
+    <p>Questions about these terms: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.</p>
+  </article>
+</Base>

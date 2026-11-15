@@ -13,7 +13,7 @@ Run from the repository root:
 ```bash
 node scripts/verify.mjs            # everything, about a minute once warm
 node scripts/verify.mjs --rust     # Rust only, when no UI file changed
-node scripts/verify.mjs --ui       # UI only, when no Rust file changed
+node scripts/verify.mjs --ui       # UI and website only, when no Rust file changed
 ```
 
 The last line is `PASS` or `FAIL: <steps>`. Only `PASS` means done. Report the verdict in one line, and for a failure the step, the first error and its file and line.
@@ -25,6 +25,8 @@ The last line is `PASS` or `FAIL: <steps>`. Only `PASS` means done. Report the v
 | ui install | `pnpm install --frozen-lockfile` in `ui/windows` | a `package.json` change without its lockfile |
 | ui check | `pnpm check` (svelte-check, warnings fail) | type errors, Svelte misuse, a command whose types drifted from Rust |
 | ui build | `pnpm build` | bundling errors; it also writes `dist/`, which the Tauri crate embeds |
+| site install | `pnpm install --frozen-lockfile` in `site` | the website's `package.json` changed without its lockfile |
+| site build | `pnpm build` in `site` | a page of the website that does not build (`site/AGENTS.md`); its type check runs in the deploy workflow |
 | rust fmt | `cargo fmt --all -- --check` | formatting; fix with `cargo fmt --all` |
 | rust clippy | `cargo clippy --workspace --all-targets --locked -- -D warnings` | the workspace lints, `unwrap` outside tests |
 | rust test | `cargo test --workspace --locked` | behavior |

@@ -2988,9 +2988,9 @@
 {/if}
 
 <!--
-  Hidden until Kemable has terms and a privacy policy of its own: the links still
-  point at stand-in pages (`open_terms` in commands.rs). To ask again, remove this
-  comment around the block (docs/decisions/0023-licensing.md).
+  Hidden until the terms and the privacy policy on Kemable's site are final: they are
+  drafts for legal review (`open_terms` in commands.rs, docs/decisions/0030-website.md).
+  To ask again, remove this comment around the block (docs/decisions/0023-licensing.md).
 
   Last, so it covers everything else until it is answered.
 {#if termsNeeded}

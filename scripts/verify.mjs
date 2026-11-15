@@ -4,7 +4,7 @@
 //
 //   node scripts/verify.mjs          everything, the dependencies' licenses too
 //   node scripts/verify.mjs --rust   only the Rust steps (needs ui/windows/dist from an earlier build)
-//   node scripts/verify.mjs --ui     only the UI steps
+//   node scripts/verify.mjs --ui     only the UI steps, the website's too
 //
 // The UI builds first: the Tauri crate embeds ui/windows/dist when it compiles.
 
@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ui = join(root, "ui", "windows");
+const site = join(root, "site");
 
 const flag = process.argv[2] ?? "";
 if (!["", "--rust", "--ui"].includes(flag)) {
@@ -42,6 +43,10 @@ if (runUi) {
   step("ui install", "pnpm install --frozen-lockfile", ui);
   step("ui check", "pnpm check", ui);
   step("ui build", "pnpm build", ui);
+  // The website builds offline in seconds; its slower type check (`pnpm check`)
+  // runs in .github/workflows/site.yml before each deploy (docs/decisions/0030-website.md).
+  step("site install", "pnpm install --frozen-lockfile", site);
+  step("site build", "pnpm build", site);
 }
 
 if (runRust) {

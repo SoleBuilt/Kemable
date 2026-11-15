@@ -1862,10 +1862,10 @@ pub async fn open_data_folder(folder: State<'_, DataFolder>) -> CommandResult<()
 
 // --- The terms (docs/decisions/0019-data-folder.md) ---------------------------
 
-/// Where the terms and the privacy policy are read. For now CapCut's pages stand in,
-/// until Kemable's own site has them.
-const TERMS_OF_SERVICE: &str = "https://www.capcut.com/clause/terms-of-service?store_region=vn&lang=vi";
-const PRIVACY_POLICY: &str = "https://www.capcut.com/clause/privacy-policy?store_region=vn&lang=vi";
+/// Where the terms and the privacy policy are read: Kemable's own site, on its
+/// Cloudflare Pages address until a domain is bought (docs/decisions/0030-website.md).
+const TERMS_OF_SERVICE: &str = "https://kemable.pages.dev/terms";
+const PRIVACY_POLICY: &str = "https://kemable.pages.dev/privacy";
 
 /// Opens the terms (`which`: "terms") or the privacy policy ("privacy") in the
 /// browser. Only these two: the UI never hands a web address to the system.

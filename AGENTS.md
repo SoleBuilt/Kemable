@@ -2,13 +2,14 @@
 
 A fast, light database client. One Rust core does all the work; each operating system gets its own UI under `ui/`. Windows comes first (Tauri 2, Svelte 5, TypeScript); `ui/apple` and `ui/linux` come later.
 
-Read the guide of the folder you work in before editing it: `core/AGENTS.md` or `ui/windows/AGENTS.md`. Claude Code loads each through the folder's `CLAUDE.md`.
+Read the guide of the folder you work in before editing it: `core/AGENTS.md`, `ui/windows/AGENTS.md` or `site/AGENTS.md`. Claude Code loads each through the folder's `CLAUDE.md`.
 
 ## Repository map
 
 - `core/`: the Rust crates with no UI. `core/ARCHITECTURE.md` has the crates, the graph and the driver contract.
 - `ui/windows/`: the Windows app. `src/` is the Svelte UI, `src-tauri/` the Rust crate that turns UI commands into core calls.
 - `ui/apple/`, `ui/linux/`: not started. Each will own its UI and call the same core.
+- `site/`: Kemable's website (Astro, React, Tailwind), the home page, the Terms and the Privacy Policy, deployed to Cloudflare Pages by `.github/workflows/site.yml` (`docs/decisions/0030-website.md`).
 - `docs/decisions/`: the decisions (ADRs) that hold for the whole repo. `docs/roadmap.md`: the phases and the engines; `docs/preview-audit.md`: what must be fixed or decided before the first preview. `docs/testing/`: the manual checks for each phase, in Vietnamese for the person who runs them; a feature that adds something only a person can check adds its steps there.
 - `docs/releases/`: each version's notes, which the app shows in its update notice; a version tag builds and drafts the release (`docs/decisions/0028-updates.md`).
 - `scripts/verify.mjs`: the one check every change passes (`node scripts/verify.mjs` from any shell; `scripts/verify.sh` calls it from bash).
@@ -35,5 +36,5 @@ Read the guide of the folder you work in before editing it: `core/AGENTS.md` or 
 
 ## Commits
 
-- Commit only when the user asks. Subject `type(scope): description`, for example `feat(core-store): pack windows column by column`. Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `chore`. Scopes: `core`, `core-<crate>`, `driver-<engine>`, `windows`, `docs`, `repo`.
-- Never commit generated output: `target/`, `node_modules/`, `dist/`, `ui/windows/src-tauri/gen/`.
+- Commit only when the user asks. Subject `type(scope): description`, for example `feat(core-store): pack windows column by column`. Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `chore`. Scopes: `core`, `core-<crate>`, `driver-<engine>`, `windows`, `site`, `docs`, `repo`.
+- Never commit generated output: `target/`, `node_modules/`, `dist/`, `ui/windows/src-tauri/gen/`, `site/.astro/`.

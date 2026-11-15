@@ -1,0 +1,79 @@
+---
+// Every page's frame: the head, the bar at the top and the footer.
+import ThemeToggle from "../components/ThemeToggle";
+import { DOWNLOAD, REPOSITORY, SOLEBUILT } from "../links";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/app-icon.svg" />
+    <meta name="theme-color" content="#050505" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={new URL("/demo-poster.webp", Astro.site)} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Before the first paint, so a light choice never flashes dark. -->
+    <script is:inline>
+      try {
+        if (localStorage.getItem("kemable-theme") === "light") document.documentElement.dataset.theme = "light";
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div class="overflow-hidden">
+      <header class="relative z-[2] border-b border-line">
+        <nav aria-label="Main" class="mx-auto flex h-16 max-w-[1200px] items-center gap-7 px-6">
+          <a href="/" class="flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.01em] text-fg hover:text-fg">
+            <img src="/app-icon.svg" width="26" height="26" alt="" />
+            Kemable
+          </a>
+          <div class="hidden flex-auto gap-6 text-sm sm:flex">
+            <a href="/#features">Features</a>
+            <a href="/#engines">Engines</a>
+            <a href={REPOSITORY}>GitHub</a>
+          </div>
+          <span class="flex-auto sm:hidden"></span>
+          <a
+            href={DOWNLOAD}
+            class="inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-medium text-on-accent hover:text-on-accent"
+          >
+            Download
+          </a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <slot />
+      </main>
+
+      <footer class="border-t border-line">
+        <div class="mx-auto flex max-w-[1160px] flex-wrap items-center gap-x-6 gap-y-3 px-6 py-7 text-[13px] text-fg3">
+          <span>© 2026 Huỳnh Trung Đức</span>
+          <span>A <a href={SOLEBUILT} class="font-medium text-ember hover:text-ember">SoleBuilt</a> project</span>
+          <span class="flex-auto"></span>
+          <a href="/terms">Terms</a>
+          <a href="/privacy">Privacy</a>
+          <a href={REPOSITORY}>GitHub</a>
+          <ThemeToggle client:visible />
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

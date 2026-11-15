@@ -1,0 +1,63 @@
+name: Site
+
+# Builds Kemable's website (site/) on every pull request that touches it, and deploys
+# it to Cloudflare Pages on a push to main (docs/decisions/0030-website.md).
+# The deploy runs only once the repository has the CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID secrets (site/README.md); until then the job builds and stops.
+on:
+  pull_request:
+    branches: [test, main]
+    paths: ["site/**", ".github/workflows/site.yml"]
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  site:
+    name: site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: site
+    env:
+      # Whether both secrets exist, without handing them to every step.
+      CAN_DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Install the site's packages
+        run: |
+          npm install --global pnpm@11.25.0
+          pnpm install --frozen-lockfile
+
+      - name: Check the types
+        run: pnpm check
+
+      - name: Build
+        run: pnpm build
+
+      - name: Deploy to Cloudflare Pages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.CAN_DEPLOY == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.156.0 pages deploy dist --project-name=kemable --branch=main
+
+      - name: Say why nothing was deployed
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.CAN_DEPLOY != 'true'
+        run: echo "::notice::Built, not deployed. Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets (site/README.md)."

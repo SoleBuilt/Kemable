@@ -1,0 +1,76 @@
+---
+// What the app sends and keeps, in plain words. Each claim is the app's behaviour as written down in
+// docs/decisions/0019-data-folder.md (the data folder), 0028-updates.md (the update check) and
+// 0015-credential-profiles.md (Credential Manager). When the app changes one of them, this page changes with it.
+import DraftNotice from "../components/DraftNotice.astro";
+import Base from "../layouts/Base.astro";
+import { CONTACT, REPOSITORY } from "../links";
+---
+
+<Base title="Privacy Policy · Kemable" description="What Kemable sends, what it keeps, and where.">
+  <article class="prose-page">
+    <DraftNotice />
+    <h1>Privacy Policy</h1>
+    <p>Last updated 15 November 2026.</p>
+
+    <p>
+      Kemable is a database client that runs on your computer. It has no account, no server of its own and no telemetry. This page says what the app
+      sends over the network, what it keeps on your computer, and what this website does.
+    </p>
+
+    <h2>What the app sends</h2>
+    <ul>
+      <li>
+        <strong>One update check at launch.</strong> When Kemable opens, it asks GitHub for one file, <code>latest.json</code>, from Kemable's latest
+        release, to learn whether a newer version exists. The request carries nothing about you or your data: no version, no Windows build, no
+        identifier. GitHub sees what any download shows it, such as your IP address. You can turn the check off in Settings › Updates. If you choose
+        Update, the installer is downloaded from the same GitHub release.
+      </li>
+      <li>
+        <strong>Your connections, to where you point them.</strong> Kemable connects only to the servers you enter: a database, an SSH server, or a
+        service's API such as Cloudflare D1 or Firebase. What you run there goes between your computer and that server, and nowhere else.
+      </li>
+      <li>
+        <strong>Nothing else.</strong> No usage statistics, no crash reports, no analytics, no advertising identifiers.
+      </li>
+    </ul>
+
+    <h2>What the app keeps on your computer</h2>
+    <p>
+      Everything Kemable remembers stays in its data folder on your computer: the <code>data</code> folder beside the app,
+      or <code>%APPDATA%\kemable.app</code> when that folder cannot be written. Settings › Data shows where it is. It holds:
+    </p>
+    <ul>
+      <li>your saved connections, credential profiles and saved queries, without their passwords;</li>
+      <li>the history of the statements you ran;</li>
+      <li>your query pages, settings and the window's place.</li>
+    </ul>
+    <p>
+      <strong>Passwords</strong>, API tokens and SSH passphrases are kept in Windows Credential Manager, under your Windows account, never in a file.
+      A Firebase key file stays where you keep it; Kemable keeps only its path.
+    </p>
+    <p>
+      Uninstalling Kemable keeps the data folder unless you tick "Delete the application data". You can delete the folder yourself at any time, and
+      remove the passwords in Windows Credential Manager (their names end in <code>.Kemable</code>).
+    </p>
+
+    <h2>This website</h2>
+    <p>
+      This website is a set of static pages served by Cloudflare Pages. It sets no cookies and runs no analytics. It remembers your choice of light
+      or dark theme in your browser's storage, which never leaves your browser. Cloudflare, as the host, processes the requests your browser makes,
+      such as your IP address, to deliver the pages. The download links lead to GitHub.
+    </p>
+
+    <h2>Children</h2>
+    <p>Kemable is a tool for working with databases. It collects nothing from anyone, children included.</p>
+
+    <h2>Changes</h2>
+    <p>
+      If what the app sends or keeps changes, this page changes in the same release, and the date above with it. The history of this page is public
+      in <a href={REPOSITORY}>Kemable's repository</a>.
+    </p>
+
+    <h2>Contact</h2>
+    <p>Questions about this policy: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.</p>
+  </article>
+</Base>
