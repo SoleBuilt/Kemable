@@ -1,47 +1,71 @@
 # Kemable
 
-Database client nhanh, nhẹ, mượt. Core Rust làm toàn bộ việc nặng, mỗi hệ điều hành có UI riêng trong `ui/`. Hiện chỉ có bản Windows (Tauri 2, Svelte 5, TypeScript).
+**A fast, light database client.** Kemable streams millions of rows into its grid without a stutter, shows the SQL before an edit is saved, and keeps out of the way of your data. One Rust core does the work; each operating system gets its own UI. Windows comes first.
 
-## Chạy thử
+[Tiếng Việt](README.vi.md) · [Website](https://kemable.pages.dev) · [Download](https://github.com/SoleBuilt/Kemable/releases/latest)
 
-Cần Rust 1.99+, Node 22+, pnpm và WebView2 (Windows 11 có sẵn).
+![Kemable in its light theme: a query and its result in the grid](site/public/hero-light.webp)
+
+## Download
+
+Kemable 0.1 is a preview for **Windows 10 and 11, x64**. Download `Kemable_<version>_x64-setup.exe` from the [latest release](https://github.com/SoleBuilt/Kemable/releases/latest) and run it. The installer asks whether to install for you alone or for everyone, and where. It needs WebView2, which Windows 11 has; on Windows 10 the installer fetches it.
+
+The installer is not code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Choose **More info**, then **Run anyway**. Once installed, Kemable updates itself: at launch it asks GitHub once whether a newer version exists, and installs only an installer signed by this project's release workflow.
+
+macOS and Linux come later.
+
+## Engines
+
+| Engine | |
+|---|---|
+| SQLite | a file (Open file, Ctrl+O), or a database in memory |
+| PostgreSQL | also Neon and Supabase |
+| SQL Server | |
+| Redis | a console of commands, keys by `SCAN` |
+| Cloudflare D1 | through Cloudflare's API |
+| RabbitMQ | preview |
+| Firebase | Firestore and the Realtime Database, preview |
+
+## What it does
+
+- Results stream into a grid that scrolls millions of rows; sort and filter them in the app.
+- Browse and edit tables, with the statements shown before they run, saved all or nothing.
+- Live tabs that listen to PostgreSQL `NOTIFY`, Redis pub/sub, Supabase Realtime, RabbitMQ queues and Firebase, as rows.
+- SSH tunnels, saved connections, `.sql` files and folders, a command palette (Ctrl+K), light and dark themes.
+- Passwords stay in Windows Credential Manager. No telemetry: the only request Kemable makes on its own is the update check ([Privacy Policy](https://kemable.pages.dev/privacy)).
+
+## Building from source
+
+You need Rust 1.99 (`rust-toolchain.toml` installs it through rustup), Node 22 or later, pnpm, and WebView2.
 
 ```bash
 cd ui/windows
 pnpm install
-pnpm tauri dev
+pnpm tauri dev        # the app with hot reload; the first build takes a few minutes
+pnpm tauri build      # the release app and its installer
 ```
 
-Lần build đầu mất vài phút. Bấm **In memory** hoặc **Open SQLite…**, gõ SQL, rồi:
-
-- `Ctrl+Enter`: chạy câu lệnh tại con trỏ (hoặc phần đang bôi đen)
-- `Ctrl+Shift+Enter` / `F5`: chạy cả script
-- Trên grid: phím mũi tên, `Ctrl+C` để copy ô, kéo mép header để đổi độ rộng cột
-
-Thử tốc độ với 2 triệu dòng:
+Try it on two million rows: open an in-memory database from the Welcome screen, then run
 
 ```sql
 with recursive c(x) as (select 1 union all select x + 1 from c limit 2000000)
 select x, x * 2 as doubled, 'row ' || x as label from c
 ```
 
-## Kiểm tra trước khi xong một thay đổi
+Before a change is done, `node scripts/verify.mjs` from the repository's root must print `PASS`. Its license checks need `cargo install --locked cargo-deny` and `cargo install --locked --features cli cargo-about` once.
 
-```bash
-cargo install --locked cargo-deny; cargo install --locked --features cli cargo-about   # một lần: kiểm tra license của thư viện
-node scripts/verify.mjs
-```
+## Documentation
 
-## Tài liệu
-
-- `AGENTS.md`: quy tắc chung (Claude Code đọc qua `CLAUDE.md`)
-- `core/ARCHITECTURE.md`: kiến trúc core
-- `docs/decisions/`: các quyết định kiến trúc (ADR)
-- `docs/roadmap.md`: lộ trình và danh sách engine
-- `docs/testing/`: danh sách kiểm thử thủ công theo từng phase (`phase-1.md`)
-- `.claude/rules/`, `.claude/skills/`: rule theo đường dẫn và các skill `verify`, `add-driver`, `fix-issue`
+- `AGENTS.md`: the rules every change follows, and the map of the repository.
+- `core/ARCHITECTURE.md`: the core's crates and the driver contract.
+- `docs/decisions/`: the decisions, one file each.
+- `docs/roadmap.md`: the phases and the engines.
+- `CONTRIBUTING.md`: how to contribute; a first pull request signs the [CLA](CLA.md).
+- `SECURITY.md`: how to report a vulnerability.
 
 ## License
+
+Kemable is free software under the [GNU Affero General Public License, version 3 only](LICENSE) (AGPL-3.0-only), and is also offered under a commercial license. [LICENSING.md](LICENSING.md) says which license covers what and how to ask about the commercial one; [TRADEMARKS.md](TRADEMARKS.md) covers the name and the logo; the libraries inside the app are listed in `ui/windows/THIRD-PARTY-NOTICES.md`.
 
 ```
 Kemable, a fast, light database client.
@@ -60,4 +84,4 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ```
 
-Toàn văn license ở `LICENSE` (AGPL-3.0-only). License thương mại, phần nào theo license nào: `LICENSING.md`. Tên và logo: `TRADEMARKS.md`. Thư viện bên thứ ba: `ui/windows/THIRD-PARTY-NOTICES.md`. Ai gửi pull request thì đồng ý với `CLA.md` (`CONTRIBUTING.md`). Kemable được phát triển dưới tổ chức [SoleBuilt](https://github.com/SoleBuilt).
+Kemable is a [SoleBuilt](https://solebuilt.ducht.info.vn/) project.
