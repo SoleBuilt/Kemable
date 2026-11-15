@@ -77,6 +77,18 @@ fn from_server(db: &DbError, statement: Option<&str>) -> DriverError {
     }
 }
 
+/// An error the server gave for `declared`, the statement behind `prefix`
+/// bytes of Kemable's own (a cursor's `DECLARE`), with its position moved
+/// into the statement; a position inside the prefix is dropped.
+pub(crate) fn map_declared(error: &tokio_postgres::Error, declared: &str, prefix: usize) -> DriverError {
+    let mut mapped = map(error, Some(declared), Phase::Run);
+    mapped.position = mapped
+        .position
+        .and_then(|position| position.byte_offset.checked_sub(prefix))
+        .map(|byte_offset| kemable_core::error::ErrorPosition { byte_offset });
+    mapped
+}
+
 /// PostgreSQL counts a position in characters, from 1.
 pub(crate) fn byte_offset(text: &str, position: u32) -> Option<usize> {
     let index = usize::try_from(position).ok()?.checked_sub(1)?;

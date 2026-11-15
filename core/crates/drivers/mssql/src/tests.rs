@@ -276,6 +276,117 @@ async fn the_row_limit_stops_the_server_and_the_session_stays_usable() {
     assert_eq!(first_row(&run(&conn, "select 42").await.last()), ["42"]);
 }
 
+/// A cross join big enough that a statement over it is still running when
+/// the first 1,000 rows arrive.
+const MANY_ROWS: &str = "select top 200000 a.object_id from sys.all_objects a cross join sys.all_objects b";
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn the_row_limit_on_one_set_lets_the_rest_of_the_batch_run() {
+    let conn = live_in("tempdb").await;
+    run(&conn, "create table #kemable_cap (a int)").await;
+    let sink = Arc::new(Collect::default());
+    let outcome = conn
+        .execute(
+            &format!(
+                "{MANY_ROWS};
+insert into #kemable_cap values (1);
+select 'after' as b"
+            ),
+            sink.clone(),
+            CallOptions::default(),
+        )
+        .await
+        .unwrap();
+    assert!(outcome.limited);
+    let stores = sink.stores.lock().unwrap().clone();
+    assert_eq!(stores.len(), 2);
+    assert_eq!(stores[0].state().total_rows, 1000);
+    assert_eq!(first_row(&stores[1]), ["after"]);
+    assert_eq!(
+        first_row(&run(&conn, "select count(*) from #kemable_cap").await.last()),
+        ["1"]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn the_row_limit_lets_a_statement_that_writes_run_to_its_end() {
+    let conn = live_in("tempdb").await;
+    run(&conn, "create table #kemable_out (a int)").await;
+    let sink = Arc::new(Collect::default());
+    let outcome = conn
+        .execute(
+            "insert into #kemable_out output inserted.a              select top 200000 a.object_id from sys.all_objects a cross join sys.all_objects b",
+            sink.clone(),
+            CallOptions::default(),
+        )
+        .await
+        .unwrap();
+    assert!(outcome.limited);
+    assert_eq!(sink.last().state().total_rows, 1000);
+    assert_eq!(
+        first_row(&run(&conn, "select count(*) from #kemable_out").await.last()),
+        ["200000"]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn the_row_limit_keeps_the_session_its_transaction_and_its_settings() {
+    let conn = live_in("tempdb").await;
+    for xact_abort in ["off", "on"] {
+        let state = "select @@spid, @@trancount, case when object_id('tempdb..#kemable_kept') is null then 0 else 1 end,                      (select count(*) from #kemable_tran), @@options & 16384";
+        run(
+            &conn,
+            &format!("set xact_abort {xact_abort}; create table #kemable_kept (a int)"),
+        )
+        .await;
+        run(
+            &conn,
+            "begin transaction; create table #kemable_tran (a int); insert into #kemable_tran values (1)",
+        )
+        .await;
+        let before = first_row(&run(&conn, state).await.last());
+        let sink = Arc::new(Collect::default());
+        let outcome = conn
+            .execute(MANY_ROWS, sink.clone(), CallOptions::default())
+            .await
+            .unwrap();
+        assert!(outcome.limited, "xact_abort {xact_abort}");
+        assert_eq!(sink.last().state().total_rows, 1000);
+        assert_eq!(
+            first_row(&run(&conn, state).await.last()),
+            before,
+            "xact_abort {xact_abort}: the same session, its transaction, its tables and its settings"
+        );
+        run(&conn, "rollback; drop table #kemable_kept; set xact_abort off").await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn the_row_limit_leaves_no_row_count_behind() {
+    let conn = live_in("tempdb").await;
+    let (limited, _) = {
+        let sink = Arc::new(Collect::default());
+        let outcome = conn
+            .execute(MANY_ROWS, sink.clone(), CallOptions::default())
+            .await
+            .unwrap();
+        (outcome.limited, sink)
+    };
+    assert!(limited);
+    let sink = run(
+        &conn,
+        "create table #kemable_count (a int);
+         insert into #kemable_count select top 5000 a.object_id from sys.all_objects a cross join sys.all_objects b;
+         select count(*) from #kemable_count",
+    )
+    .await;
+    assert_eq!(first_row(&sink.last()), ["5000"]);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_cancel_sends_an_attention_and_the_session_stays_usable() {

@@ -203,6 +203,10 @@ impl ResultSink for RunSink {
         more
     }
 
+    fn row_limit(&self) -> Option<u64> {
+        self.row_limit
+    }
+
     fn end_set(&self) {
         self.close_open_set();
     }

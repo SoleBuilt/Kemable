@@ -757,6 +757,10 @@ impl ResultSink for Collect {
             .is_some_and(|store| store.push_rows(values))
     }
 
+    fn row_limit(&self) -> Option<u64> {
+        Some(1000)
+    }
+
     fn end_set(&self) {
         if let Some(store) = self.store.lock().unwrap().as_ref() {
             store.finish();
@@ -880,6 +884,139 @@ async fn the_row_limit_stops_the_server_and_the_next_statement_still_runs() {
     assert!(outcome.limited);
     assert_eq!(sink.store.lock().unwrap().clone().unwrap().state().total_rows, 1000);
     assert_eq!(texts(&*run(&conn, "select 42").await), ["42"]);
+}
+
+/// Runs `sql` under the test sink's limit of 1,000 rows.
+async fn run_capped(conn: &Arc<dyn Connection>, sql: &str) -> (bool, u64, Arc<Collect>) {
+    let sink = Arc::new(Collect::default());
+    let outcome = conn
+        .execute(sql, sink.clone(), CallOptions::default())
+        .await
+        .unwrap_or_else(|error| panic!("{sql}: {error}"));
+    let rows = sink
+        .store
+        .lock()
+        .unwrap()
+        .clone()
+        .map_or(0, |store| store.state().total_rows);
+    (outcome.limited, rows, sink)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
+async fn the_row_limit_keeps_what_the_rows_read_did_and_runs_nothing_past_them() {
+    in_scratch_schema("kemable_cap_read", |conn, schema| async move {
+        run(&conn, &format!("create table {schema}.log (a int)")).await;
+        run(
+            &conn,
+            &format!(
+                "create function {schema}.logged(x int) returns int language sql                  as $$ insert into {schema}.log values (x) returning x $$"
+            ),
+        )
+        .await;
+        let (limited, rows, _) = run_capped(
+            &conn,
+            &format!("select {schema}.logged(g) from generate_series(1, 300000) g"),
+        )
+        .await;
+        assert!(limited);
+        assert_eq!(rows, 1000);
+        // The cursor read the rows kept and one more, and committed them: another session sees them.
+        let other = live().await;
+        assert_eq!(
+            texts(&*run(&other, &format!("select count(*) from {schema}.log")).await),
+            ["1001"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
+async fn the_row_limit_lets_a_statement_that_writes_run_to_its_end() {
+    in_scratch_schema("kemable_cap_write", |conn, schema| async move {
+        run(&conn, &format!("create table {schema}.t (a int)")).await;
+        let (limited, rows, _) = run_capped(
+            &conn,
+            &format!("insert into {schema}.t select g from generate_series(1, 300000) g returning a"),
+        )
+        .await;
+        assert!(limited);
+        assert_eq!(rows, 1000);
+        let other = live().await;
+        assert_eq!(
+            texts(&*run(&other, &format!("select count(*) from {schema}.t")).await),
+            ["300000"]
+        );
+        let (limited, _, _) = run_capped(
+            &conn,
+            &format!("with gone as (delete from {schema}.t returning a) select a from gone"),
+        )
+        .await;
+        assert!(limited);
+        assert_eq!(
+            texts(&*run(&other, &format!("select count(*) from {schema}.t")).await),
+            ["0"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
+async fn the_row_limit_inside_the_users_transaction_neither_commits_nor_ends_it() {
+    in_scratch_schema("kemable_cap_block", |conn, schema| async move {
+        run(&conn, &format!("create table {schema}.t (a int)")).await;
+        let other = live().await;
+        let count = format!("select count(*) from {schema}.t");
+        // A comment before BEGIN hides it from the driver's guess, so the
+        // cursor sends a BEGIN of its own into the open block.
+        for opening in ["begin", "/* open */ begin"] {
+            run(&conn, opening).await;
+            run(&conn, &format!("insert into {schema}.t values (1)")).await;
+            let (limited, rows, sink) = run_capped(&conn, "select g from generate_series(1, 5000000) g").await;
+            assert!(limited, "{opening}");
+            assert_eq!(rows, 1000, "{opening}");
+            assert!(sink.notices.lock().unwrap().is_empty(), "{opening}: no BEGIN warning");
+            assert_eq!(texts(&*run(&conn, &count).await), ["1"], "{opening}: the block goes on");
+            assert_eq!(
+                texts(&*run(&other, &count).await),
+                ["0"],
+                "{opening}: nothing committed"
+            );
+            run(&conn, "rollback").await;
+            assert_eq!(
+                texts(&*run(&conn, &count).await),
+                ["0"],
+                "{opening}: the user's rollback undoes it"
+            );
+        }
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
+async fn an_error_in_a_cursor_inside_the_users_transaction_points_into_the_statement() {
+    let conn = live().await;
+    run(&conn, "begin").await;
+    let error = conn
+        .execute("select 'đ', frm", Arc::new(Collect::default()), CallOptions::default())
+        .await
+        .unwrap_err();
+    assert_eq!(error.engine_code.as_deref(), Some("42703"));
+    assert_eq!(error.position.map(|p| p.byte_offset), Some(13));
+    let error = conn
+        .execute("select 1", Arc::new(Collect::default()), CallOptions::default())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.engine_code.as_deref(),
+        Some("25P02"),
+        "the failure ended the block, as psql's would"
+    );
+    run(&conn, "rollback").await;
+    assert_eq!(texts(&*run(&conn, "select 1").await), ["1"]);
 }
 
 #[tokio::test(flavor = "multi_thread")]

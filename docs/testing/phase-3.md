@@ -10,7 +10,7 @@ Tab Live nghe trên một kết nối riêng tới server, mỗi sự kiện là
 
 **Channel là gì.** `NOTIFY ten_kenh, 'noi dung'` phát một tin lên kênh `ten_kenh`. Server chỉ chuyển tin tới các kết nối đã `LISTEN` đúng kênh đó, trong cùng database. Tab Live nghe kênh nào thì chỉ nhận tin của kênh ấy: nghe `orders` thì tin gửi lên `khac` không tới, giống như radio chỉ bắt đài đang dò. Tên kênh không có nháy kép được PostgreSQL đổi về chữ thường (`Orders` thành `orders`); tên trong nháy kép giữ nguyên (`"Orders"` khác `orders`).
 
-**Gửi nhiều tin bằng một câu chỉ trả về một dòng**, ví dụ `select count(pg_notify(...)) from generate_series(...)`. Câu `select pg_notify(...) from generate_series(1, 5000)` trả về 5.000 dòng: Run dừng ở giới hạn dòng (mặc định 1.000) và huỷ câu trên server. Khi câu chưa chạy xong mà đã bị huỷ, PostgreSQL bỏ cả câu, kèm mọi tin trong đó.
+**Gửi nhiều tin bằng một câu chỉ trả về một dòng**, ví dụ `select count(pg_notify(...)) from generate_series(...)`. Câu `select pg_notify(...) from generate_series(1, 5000)` trả về 5.000 dòng: Run giữ 1.000 dòng đầu (giới hạn dòng mặc định) và dừng câu ngay sau dòng 1.001, không huỷ nó: 1.001 tin đầu vẫn được gửi, các dòng sau không được tính (mục 12).
 
 **Một transaction còn mở giữ tin lại.** PostgreSQL chỉ gửi tin lúc `COMMIT`. Nếu trong tab query đã chạy `BEGIN` mà chưa `COMMIT`, thì `NOTIFY` vẫn báo thành công nhưng chưa ai nhận. Kiểm bằng `select now() = statement_timestamp() as khong_co_transaction_mo;`: nếu ra `false` thì đang ở trong transaction, chạy `COMMIT;` (hoặc `ROLLBACK;`).
 
@@ -405,6 +405,49 @@ Dùng kết nối Firebase ở mục 9 (cần Realtime Database). Thay đổi d�
   **Đúng:** vẫn nhận được: stream tự mở lại với token mới.
 - [ ] Đang nghe thì tắt mạng.
   **Đúng:** tab dừng với "The connection was lost" (có thể sau một lúc); các dòng đã nhận vẫn còn.
+
+## 12. Giới hạn dòng không huỷ câu lệnh (thêm 2026-11-14, ADR 0004)
+
+Giới hạn dòng (ô **Limit** trên thanh công cụ, mặc định 1.000) chỉ quyết định kết quả giữ bao nhiêu dòng, không quyết định câu lệnh chạy tới đâu. Trước đây khi kết quả đầy, Kemable huỷ câu trên server, và một câu đang ghi bị bỏ cả câu. Giờ một câu chỉ đọc (`SELECT`, `VALUES`, `TABLE`, `WITH ... SELECT`) dừng ngay sau dòng cuối cùng được giữ, và giữ lại những gì các dòng đã đọc đã làm; mọi câu khác chạy tới cuối, các dòng thừa bị bỏ qua.
+
+Chuẩn bị trên `Local PG`, Limit để 1.000:
+
+```sql
+create table cap_log (a int);
+create function cap_logged(x int) returns int language sql
+as $$ insert into cap_log values (x) returning x $$;
+```
+
+### 12.1 PostgreSQL
+
+- [ ] Chạy `select cap_logged(g) from generate_series(1, 300000) g;`, rồi `select count(*) from cap_log;`.
+  **Đúng:** câu đầu hiện 1.000 dòng và báo dừng ở giới hạn dòng, không có lỗi. Câu đếm ra `1001`: server chỉ tính tới dòng 1.001 rồi dừng, và giữ những gì đã ghi.
+- [ ] Mở một tab Live nghe `orders` (Ctrl+Alt+L), rồi ở tab query chạy `select pg_notify('orders', g::text) from generate_series(1, 300000) g;`.
+  **Đúng:** tab Live nhận đúng 1.001 sự kiện (payload `1` tới `1001`). Trước bản sửa: không nhận được sự kiện nào.
+- [ ] Chạy `insert into cap_log select g from generate_series(1, 300000) g returning a;`, rồi `select count(*) from cap_log;`.
+  **Đúng:** câu insert hiện 1.000 dòng; câu đếm tăng thêm đúng 300.000 (câu insert chạy hết, không bị huỷ).
+- [ ] Chạy lần lượt `begin;`, `insert into cap_log values (-1);`, `select g from generate_series(1, 5000000) g;`, rồi `select count(*) from cap_log where a = -1;`.
+  **Đúng:** câu select hiện 1.000 dòng, không lỗi; tab Messages **không** có cảnh báo "there is already a transaction in progress"; câu đếm ra `1` (transaction vẫn mở, chưa bị huỷ). Chạy `rollback;` rồi đếm lại: ra `0` (Kemable không tự commit transaction của bạn).
+- [ ] Chạy `select g from generate_series(1, 50000000) g;`.
+  **Đúng:** kết quả hiện gần như ngay (dưới 1 giây), không phải chờ server tính hết 50 triệu dòng.
+- [ ] Chạy `select g, 1 / (g - 5000) from generate_series(1, 10000) g;`.
+  **Đúng:** 1.000 dòng, không lỗi (dòng chia cho 0 nằm sau giới hạn, server không tính tới). Bấm **Fetch all**: báo lỗi `division by zero`.
+- [ ] Dọn: `drop function cap_logged(int); drop table cap_log;`.
+
+### 12.2 SQL Server
+
+- [ ] Trên `Local MSSQL`, database `tempdb`, chạy cả script (F5) sau, không có `GO`:
+
+  ```sql
+  create table #cap (a int);
+  select top 200000 a.object_id from sys.all_objects a cross join sys.all_objects b;
+  insert into #cap values (1);
+  select count(*) as n from #cap;
+  ```
+
+  **Đúng:** hai kết quả: kết quả đầu 1.000 dòng và báo dừng ở giới hạn dòng, kết quả sau `n` = `1`. Trước bản sửa: chỉ có kết quả đầu, câu insert không chạy.
+- [ ] Chạy riêng `select top 200000 a.object_id from sys.all_objects a cross join sys.all_objects b;`.
+  **Đúng:** dừng ngay ở 1.000 dòng.
 
 ## Test tự động chạy trên server thật
 

@@ -10,6 +10,7 @@ use kemable_core::config::{ConnectionConfig, Target, TlsMode};
 use kemable_core::connection::Connection;
 use kemable_core::engine::EngineInfo;
 use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
+use kemable_core::sql::{SqlGrammar, batch_statement_count, is_plain_query};
 use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use tiberius::{AuthMethod, Client, EncryptionLevel, QueryItem, Row, SqlBrowser, ToSql};
 use tokio::net::TcpStream;
@@ -230,65 +231,78 @@ async fn open_now(config: &tiberius::Config, reach: Reach) -> Result<MssqlClient
     }
 }
 
-/// How a batch's stream ended.
-enum Ended {
-    Done(Result<ExecOutcome>),
-    /// The sink took no more rows; the rest of the response is unread.
-    Limited,
+/// What goes before a batch that is one plain query under a row limit:
+/// `SET ROWCOUNT` of the limit and one row more, so the server stops there
+/// and a full result is told apart from a cut one. On the batch's first
+/// line, so the server's line numbers stay the user's.
+fn row_count_prefix(batch: &str, sink: &dyn ResultSink) -> Option<String> {
+    let limit = sink.row_limit()?;
+    let plain = batch_statement_count(batch) == Some(1) && is_plain_query(batch, SqlGrammar::SqlServer);
+    plain.then(|| format!("SET ROWCOUNT {}; ", limit.saturating_add(1)))
 }
 
-/// Streams every result set a batch returns into the sink.
-async fn stream_batch(client: &mut MssqlClient, batch: &str, sink: &dyn ResultSink) -> Ended {
+/// Streams every result set a batch returns into the sink. `sent` is the
+/// batch as it goes to the server, `batch` as the user wrote it, for error
+/// lines. Once the sink takes no more of a set, the set's other rows are
+/// read and dropped and the batch runs to its end: an attention would end
+/// its other statements, and through tiberius the session with them
+/// (`docs/decisions/0004-engines.md`, The row cap).
+async fn stream_batch(client: &mut MssqlClient, sent: &str, batch: &str, sink: &dyn ResultSink) -> Result<ExecOutcome> {
     let map = |error| errors::map(error, Some(batch), Phase::Run);
-    let mut stream = match client.simple_query(batch).await {
-        Ok(stream) => stream,
-        Err(error) => return Ended::Done(Err(map(error))),
-    };
+    let mut stream = client.simple_query(sent).await.map_err(map)?;
     let mut width: Option<usize> = None;
     let mut sets = 0usize;
     let mut values = Vec::new();
+    // The open set took no more rows: the rest of its rows are dropped.
+    let mut full = false;
+    let mut limited = false;
     loop {
         let item = match stream.try_next().await {
             Ok(Some(item)) => item,
             Ok(None) => break,
             Err(error) => {
                 if width.is_some() {
-                    flush(sink, &mut values);
+                    if !full {
+                        flush(sink, &mut values);
+                    }
                     sink.end_set();
                 }
-                return Ended::Done(Err(map(error)));
+                return Err(map(error));
             }
         };
         match item {
             QueryItem::Metadata(meta) => {
                 if width.is_some() {
-                    flush(sink, &mut values);
+                    if !full {
+                        flush(sink, &mut values);
+                    }
                     sink.end_set();
                 }
+                full = false;
                 let columns: Vec<ColumnMeta> = meta.columns().iter().map(decode::column_meta).collect();
                 width = Some(columns.len());
                 sets += 1;
                 sink.begin_set(columns);
             }
+            QueryItem::Row(_) if full => {}
             QueryItem::Row(row) => {
                 for (column, data) in row.cells() {
                     values.push(decode::decode(column.column_type(), data));
                 }
                 if values.len() >= PUSH_BATCH_ROWS * width.unwrap_or(1).max(1) {
-                    if !sink.push_rows(&values) {
-                        values.clear();
-                        sink.end_set();
-                        return Ended::Limited;
-                    }
+                    let more = sink.push_rows(&values);
                     values.clear();
+                    if !more {
+                        full = true;
+                        limited = true;
+                    }
                 }
             }
         }
     }
     if width.is_some() {
-        if !values.is_empty() && !sink.push_rows(&values) {
-            sink.end_set();
-            return Ended::Limited;
+        if !full && !values.is_empty() && !sink.push_rows(&values) {
+            limited = true;
         }
         sink.end_set();
     }
@@ -296,7 +310,7 @@ async fn stream_batch(client: &mut MssqlClient, batch: &str, sink: &dyn ResultSi
         // tiberius does not hand out the DONE tokens' row counts.
         sink.command_done(None);
     }
-    Ended::Done(Ok(ExecOutcome::default()))
+    Ok(ExecOutcome { limited })
 }
 
 fn flush(sink: &dyn ResultSink, values: &mut Vec<kemable_core::value::Value>) {
@@ -929,31 +943,42 @@ impl Connection for MssqlConnection {
         if guard.is_none() {
             *guard = Some(open(&self.config, self.reach).await?);
         }
+        let prefix = row_count_prefix(batch, sink.as_ref());
+        let sent = match &prefix {
+            Some(prefix) => format!("{prefix}{batch}"),
+            None => batch.to_owned(),
+        };
         let ended = {
             let Some(client) = guard.as_mut() else {
                 return Err(DriverError::new(ErrorCode::Lost, "the editor session is closed"));
             };
             tokio::select! {
-                ended = stream_batch(client, batch, sink.as_ref()) => Some(ended),
+                ended = stream_batch(client, &sent, batch, sink.as_ref()) => Some(ended),
                 () = options.stopped() => None,
             }
         };
+        if ended.is_none() {
+            attention(&mut guard).await;
+        }
+        if prefix.is_some()
+            && let Some(client) = guard.as_mut()
+        {
+            // A ROWCOUNT left set would cut the session's next UPDATE or
+            // DELETE short, so a session that cannot reset it is not used again.
+            let reset = async { client.simple_query("SET ROWCOUNT 0").await?.into_results().await }.await;
+            if reset.is_err() {
+                *guard = None;
+            }
+        }
         match ended {
-            Some(Ended::Done(Ok(outcome))) => Ok(outcome),
-            Some(Ended::Done(Err(error))) => {
+            Some(Ok(outcome)) => Ok(outcome),
+            Some(Err(error)) => {
                 if error.code == ErrorCode::Lost {
                     *guard = None;
                 }
                 Err(error)
             }
-            Some(Ended::Limited) => {
-                attention(&mut guard).await;
-                Ok(ExecOutcome { limited: true })
-            }
-            None => {
-                attention(&mut guard).await;
-                Err(options.stop_reason())
-            }
+            None => Err(options.stop_reason()),
         }
     }
 

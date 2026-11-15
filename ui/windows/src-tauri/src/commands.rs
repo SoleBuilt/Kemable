@@ -1488,6 +1488,10 @@ impl ResultSink for CountSink {
         false
     }
 
+    fn row_limit(&self) -> Option<u64> {
+        Some(1)
+    }
+
     fn end_set(&self) {}
 
     fn command_done(&self, _rows_affected: Option<u64>) {}
@@ -1636,6 +1640,10 @@ impl ResultSink for KeySink {
             .unwrap_or_else(PoisonError::into_inner)
             .as_ref()
             .is_some_and(|store| store.push_rows(values))
+    }
+
+    fn row_limit(&self) -> Option<u64> {
+        self.row_limit
     }
 
     fn end_set(&self) {}

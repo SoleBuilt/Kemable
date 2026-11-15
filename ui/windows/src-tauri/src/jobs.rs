@@ -76,6 +76,9 @@ impl ResultSink for Scalar {
         }
         false
     }
+    fn row_limit(&self) -> Option<u64> {
+        Some(1)
+    }
     fn end_set(&self) {}
     fn command_done(&self, _rows_affected: Option<u64>) {}
     fn notice(&self, _text: &str) {}

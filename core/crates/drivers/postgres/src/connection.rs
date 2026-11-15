@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::future::poll_fn;
 use std::pin::pin;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -13,10 +14,12 @@ use kemable_core::config::{ConnectionConfig, Target};
 use kemable_core::connection::Connection;
 use kemable_core::engine::EngineInfo;
 use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
+use kemable_core::sql::{SqlGrammar, is_plain_query};
 use kemable_core::value::Value;
 use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::task::JoinHandle;
+use tokio_postgres::error::SqlState;
 use tokio_postgres::types::{ToSql, Type};
 use tokio_postgres::{AsyncMessage, CancelToken, Client, Config, NoTls, Row, RowStream};
 
@@ -56,9 +59,35 @@ impl StatementMode {
     }
 }
 
-/// The sink of the statement running now, which the editor session's notices
-/// reach.
-type NoticeSlot = Arc<Mutex<Option<Arc<dyn ResultSink>>>>;
+/// Where the editor session's notices go.
+#[derive(Default)]
+struct Notices {
+    /// The sink of the statement running now.
+    sink: Option<Arc<dyn ResultSink>>,
+    /// While a cursor's `BEGIN` may land inside the user's own transaction,
+    /// its warning (25001, "there is already a transaction in progress") is
+    /// Kemable's, not the statement's.
+    quiet_begin: bool,
+}
+
+type NoticeSlot = Arc<Mutex<Notices>>;
+
+/// How many rows each `FETCH` after the first asks for, when a sink keeps
+/// more than its limit said.
+const FETCH_ROWS: u64 = 10_000;
+
+/// Whether `statement_timestamp()` and `transaction_timestamp()` differ: the
+/// server copies the statement's start into the transaction's when a
+/// statement starts one (xact.c, `StartTransaction`), so they differ only
+/// inside a transaction block opened by an earlier statement.
+const IN_BLOCK_PROBE: &str = "select statement_timestamp() <> transaction_timestamp()";
+
+/// How a cursor's `FETCH` begins: prepared, for its columns even with no
+/// rows, or unnamed for a pooler, already streaming.
+enum FirstFetch {
+    Prepared(tokio_postgres::Statement),
+    Rows(RowStream),
+}
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -74,6 +103,15 @@ pub struct PostgresConnection {
     database: String,
     notices: NoticeSlot,
     tasks: Vec<JoinHandle<()>>,
+    /// Names each cursor apart, so one a stopped run left in the user's
+    /// transaction never meets the next.
+    cursors: AtomicU64,
+    /// What the last look found: the editor session is inside a transaction
+    /// block. A guess that only saves a round trip; the probe decides.
+    in_block: AtomicBool,
+    /// A transaction block Kemable opened for a cursor may still be open: a
+    /// run stopped before it ended it, so the next call rolls it back.
+    our_block: AtomicBool,
 }
 
 impl Drop for PostgresConnection {
@@ -169,6 +207,9 @@ impl PostgresConnection {
             database: String::new(),
             notices,
             tasks: vec![editor_task, catalog_task],
+            cursors: AtomicU64::new(0),
+            in_block: AtomicBool::new(false),
+            our_block: AtomicBool::new(false),
         };
         let rows = connection
             .catalog_rows(
@@ -212,7 +253,207 @@ impl PostgresConnection {
             .await
     }
 
+    /// A row cap must never undo what a statement does (`docs/decisions/0004-engines.md`,
+    /// The row cap): a plain query under a sink's limit goes through a
+    /// cursor, which stops after the rows kept; anything else runs whole,
+    /// its rows past the limit read and dropped.
     async fn run(&self, statement: &str, sink: &dyn ResultSink) -> Result<ExecOutcome> {
+        if let Some(limit) = sink.row_limit()
+            && is_plain_query(statement, SqlGrammar::Postgres)
+            && let Some(outcome) = self.run_through_cursor(statement, limit, sink, true).await?
+        {
+            return Ok(outcome);
+        }
+        let outcome = self.run_whole(statement, sink).await;
+        self.follow_block(statement, outcome.is_ok());
+        outcome
+    }
+
+    /// Keeps the guess of whether a transaction block is open after a
+    /// statement that may open or end one. A wrong guess costs a round trip.
+    fn follow_block(&self, statement: &str, succeeded: bool) {
+        let mut words = statement
+            .split(|c: char| !c.is_ascii_alphabetic())
+            .filter(|word| !word.is_empty());
+        let first = words.next().unwrap_or_default().to_ascii_lowercase();
+        let second = words.next().unwrap_or_default().to_ascii_lowercase();
+        let in_block = match first.as_str() {
+            "begin" | "start" if succeeded => true,
+            "rollback" if second == "to" => return,
+            "commit" | "end" | "rollback" | "abort" => false,
+            "prepare" if second == "transaction" => false,
+            _ => return,
+        };
+        self.in_block.store(in_block, Ordering::Relaxed);
+    }
+
+    /// Ends a transaction block a stopped cursor run left open.
+    async fn end_stale_block(&self) {
+        if self.our_block.swap(false, Ordering::Relaxed) {
+            let _ = self.editor.batch_execute("ROLLBACK").await;
+            self.in_block.store(false, Ordering::Relaxed);
+        }
+    }
+
+    /// Runs a plain query as `DECLARE` and `FETCH` of the sink's limit and
+    /// one row more, so the server computes no row past those and keeps what
+    /// the rows read did (`pg_notify`, `nextval`). Outside a transaction
+    /// block the cursor gets one of its own, committed at the end; inside
+    /// the user's, it lives there and only the cursor is closed.
+    ///
+    /// One round trip asks whether a block is open, opens one when none is
+    /// thought to be, declares and starts the first `FETCH`; a wrong guess
+    /// costs one more. `None`: the statement runs whole instead (a block
+    /// already failed, or the server would not declare it, with nothing run).
+    async fn run_through_cursor(
+        &self,
+        statement: &str,
+        limit: u64,
+        sink: &dyn ResultSink,
+        guess: bool,
+    ) -> Result<Option<ExecOutcome>> {
+        let cursor = format!("kemable_cursor_{}", self.cursors.fetch_add(1, Ordering::Relaxed));
+        let declare = format!("DECLARE {cursor} NO SCROLL CURSOR FOR\n{statement}");
+        let first_rows = limit.saturating_add(1);
+        let first_fetch = format!("FETCH {first_rows} FROM {cursor}");
+        let begin = !(guess && self.in_block.load(Ordering::Relaxed));
+
+        if begin {
+            // Set before the BEGIN goes, so a run dropped before its answer
+            // still rolls back a block that is Kemable's.
+            self.our_block.store(true, Ordering::Relaxed);
+            lock(&self.notices).quiet_begin = true;
+        }
+        let probe = self.editor.simple_query(IN_BLOCK_PROBE);
+        let began = async {
+            if begin {
+                self.editor.batch_execute("BEGIN").await
+            } else {
+                Ok(())
+            }
+        };
+        let declared = self.editor.batch_execute(&declare);
+        let fetch = async {
+            match self.mode {
+                StatementMode::Prepared => self.editor.prepare(&first_fetch).await.map(FirstFetch::Prepared),
+                StatementMode::Unnamed => self
+                    .editor
+                    .query_typed_raw(&first_fetch, std::iter::empty::<(&(dyn ToSql + Sync), Type)>())
+                    .await
+                    .map(FirstFetch::Rows),
+            }
+        };
+        // Each request goes out on its first poll, and `join4` polls in order.
+        let (probe, began, declared, fetch) = futures_util::future::join4(probe, began, declared, fetch).await;
+        lock(&self.notices).quiet_begin = false;
+
+        let Some(in_block) = probe.ok().as_deref().and_then(probe_answer) else {
+            // Only a failed block refuses the probe; the statement run whole
+            // reports it as the server words it.
+            self.our_block.store(false, Ordering::Relaxed);
+            return Ok(None);
+        };
+        let ours = !in_block && begin && began.is_ok();
+        self.our_block.store(ours, Ordering::Relaxed);
+        self.in_block.store(in_block, Ordering::Relaxed);
+        if !in_block && !begin {
+            // The guess was a block, and there was none: nothing was declared.
+            return Box::pin(self.run_through_cursor(statement, limit, sink, false)).await;
+        }
+
+        if let Err(error) = declared {
+            if ours {
+                // Nothing ran: the statement runs whole and reports its own error.
+                self.end_block("ROLLBACK").await;
+                return Ok(None);
+            }
+            // In the user's block the failure has ended it, as the statement's own would.
+            return Err(errors::map_declared(&error, &declare, declare.len() - statement.len()));
+        }
+
+        let map = |error: tokio_postgres::Error| errors::map(&error, None, Phase::Run);
+        let read = async {
+            let mut width = None;
+            let mut stream = match fetch.map_err(map)? {
+                FirstFetch::Prepared(prepared) => {
+                    let columns: Vec<ColumnMeta> = prepared
+                        .columns()
+                        .iter()
+                        .map(|column| decode::column_meta(column.name(), column.type_()))
+                        .collect();
+                    if !columns.is_empty() {
+                        width = Some(columns.len());
+                        sink.begin_set(columns);
+                    }
+                    self.editor
+                        .query_raw(&prepared, std::iter::empty::<&(dyn ToSql + Sync)>())
+                        .await
+                        .map_err(map)?
+                }
+                FirstFetch::Rows(rows) => rows,
+            };
+            let mut asked = first_rows;
+            let mut outcome = ExecOutcome::default();
+            loop {
+                let mut rows = pin!(stream);
+                let (read, refused) = read_rows(rows.as_mut(), &mut width, sink, &map).await?;
+                if refused {
+                    outcome.limited = true;
+                    break;
+                }
+                if read < asked {
+                    break;
+                }
+                asked = FETCH_ROWS;
+                stream = self
+                    .editor
+                    .query_typed_raw(
+                        &format!("FETCH {asked} FROM {cursor}"),
+                        std::iter::empty::<(&(dyn ToSql + Sync), Type)>(),
+                    )
+                    .await
+                    .map_err(map)?;
+            }
+            match width {
+                Some(_) => sink.end_set(),
+                None => sink.command_done(Some(0)),
+            }
+            Ok::<_, DriverError>(outcome)
+        };
+        let outcome = read.await;
+
+        match (outcome, ours) {
+            (Ok(outcome), true) => {
+                let committed = self.editor.batch_execute("COMMIT").await;
+                self.our_block.store(false, Ordering::Relaxed);
+                self.in_block.store(false, Ordering::Relaxed);
+                committed.map_err(|error| errors::map(&error, None, Phase::Run))?;
+                Ok(Some(outcome))
+            }
+            (Ok(outcome), false) => {
+                self.editor
+                    .batch_execute(&format!("CLOSE {cursor}"))
+                    .await
+                    .map_err(|error| errors::map(&error, None, Phase::Run))?;
+                Ok(Some(outcome))
+            }
+            (Err(error), true) => {
+                self.end_block("ROLLBACK").await;
+                Err(error)
+            }
+            // The user's block has failed, as it would have with the statement run whole.
+            (Err(error), false) => Err(error),
+        }
+    }
+
+    /// Ends the block Kemable opened for a cursor.
+    async fn end_block(&self, command: &str) {
+        let _ = self.editor.batch_execute(command).await;
+        self.our_block.store(false, Ordering::Relaxed);
+        self.in_block.store(false, Ordering::Relaxed);
+    }
+
+    async fn run_whole(&self, statement: &str, sink: &dyn ResultSink) -> Result<ExecOutcome> {
         let map = |error: tokio_postgres::Error| errors::map(&error, Some(statement), Phase::Run);
         match self.mode {
             StatementMode::Prepared => {
@@ -240,8 +481,10 @@ impl PostgresConnection {
         }
     }
 
-    /// Streams rows into the sink in batches. `columns` is known up front for
-    /// a prepared statement; an unnamed one learns them from its first row.
+    /// Streams a statement's rows into the sink. `columns` is known up front
+    /// for a prepared statement; an unnamed one learns them from its first
+    /// row. Past the sink's limit the rest is read and dropped, never
+    /// cancelled: the statement may be writing, and a cancel would undo it.
     async fn stream(
         &self,
         rows: RowStream,
@@ -257,53 +500,68 @@ impl PostgresConnection {
             sink.begin_set(columns);
         }
 
-        let mut batch = Vec::new();
-        let mut outcome = ExecOutcome::default();
-        while let Some(row) = rows.next().await {
-            let row = row.map_err(map)?;
-            let columns = *width.get_or_insert_with(|| {
-                let columns: Vec<ColumnMeta> = row
-                    .columns()
-                    .iter()
-                    .map(|column| decode::column_meta(column.name(), column.type_()))
-                    .collect();
-                let count = columns.len();
-                sink.begin_set(columns);
-                count
-            });
-            for (index, column) in row.columns().iter().enumerate() {
-                let raw: Option<Raw<'_>> = row.try_get(index).map_err(map)?;
-                batch.push(raw.map_or(Value::Null, |Raw(bytes)| decode::decode(column.type_(), bytes)));
-            }
-            if batch.len() >= PUSH_BATCH_ROWS * columns.max(1) {
-                if !sink.push_rows(&batch) {
-                    outcome.limited = true;
-                    break;
-                }
-                batch.clear();
-            }
-        }
-
-        if outcome.limited {
-            // Stop the server sending rows nobody keeps, and read to the end of
-            // this statement before the next one starts, so the cancel cannot
-            // reach it.
-            self.send_cancel().await;
+        let (_, refused) = read_rows(rows.as_mut(), &mut width, sink, &map).await?;
+        if refused {
+            // An error after the rows kept is still the statement's: what it
+            // did is undone, and the run says so.
             while let Some(item) = rows.next().await {
-                if item.is_err() {
-                    break;
-                }
+                item.map_err(map)?;
             }
-        } else if !batch.is_empty() && !sink.push_rows(&batch) {
-            outcome.limited = true;
         }
 
         match width {
             Some(_) => sink.end_set(),
             None => sink.command_done(rows.rows_affected()),
         }
-        Ok(outcome)
+        Ok(ExecOutcome { limited: refused })
     }
+}
+
+/// The probe's one value: `true` inside a transaction block.
+fn probe_answer(messages: &[tokio_postgres::SimpleQueryMessage]) -> Option<bool> {
+    messages.iter().find_map(|message| match message {
+        tokio_postgres::SimpleQueryMessage::Row(row) => row.get(0).map(|value| value == "t"),
+        _ => None,
+    })
+}
+
+/// Reads a stream's rows into the sink in batches, opening the set on the
+/// first row when its columns were not known. Returns how many rows came
+/// and whether the sink refused more; after a refusal the rest is unread.
+async fn read_rows(
+    mut rows: std::pin::Pin<&mut RowStream>,
+    width: &mut Option<usize>,
+    sink: &dyn ResultSink,
+    map: &impl Fn(tokio_postgres::Error) -> DriverError,
+) -> Result<(u64, bool)> {
+    let mut batch = Vec::new();
+    let mut read = 0u64;
+    while let Some(row) = rows.next().await {
+        let row = row.map_err(map)?;
+        read += 1;
+        let columns = *width.get_or_insert_with(|| {
+            let columns: Vec<ColumnMeta> = row
+                .columns()
+                .iter()
+                .map(|column| decode::column_meta(column.name(), column.type_()))
+                .collect();
+            let count = columns.len();
+            sink.begin_set(columns);
+            count
+        });
+        for (index, column) in row.columns().iter().enumerate() {
+            let raw: Option<Raw<'_>> = row.try_get(index).map_err(map)?;
+            batch.push(raw.map_or(Value::Null, |Raw(bytes)| decode::decode(column.type_(), bytes)));
+        }
+        if batch.len() >= PUSH_BATCH_ROWS * columns.max(1) {
+            if !sink.push_rows(&batch) {
+                return Ok((read, true));
+            }
+            batch.clear();
+        }
+    }
+    let refused = !batch.is_empty() && !sink.push_rows(&batch);
+    Ok((read, refused))
 }
 
 async fn open(pg: &Config, tls: &Tls, notices: Option<NoticeSlot>) -> Result<(Client, JoinHandle<()>)> {
@@ -330,7 +588,14 @@ where
     while let Some(message) = poll_fn(|cx| connection.poll_message(cx)).await {
         match message {
             Ok(AsyncMessage::Notice(notice)) => {
-                let sink = notices.as_ref().and_then(|slot| lock(slot).clone());
+                // The connection hands a notice out before it passes on the
+                // answers after it, so a cursor's BEGIN warning lands here
+                // while `quiet_begin` is still set.
+                let sink = notices.as_ref().and_then(|slot| {
+                    let slot = lock(slot);
+                    let quiet = slot.quiet_begin && notice.code() == &SqlState::ACTIVE_SQL_TRANSACTION;
+                    if quiet { None } else { slot.sink.clone() }
+                });
                 if let Some(sink) = sink {
                     sink.notice(notice.message());
                 }
@@ -719,7 +984,8 @@ impl Connection for PostgresConnection {
 
     async fn execute(&self, statement: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome> {
         options.check()?;
-        *lock(&self.notices) = Some(Arc::clone(&sink));
+        self.end_stale_block().await;
+        lock(&self.notices).sink = Some(Arc::clone(&sink));
         let stop = async {
             options.stopped().await;
             self.send_cancel().await;
@@ -729,7 +995,7 @@ impl Connection for PostgresConnection {
             result = self.run(statement, sink.as_ref()) => result,
             () = stop => Err(options.stop_reason()),
         };
-        *lock(&self.notices) = None;
+        lock(&self.notices).sink = None;
         match result {
             // The server reports our own cancel, or the deadline's, as 57014.
             Err(error) if error.code == ErrorCode::Cancelled && (options.is_cancelled() || options.is_expired()) => {
@@ -741,6 +1007,7 @@ impl Connection for PostgresConnection {
 
     async fn apply_edits(&self, statements: &[String], options: CallOptions) -> Result<()> {
         options.check()?;
+        self.end_stale_block().await;
         // Simple queries: they report each command's count, and Supabase's pooler takes them.
         let work = async {
             self.editor
