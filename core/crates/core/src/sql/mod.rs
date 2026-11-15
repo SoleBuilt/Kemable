@@ -21,7 +21,7 @@ pub use completion::{
     CatalogView, Clause, CompletionContext, CompletionItem, ItemKind, Lookups, TableReference, completion_context,
     completions,
 };
-pub use database_change::{DatabaseChange, database_change};
+pub use database_change::{DatabaseChange, database_change, may_use_database};
 pub use edit::{NewValue, RowEdit, edit_statement};
 pub use literal::{typed as typed_literal, value_literal};
 pub use object_action::{Maintenance, ObjectAction, action_statements, maintenance_tasks, view_definition};

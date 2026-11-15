@@ -30,6 +30,12 @@ pub trait ResultSink: Send + Sync {
     /// A message the server sent beside the result, such as a PostgreSQL
     /// NOTICE or an MSSQL PRINT.
     fn notice(&self, text: &str);
+
+    /// The statement moved its session to `database` (SQL Server's `USE`).
+    /// A session stays bound to the database it opened on, so the driver has
+    /// already put it back; what follows the statement belongs in `database`'s
+    /// own session.
+    fn database_changed(&self, _database: &str) {}
 }
 
 /// How many values a driver gathers before it calls `push_rows`: big enough

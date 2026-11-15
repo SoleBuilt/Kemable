@@ -3,7 +3,7 @@
 //! | Statement | Grammar | Meaning |
 //! |---|---|---|
 //! | `CREATE DATABASE name` | all with databases | `Created`: the run may follow it (`docs/roadmap.md`, UX backlog) |
-//! | `USE name` | SQL Server | `Used`: the session already switched; the UI follows |
+//! | `USE name` | SQL Server | `Used`. A `USE` anywhere in a batch (`may_use_database`) moves the session; the driver puts it back and tells the sink where it went (`ResultSink::database_changed`), and the run follows on that database's own session |
 //! | `DROP DATABASE name` | all with databases | `Dropped`: the app first closes its own sessions on it |
 //! | `\c name`, `\connect name` | PostgreSQL directive | `Connect`: the run reopens its session there |
 //!
@@ -68,6 +68,15 @@ pub fn database_change(statement: &str, grammar: SqlGrammar) -> Option<DatabaseC
         return tokens.next()?.identifier(grammar).map(DatabaseChange::Used);
     }
     None
+}
+
+/// Whether a SQL Server batch may leave its session in another database: it
+/// holds a `USE` outside quotes and comments, anywhere, not only first. A
+/// `USE` inside dynamic SQL (`EXEC('USE x')`) is a string here, and the
+/// server puts the database back when that EXEC ends, so it does not count.
+pub fn may_use_database(batch: &str) -> bool {
+    let lexed = super::lex::lex(batch, SqlGrammar::SqlServer);
+    lexed.tokens.iter().any(|token| token.is_word(batch, "USE"))
 }
 
 /// `c name` or `connect name` after the backslash. Further arguments (user,
@@ -259,6 +268,22 @@ mod tests {
             "",
         ] {
             assert_eq!(change(statement, SqlGrammar::Postgres), None, "{statement}");
+        }
+    }
+
+    #[test]
+    fn a_use_anywhere_in_a_batch_may_move_its_session() {
+        assert!(may_use_database("use Sales"));
+        assert!(may_use_database("select 1;\nUSE [Sales Test];\nselect 2"));
+        assert!(may_use_database("if 1 = 1\n    use tempdb"));
+        for batch in [
+            "select 'use x'",
+            "exec('use x')",
+            "-- use x\nselect 1",
+            "/* use x */ select [use] from t",
+            "select user_name()",
+        ] {
+            assert!(!may_use_database(batch), "{batch}");
         }
     }
 

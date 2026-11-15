@@ -10,7 +10,7 @@ use kemable_core::config::{ConnectionConfig, Target, TlsMode};
 use kemable_core::connection::Connection;
 use kemable_core::engine::EngineInfo;
 use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
-use kemable_core::sql::{SqlGrammar, batch_statement_count, is_plain_query};
+use kemable_core::sql::{SqlGrammar, batch_statement_count, is_plain_query, may_use_database, quote_ident_bracket};
 use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use tiberius::{AuthMethod, Client, EncryptionLevel, QueryItem, Row, SqlBrowser, ToSql};
 use tokio::net::TcpStream;
@@ -330,6 +330,24 @@ async fn attention(guard: &mut Option<MssqlClient>) {
     );
     if !clean {
         *guard = None;
+    }
+}
+
+/// Puts a session a batch moved with `USE` back in `home`, its own database,
+/// and says where the batch had left it; `None` when it had not moved.
+async fn put_back(client: &mut MssqlClient, home: &str) -> std::result::Result<Option<String>, tiberius::error::Error> {
+    let row = client.simple_query("select db_name()").await?.into_row().await?;
+    let now = row.and_then(|row| row.try_get::<&str, _>(0).ok().flatten().map(str::to_owned));
+    match now {
+        Some(now) if !home.is_empty() && now != home => {
+            client
+                .simple_query(format!("USE {}", quote_ident_bracket(home)))
+                .await?
+                .into_results()
+                .await?;
+            Ok(Some(now))
+        }
+        _ => Ok(None),
     }
 }
 
@@ -968,6 +986,17 @@ impl Connection for MssqlConnection {
             let reset = async { client.simple_query("SET ROWCOUNT 0").await?.into_results().await }.await;
             if reset.is_err() {
                 *guard = None;
+            }
+        }
+        if may_use_database(batch)
+            && let Some(client) = guard.as_mut()
+        {
+            // The app keeps one session per database, so this one goes back to
+            // its own and the run follows the USE on the other database's session.
+            match put_back(client, &self.database).await {
+                Ok(Some(moved)) if matches!(ended, Some(Ok(_))) => sink.database_changed(&moved),
+                Ok(_) => {}
+                Err(_) => *guard = None,
             }
         }
         match ended {
