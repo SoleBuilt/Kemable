@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use kemable_core::catalog::{ColumnInfo, ColumnMeta, TableRef};
-use kemable_core::connection::Connection;
+use kemable_core::connection::{Connection, Transaction};
 use kemable_core::generate;
 use kemable_core::import::{
     CsvReader, NewColumn, ROWS_PER_INSERT, ValueShape, create_statement, detect_delimiter, field_literal, infer_shape,
@@ -101,7 +101,9 @@ async fn execute(
 }
 
 /// Runs `statements` (each with the rows it inserts) in one transaction when
-/// `transactional`; resolves to the rows inserted.
+/// `transactional`; resolves to the rows inserted. Inside the user's own open
+/// transaction it runs under a savepoint there, and leaves their transaction
+/// open whatever happens.
 async fn run_batches(
     session: &Arc<dyn Connection>,
     grammar: SqlGrammar,
@@ -110,8 +112,16 @@ async fn run_batches(
     cancel: &CancellationToken,
     channel: &Channel<JobEvent>,
 ) -> Result<u64, DriverError> {
-    let (begin, commit, rollback) = transaction(grammar);
-    if transactional {
+    let unit = if transactional {
+        let options = CallOptions::new(cancel.child_token()).with_timeout(STATEMENT_TIMEOUT);
+        session
+            .nested_transaction(options)
+            .await?
+            .unwrap_or_else(|| transaction(grammar))
+    } else {
+        Transaction::default()
+    };
+    for begin in &unit.begin {
         execute(session, begin, cancel).await?;
     }
     let mut rows = 0u64;
@@ -134,15 +144,15 @@ async fn run_batches(
     .await;
     match outcome {
         Ok(()) => {
-            if transactional {
-                execute(session, commit, cancel).await?;
+            for keep in &unit.keep {
+                execute(session, keep, cancel).await?;
             }
             Ok(rows)
         }
         Err(error) => {
-            if transactional {
-                // The rollback runs even when the cancel fired, so it gets a token of its own.
-                let _ = execute(session, rollback, &CancellationToken::new()).await;
+            for undo in &unit.undo {
+                // The undo runs even when the cancel fired, so it gets a token of its own.
+                let _ = execute(session, undo, &CancellationToken::new()).await;
             }
             Err(error)
         }

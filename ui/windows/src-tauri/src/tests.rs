@@ -1747,3 +1747,127 @@ async fn a_live_tab_keeps_hearing_notify_after_a_filter_and_a_sort() {
     reach(&mut events, 5008).await;
     server.close().await;
 }
+
+/// Imports `csv` into `table` on the server's session; the job's last event.
+async fn import_into(
+    state: &Arc<AppState>,
+    server: &Arc<OpenServer>,
+    grammar: SqlGrammar,
+    table: &kemable_core::catalog::TableRef,
+    csv: &str,
+) -> Json {
+    use kemable_core::catalog::ColumnInfo;
+    let column = |ordinal: u32, name: &str, type_name: &str| ColumnInfo {
+        ordinal,
+        name: name.into(),
+        type_name: type_name.into(),
+        nullable: ordinal != 1,
+        default: None,
+        primary_key: (ordinal == 1).then_some(1),
+        generated: false,
+    };
+    let (channel, events) = job_channel();
+    let cancel = CancellationToken::new();
+    let id = state.add_run(cancel.clone());
+    crate::jobs::run_import(
+        Arc::clone(state),
+        crate::jobs::ImportJob {
+            id,
+            session: server.session(None).await.unwrap(),
+            grammar,
+            transactional: true,
+            text: csv.into(),
+            options: crate::jobs::CsvOptions {
+                delimiter: ',',
+                header: true,
+                empty_is_null: true,
+            },
+            target: crate::jobs::ImportTarget::Existing { table: table.clone() },
+            columns: vec![column(1, "id", "int"), column(2, "a", "varchar(10)")],
+            cancel,
+            channel,
+        },
+    )
+    .await;
+    events.lock().unwrap().last().cloned().unwrap()
+}
+
+/// An import inside the user's open transaction: kept or failed, it never
+/// commits or rolls back the user's work, and the transaction goes on.
+async fn import_checks_inside_the_users_transaction(
+    state: &Arc<AppState>,
+    server: &Arc<OpenServer>,
+    grammar: SqlGrammar,
+    table: kemable_core::catalog::TableRef,
+    begin: &str,
+    rollback: &str,
+) {
+    let name = kemable_core::sql::table_name(grammar, &table);
+    let count = format!("select count(*) from {name}");
+    let script = |sql: String| async move {
+        let events = run_script(state, server, &sql, grammar).await;
+        assert!(of_type(&events, "statementFailed").is_empty(), "{sql}: {events:#?}");
+        first_rows(state, &events)
+    };
+    script(format!("create table {name} (id int primary key, a varchar(10))")).await;
+    script(format!("{begin}; insert into {name} values (1, 'a')")).await;
+
+    let kept = import_into(state, server, grammar, &table, "id,a\n2,b\n3,c\n").await;
+    assert_eq!(kept["type"], "finished", "{grammar:?}: {kept}");
+    let failed = import_into(state, server, grammar, &table, "id,a\n4,d\n1,dup\n").await;
+    assert_eq!(failed["type"], "failed", "{grammar:?}: {failed}");
+    // The failed import is undone, the user's row and the first import stay, the transaction takes statements.
+    assert_eq!(script(count.clone()).await, [vec![Some("3".to_owned())]], "{grammar:?}");
+
+    script(rollback.to_owned()).await;
+    assert_eq!(
+        script(count).await,
+        [vec![Some("0".to_owned())]],
+        "{grammar:?}: nothing was committed"
+    );
+    script(format!("drop table {name}")).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
+async fn an_import_inside_the_users_transaction_on_postgres_never_ends_it() {
+    let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(PostgresDriver))));
+    let driver = state.registry.get("postgres").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    let table = kemable_core::catalog::TableRef {
+        schema: Some("public".into()),
+        name: format!("kemable_import_block_{}", std::process::id()),
+    };
+    import_checks_inside_the_users_transaction(&state, &server, SqlGrammar::Postgres, table, "begin", "rollback").await;
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn an_import_inside_the_users_transaction_on_sql_server_never_ends_it() {
+    let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
+    let driver = state.registry.get("mssql").cloned().unwrap();
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    // A temporary table, so nothing is left in the login's database.
+    let table = kemable_core::catalog::TableRef {
+        schema: None,
+        name: format!("#kemable_import_block_{}", std::process::id()),
+    };
+    // XACT_ABORT on would end the user's transaction at the failed INSERT.
+    import_checks_inside_the_users_transaction(
+        &state,
+        &server,
+        SqlGrammar::SqlServer,
+        table,
+        "SET XACT_ABORT ON; BEGIN TRANSACTION",
+        "ROLLBACK TRANSACTION",
+    )
+    .await;
+    server.close().await;
+}
