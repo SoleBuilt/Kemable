@@ -2946,7 +2946,7 @@ dependencies = [
  "kemable-core",
  "kemable-store",
  "rustls",
- "tiberius",
+ "tabstream",
  "tokio",
  "tokio-util",
 ]
@@ -5747,6 +5747,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabstream"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "asynchronous-codec",
+ "byteorder",
+ "bytes",
+ "connection-string",
+ "encoding_rs",
+ "enumflags2",
+ "futures-timer",
+ "futures-util",
+ "libc",
+ "num-traits",
+ "once_cell",
+ "pin-project-lite",
+ "pretty-hex",
+ "rustls-native-certs",
+ "rustls-pki-types",
+ "rustls-webpki",
+ "secrecy",
+ "thiserror 2.0.21",
+ "tiberius-macros",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "winauth",
+ "zeroize",
+]
+
+[[package]]
 name = "tagptr"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6200,41 +6233,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
-]
-
-[[package]]
-name = "tiberius"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e07324791de2bdaed058af4aa433a0b5ec5c0beac407a9797419c19805df2415"
-dependencies = [
- "async-trait",
- "asynchronous-codec",
- "byteorder",
- "bytes",
- "connection-string",
- "encoding_rs",
- "enumflags2",
- "futures-timer",
- "futures-util",
- "libc",
- "num-traits",
- "once_cell",
- "pin-project-lite",
- "pretty-hex",
- "rustls-native-certs",
- "rustls-pki-types",
- "rustls-webpki",
- "secrecy",
- "thiserror 2.0.21",
- "tiberius-macros",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tracing",
- "uuid",
- "winauth",
- "zeroize",
 ]
 
 [[package]]
