@@ -2,6 +2,8 @@
 
 Windows first. Each phase ends with `node scripts/verify.mjs` passing and the app tried by hand.
 
+Before the first public preview, `docs/preview-audit.md` lists what a read of the code found that could hurt a person using Kemable (2026-11-15).
+
 ## Phase 1: the fast core loop
 
 - [x] Workspace, lints, `node scripts/verify.mjs`, rules and skills.
