@@ -3056,6 +3056,7 @@ dependencies = [
  "kemable-store",
  "kemable-tunnel",
  "keyring",
+ "rfd",
  "serde",
  "serde_json",
  "tauri",

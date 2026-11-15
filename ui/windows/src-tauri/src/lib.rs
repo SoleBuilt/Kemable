@@ -54,25 +54,11 @@ pub fn run() {
         .manage(state)
         .manage(updates::PendingUpdate::default())
         .setup(|app| {
-            // Everything the app remembers is in one folder: `data` beside the app when
-            // the installer made it, else %APPDATA%\<identifier>: kemable.app installed,
-            // dev.kemable.app from `pnpm tauri dev` (ADR 0019).
-            let profile = app.path().app_data_dir()?;
-            let folder = DataFolder::find(profile.clone());
-            folder.carry_over(&profile);
-            std::fs::create_dir_all(&folder.path)?;
-            app.manage(Library::in_folder(&folder.path));
-            // Without a history the app still runs; the History tab says so.
-            if let Ok(history) = kemable_storage::history::QueryHistory::open(&folder.path) {
-                let _ = app.state::<Arc<AppState>>().history.set(Arc::new(history));
+            // Tauri panics on a setup error, and a release build has no console: the
+            // person sees the reason before the app goes.
+            if let Err(error) = setup(app) {
+                cannot_start(&error.to_string());
             }
-            // The SSH servers trusted here, beside the user's own ~/.ssh/known_hosts (ADR 0024).
-            let _ = app
-                .state::<Arc<AppState>>()
-                .host_keys
-                .set(Arc::new(kemable_tunnel::HostKeys::new(folder.path.join("known_hosts"))));
-            app.manage(folder.clone());
-            window::open(app, &folder)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -151,7 +137,46 @@ pub fn run() {
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {
-        eprintln!("Kemable could not start: {error}");
-        std::process::exit(1);
+        cannot_start(&error.to_string());
     }
+}
+
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Everything the app remembers is in one folder: `data` beside the app when
+    // the installer made it, else %APPDATA%\<identifier>: kemable.app installed,
+    // dev.kemable.app from `pnpm tauri dev` (ADR 0019).
+    let profile = app.path().app_data_dir()?;
+    let folder = DataFolder::find(profile.clone(), app.path().app_local_data_dir()?);
+    folder.carry_over(&profile);
+    std::fs::create_dir_all(&folder.path)?;
+    app.manage(Library::in_folder(&folder.path));
+    // Without a history the app still runs; the History tab says so.
+    if let Ok(history) = kemable_storage::history::QueryHistory::open(&folder.path) {
+        let _ = app.state::<Arc<AppState>>().history.set(Arc::new(history));
+    }
+    // The SSH servers trusted here, beside the user's own ~/.ssh/known_hosts (ADR 0024).
+    let _ = app
+        .state::<Arc<AppState>>()
+        .host_keys
+        .set(Arc::new(kemable_tunnel::HostKeys::new(folder.path.join("known_hosts"))));
+    app.manage(folder.clone());
+    window::open(app, &folder)?;
+    Ok(())
+}
+
+/// Says why in a Windows message box, the one thing that shows with no window and no
+/// console (WebView2 missing or blocked by policy, a data folder it cannot make), then ends.
+fn cannot_start(error: &str) -> ! {
+    eprintln!("Kemable could not start: {error}");
+    let _ = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Error)
+        .set_title("Kemable could not start")
+        .set_description(format!(
+            "Kemable could not start:
+
+{error}"
+        ))
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
+    std::process::exit(1);
 }

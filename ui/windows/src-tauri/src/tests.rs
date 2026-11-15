@@ -1213,7 +1213,12 @@ fn data_folder(name: &str) -> crate::data::DataFolder {
     let path = std::env::temp_dir().join(format!("kemable-data-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).unwrap();
-    crate::data::DataFolder { path, beside_app: true }
+    let local = path.join("local");
+    crate::data::DataFolder {
+        path,
+        beside_app: true,
+        local,
+    }
 }
 
 #[test]
@@ -1276,6 +1281,7 @@ fn a_new_data_folder_takes_what_the_old_one_kept_once_and_leaves_it_there() {
     let profile = crate::data::DataFolder {
         path: old.path.clone(),
         beside_app: false,
+        local: old.local.clone(),
     };
     profile.carry_over(&folder.path);
     assert_eq!(std::fs::read(old.path.join("connections.json")).unwrap(), b"[2]");
@@ -1293,6 +1299,17 @@ fn the_startup_script_carries_the_preferences_and_the_folder() {
     assert!(script.starts_with("window.__KEMABLE__ = {"), "{script}");
     assert!(script.contains("\"theme\":\"dark\""), "{script}");
     assert!(script.contains("\"besideApp\":true"), "{script}");
+    let _ = std::fs::remove_dir_all(&folder.path);
+}
+
+#[test]
+fn the_webview_folder_is_the_users_own_even_when_the_data_folder_is_shared() {
+    let folder = data_folder("own-webview");
+    assert!(folder.beside_app);
+    assert_eq!(folder.webview(), folder.local.join("webview"));
+    assert!(!folder.webview().starts_with(folder.path.join("webview")));
+    // The startup script names the shared folder, never the user's own.
+    assert!(!folder.startup_script().contains("\"local\""));
     let _ = std::fs::remove_dir_all(&folder.path);
 }
 
