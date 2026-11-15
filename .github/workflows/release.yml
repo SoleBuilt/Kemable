@@ -8,6 +8,8 @@ name: Release
 #
 # The updater's private key lives only in this repository's secrets:
 # TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+# When WINDOWS_CERTIFICATE (a base64 PFX) and WINDOWS_CERTIFICATE_PASSWORD exist too,
+# the app and its installer are also Authenticode-signed; without them that is skipped.
 on:
   push:
     tags: ["v*"]
@@ -29,6 +31,8 @@ jobs:
         shell: bash
     env:
       TAG: ${{ github.ref_name }}
+      # Whether a code-signing certificate exists, without handing it to every step.
+      CAN_SIGN: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,13 +52,51 @@ jobs:
           npm install --global pnpm@11.25.0
           pnpm install --frozen-lockfile
 
+      # Into this runner's certificate store, so signtool signs by thumbprint and the
+      # password never reaches a command line. Only the thumbprint goes on.
+      - name: Import the code-signing certificate
+        if: env.CAN_SIGN == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "kemable-signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password |
+            Where-Object HasPrivateKey | Select-Object -First 1
+          Remove-Item $pfx
+          if (-not $certificate) { throw "The PFX holds no certificate with a private key." }
+          "SIGN_THUMBPRINT=$($certificate.Thumbprint)" >> $env:GITHUB_ENV
+
       # rustup reads rust-toolchain.toml and installs that Rust on the first cargo call.
-      - name: Build the installer and sign it for the updater
+      # With a thumbprint, Tauri runs signtool on Kemable.exe, the uninstaller and the
+      # installer as it builds them, before it signs the installer for the updater:
+      # signing after the build would change the bytes the updater's .sig covers.
+      - name: Build the installer and sign it
         working-directory: ui/windows
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'
+        run: |
+          windows=''
+          if [ -n "${SIGN_THUMBPRINT:-}" ]; then
+            windows=',"windows":{"certificateThumbprint":"'"$SIGN_THUMBPRINT"'","digestAlgorithm":"sha256","timestampUrl":"http://timestamp.digicert.com","tsp":true}'
+          fi
+          pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":true'"$windows"'}}'
+
+      - name: Check the Authenticode signature
+        if: env.CAN_SIGN == 'true'
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem target/release/bundle/nsis/*-setup.exe)
+          if ($installers.Count -eq 0) { throw "No installer in target/release/bundle/nsis." }
+          foreach ($file in $installers) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne "Valid") { throw "$($file.Name): $($signature.Status) $($signature.StatusMessage)" }
+            "$($file.Name): signed by $($signature.SignerCertificate.Subject)"
+          }
 
       - name: Write latest.json
         run: node scripts/release.mjs manifest "$TAG" > release-files.txt
