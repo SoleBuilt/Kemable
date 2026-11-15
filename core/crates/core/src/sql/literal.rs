@@ -39,6 +39,28 @@ pub fn quoted(grammar: SqlGrammar, value: &str) -> String {
     out
 }
 
+/// The bytes a hex text names: `0x` (as the grid shows bytes) or `\x` (as
+/// PostgreSQL does) and two hex digits a byte. `None` for anything else.
+pub fn parse_hex(text: &str) -> Option<Vec<u8>> {
+    let text = text.trim();
+    let digits = text
+        .strip_prefix("0x")
+        .or_else(|| text.strip_prefix("0X"))
+        .or_else(|| text.strip_prefix("\\x"))?;
+    if digits.len() % 2 != 0 {
+        return None;
+    }
+    digits
+        .as_bytes()
+        .chunks(2)
+        .map(|pair| {
+            let high = char::from(pair[0]).to_digit(16)?;
+            let low = char::from(pair[1]).to_digit(16)?;
+            u8::try_from(high * 16 + low).ok()
+        })
+        .collect()
+}
+
 pub fn is_number(value: &str) -> bool {
     let digits = value.strip_prefix('-').unwrap_or(value);
     let mut parts = digits.splitn(2, '.');
@@ -134,6 +156,18 @@ mod tests {
             );
         }
         assert_eq!(value_literal(SqlGrammar::Postgres, &Value::Null), None);
+    }
+
+    #[test]
+    fn hex_text_reads_as_its_bytes_with_its_prefix_only() {
+        assert_eq!(parse_hex("0x00fF10"), Some(vec![0x00, 0xff, 0x10]));
+        assert_eq!(parse_hex(" 0X0a "), Some(vec![0x0a]));
+        assert_eq!(parse_hex("\\x0a"), Some(vec![0x0a]));
+        assert_eq!(parse_hex("0x"), Some(Vec::new()));
+        assert_eq!(parse_hex("00ff"), None, "no prefix: text, not bytes");
+        assert_eq!(parse_hex("0x0"), None, "half a byte");
+        assert_eq!(parse_hex("0xzz"), None);
+        assert_eq!(parse_hex("0xé1"), None);
     }
 
     #[test]
