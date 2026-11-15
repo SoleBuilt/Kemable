@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { errorTitle } from "../errors";
+  import type { CoreError } from "../types";
   import Button from "../ui/Button.svelte";
   import EmptyState from "../ui/EmptyState.svelte";
+  import InfoBar from "../ui/InfoBar.svelte";
 
   /** What the window shows with nothing open: no sidebar; the palette holds the saved connections (D25). */
   interface Props {
@@ -10,9 +13,12 @@
     onNewQuery: () => void;
     onOpenFile: () => void;
     onMemory: () => void;
+    /** Why the saved connections could not be read; the message names the file. */
+    libraryError: CoreError | null;
+    onOpenFolder: () => void;
   }
 
-  let { busy, onNew, onNewQuery, onOpenFile, onMemory }: Props = $props();
+  let { busy, onNew, onNewQuery, onOpenFile, onMemory, libraryError, onOpenFolder }: Props = $props();
 
   const KEYS = [
     { keys: ["Ctrl", "K"], label: "Search" },
@@ -23,6 +29,11 @@
 </script>
 
 <main class="pb-welcome">
+  {#if libraryError}
+    <InfoBar tone="danger" strip title={`Saved connections: ${errorTitle(libraryError)}`} message={libraryError.message}>
+      <Button size="sm" icon="folder" onclick={onOpenFolder}>Open its folder</Button>
+    </InfoBar>
+  {/if}
   <EmptyState
     icon="database"
     title="No connection open"

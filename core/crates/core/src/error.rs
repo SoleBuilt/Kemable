@@ -64,6 +64,11 @@ pub enum ErrorCode {
     /// installed (`docs/decisions/0028-updates.md`).
     #[serde(rename = "update.signature")]
     UpdateSignature,
+    /// A file the app keeps (saved connections, profiles, queries, pages) is
+    /// there but cannot be read or understood. It is left as it is and never
+    /// written over; the message names the file.
+    #[serde(rename = "storage.unreadable")]
+    Unreadable,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -92,6 +97,7 @@ impl ErrorCode {
             Self::SshHostChanged => "ssh.host_changed",
             Self::SshForward => "ssh.forward",
             Self::UpdateSignature => "update.signature",
+            Self::Unreadable => "storage.unreadable",
             Self::Internal => "internal",
         }
     }

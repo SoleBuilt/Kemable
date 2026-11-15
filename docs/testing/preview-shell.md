@@ -33,3 +33,18 @@ Khi bước khởi động lỗi (thiếu WebView2, không tạo được thư m
   **Đúng:** thư mục có, chứa `EBWebView`; trong thư mục dữ liệu (`data\` cạnh exe, hoặc `%APPDATA%\dev.kemable.app`) không có thư mục `webview` mới được tạo.
 - [ ] Bản cài cho mọi người (Everyone) trên máy có hai tài khoản Windows: tài khoản thứ nhất mở Kemable và để đó, chuyển sang tài khoản thứ hai (Switch user), mở Kemable.
   **Đúng:** ứng dụng mở được ở cả hai tài khoản, cùng danh sách kết nối đã lưu.
+
+## B14. `connections.json` hỏng
+
+File kết nối đã lưu không đọc được thì ứng dụng nói rõ, kèm đường dẫn file và nút mở thư mục, thay vì hiện như chưa lưu kết nối nào. Lưu kết nối vẫn từ chối ghi đè lên file đó.
+
+- [ ] Đóng Kemable bản dev. Sao lưu `%APPDATA%\dev.kemable.app\connections.json`, rồi mở file bằng Notepad, xoá dấu `}` cuối cùng, lưu lại. Mở Kemable.
+  **Đúng:** màn hình Welcome có dải đỏ **Saved connections: A file Kemable keeps cannot be read; it is left as it is**, dòng dưới ghi `cannot understand ...\connections.json: ...`; có nút **Open its folder**.
+- [ ] Bấm **Open its folder**.
+  **Đúng:** Explorer mở đúng thư mục chứa `connections.json`.
+- [ ] Nhấn **Ctrl+K**.
+  **Đúng:** nhóm **Saved connections** có một dòng **Saved connections cannot be read** (biểu tượng cảnh báo), không phải danh sách trống; chọn nó thì mở thư mục.
+- [ ] Nhấn **Ctrl+N**, chọn PostgreSQL.
+  **Đúng:** form hiện ngay lỗi đỏ cùng nội dung. Điền đủ, bấm **Connect** (có lưu): không lưu được, báo lỗi; file `connections.json` vẫn y như lúc bị sửa (không bị ghi đè).
+- [ ] Đóng Kemable, chép file sao lưu về chỗ cũ, mở lại.
+  **Đúng:** không còn dải đỏ; Ctrl+K có lại các kết nối đã lưu.

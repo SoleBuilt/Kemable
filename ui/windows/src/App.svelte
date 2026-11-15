@@ -840,12 +840,24 @@
   let profilesKey = $state(0);
   let savedKey = $state(0);
   let library: SavedConnection[] = $state.raw([]);
+  /** Why the saved connections could not be read: said on the Welcome screen and in Ctrl+K, never shown as an empty list. */
+  let libraryError = $state.raw<CoreError | null>(null);
 
   function readLibrary() {
     ipc.listSaved().then(
-      (list) => (library = list),
-      () => (library = []),
+      (list) => {
+        library = list;
+        libraryError = null;
+      },
+      (caught: unknown) => {
+        library = [];
+        libraryError = asCoreError(caught);
+      },
     );
+  }
+
+  function openDataFolder() {
+    ipc.openDataFolder().catch((caught: unknown) => note(`The folder did not open: ${asCoreError(caught).message}`));
   }
 
   $effect(() => {
@@ -2225,6 +2237,18 @@
     { id: "open-file", group: "Start", label: "Open file…", icon: "file", keys: ["Ctrl", "O"], run: () => void openFile() },
     { id: "link-folder", group: "Start", label: "Link a folder of .sql files…", icon: "folder-plus", run: () => void linkFolder() },
     { id: "memory", group: "Start", label: "Open an in-memory database", icon: "database", run: () => void connectTo(":memory:") },
+    ...(libraryError
+      ? [
+          {
+            id: "saved-unreadable",
+            group: "Saved connections",
+            label: "Saved connections cannot be read",
+            meta: `${libraryError.message} · Open its folder`,
+            icon: "warning" as const,
+            run: openDataFolder,
+          },
+        ]
+      : []),
     ...library.map((entry) => ({
       id: `saved:${entry.id}`,
       group: "Saved connections",
@@ -2757,6 +2781,8 @@
       onNewQuery={() => void startQuery()}
       onOpenFile={() => void openFile()}
       onMemory={() => void connectTo(":memory:")}
+      {libraryError}
+      onOpenFolder={openDataFolder}
     />
   {/if}
 
