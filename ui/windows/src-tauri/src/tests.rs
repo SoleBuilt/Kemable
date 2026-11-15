@@ -1214,10 +1214,12 @@ fn data_folder(name: &str) -> crate::data::DataFolder {
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).unwrap();
     let local = path.join("local");
+    let own = path.join("own");
     crate::data::DataFolder {
         path,
         beside_app: true,
         local,
+        own,
     }
 }
 
@@ -1282,6 +1284,7 @@ fn a_new_data_folder_takes_what_the_old_one_kept_once_and_leaves_it_there() {
         path: old.path.clone(),
         beside_app: false,
         local: old.local.clone(),
+        own: old.path.clone(),
     };
     profile.carry_over(&folder.path);
     assert_eq!(std::fs::read(old.path.join("connections.json")).unwrap(), b"[2]");
@@ -1308,6 +1311,9 @@ fn the_webview_folder_is_the_users_own_even_when_the_data_folder_is_shared() {
     assert!(folder.beside_app);
     assert_eq!(folder.webview(), folder.local.join("webview"));
     assert!(!folder.webview().starts_with(folder.path.join("webview")));
+    // So are the SSH host keys it trusts (docs/decisions/0033-bound-passwords.md).
+    assert_eq!(folder.known_hosts(), folder.own.join("known_hosts"));
+    assert!(!folder.known_hosts().starts_with(folder.path.join("known_hosts")));
     // The startup script names the shared folder, never the user's own.
     assert!(!folder.startup_script().contains("\"local\""));
     let _ = std::fs::remove_dir_all(&folder.path);

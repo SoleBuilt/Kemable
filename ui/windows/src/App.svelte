@@ -893,12 +893,26 @@
       return;
     }
     askPassword = null;
+    movedTo = null;
     connectDialog = null;
     connectError = await openWith(() => ipc.connectSaved(saved.id, password));
+    // The kept password was not sent: the connection points elsewhere than where it was
+    // kept for (docs/decisions/0033-bound-passwords.md). It is asked for again.
+    if (connectError?.code === "secret.moved") {
+      movedTo = connectError.message;
+      askPassword = saved;
+      connectError = null;
+    }
+    movedSsh = connectError?.code === "ssh.secret_moved" ? saved : null;
     // An SSH server not known yet: the strip shows its fingerprint and can trust it, then open again.
     untrusted = connectError?.code === "ssh.host_unknown" && saved.config.ssh ? { saved, password } : null;
     savedKey++;
   }
+
+  /** Where a saved connection points now, when its kept password was kept for elsewhere. */
+  let movedTo: string | null = $state(null);
+  /** A saved connection whose kept SSH secret was kept for another SSH server: edited to enter it again. */
+  let movedSsh: SavedConnection | null = $state(null);
 
   /** A saved connection whose SSH server was not known, to open again once its key is trusted. */
   let untrusted: { saved: SavedConnection; password: string | null } | null = $state(null);
@@ -2454,7 +2468,18 @@
         <Button size="sm" label="Trust this key and connect" onclick={() => void trustAndOpen()} />
       </InfoBar>
     {:else}
-      <InfoBar tone="danger" strip title={errorTitle(connectError)} message={connectError.message} onDismiss={() => (connectError = null)} />
+      <InfoBar tone="danger" strip title={errorTitle(connectError)} message={connectError.message} onDismiss={() => (connectError = null)}>
+        {#if movedSsh && connectError.code === "ssh.secret_moved"}
+          {@const target = movedSsh}
+          <Button
+            size="sm"
+            onclick={() => {
+              connectError = null;
+              editSaved(target);
+            }}>Edit connection</Button
+          >
+        {/if}
+      </InfoBar>
     {/if}
   {/if}
 
@@ -3041,7 +3066,15 @@
 
 {#if askPassword}
   {@const target = askPassword}
-  <PasswordDialog saved={target} onSubmit={(password) => void openSaved(target, password)} onClose={() => (askPassword = null)} />
+  <PasswordDialog
+    saved={target}
+    {movedTo}
+    onSubmit={(password) => void openSaved(target, password)}
+    onClose={() => {
+      askPassword = null;
+      movedTo = null;
+    }}
+  />
 {/if}
 
 <!--

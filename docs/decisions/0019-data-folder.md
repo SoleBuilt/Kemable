@@ -20,7 +20,7 @@ What the app remembered was in three places: the saved connections, profiles, qu
 
 ## Consequences
 
-- Installed for Everyone, the PC's users share one data folder: the same saved connections and pages. Their passwords stay each user's own, in Credential Manager.
+- Installed for Everyone, the PC's users share one data folder: the same saved connections and pages. Their passwords stay each user's own, in Credential Manager, bound to where they may be sent, and the SSH host keys are each user's own (`docs/decisions/0033-bound-passwords.md`).
 - A folder this user cannot write, such as an old install in Program Files, falls back to `%APPDATA%`, and Settings says so.
 - The links point at CapCut's terms until Kemable's landing page has its own; they are named once, in `open_terms` (`commands.rs`).
 - The installed app is `kemable.app`; `pnpm tauri dev` is `dev.kemable.app` (`src-tauri/tauri.dev.conf.json`, laid over by `scripts/tauri.mjs`) and keeps its data in `%APPDATA%\dev.kemable.app`, so uninstalling with "Delete the application data" never touches a development build's data, and a fresh install starts empty. Decided with the user on 2026-11-12.

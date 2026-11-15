@@ -42,6 +42,11 @@ pub struct DataFolder {
     /// another account, even when `path` is an install for everyone.
     #[serde(skip)]
     pub local: PathBuf,
+    /// This Windows user's own `%APPDATA%\<identifier>`: what decides where a secret
+    /// may go stays here, out of reach of the PC's other users
+    /// (docs/decisions/0033-bound-passwords.md).
+    #[serde(skip)]
+    pub own: PathBuf,
 }
 
 impl DataFolder {
@@ -54,13 +59,21 @@ impl DataFolder {
                 path: beside,
                 beside_app: true,
                 local,
+                own: fallback,
             },
             _ => Self {
-                path: fallback,
+                path: fallback.clone(),
                 beside_app: false,
                 local,
+                own: fallback,
             },
         }
+    }
+
+    /// The SSH host keys Kemable trusts: each Windows user's own, never in a
+    /// folder the PC's other users may change (docs/decisions/0033-bound-passwords.md).
+    pub fn known_hosts(&self) -> PathBuf {
+        self.own.join("known_hosts")
     }
 
     pub fn file(&self, name: &str) -> PathBuf {

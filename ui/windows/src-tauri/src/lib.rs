@@ -154,11 +154,13 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(history) = kemable_storage::history::QueryHistory::open(&folder.path) {
         let _ = app.state::<Arc<AppState>>().history.set(Arc::new(history));
     }
-    // The SSH servers trusted here, beside the user's own ~/.ssh/known_hosts (ADR 0024).
+    // The SSH servers trusted here, beside the user's own ~/.ssh/known_hosts (ADR 0024),
+    // in this Windows user's own folder (ADR 0033).
+    std::fs::create_dir_all(&folder.own)?;
     let _ = app
         .state::<Arc<AppState>>()
         .host_keys
-        .set(Arc::new(kemable_tunnel::HostKeys::new(folder.path.join("known_hosts"))));
+        .set(Arc::new(kemable_tunnel::HostKeys::new(folder.known_hosts())));
     app.manage(folder.clone());
     window::open(app, &folder)?;
     Ok(())

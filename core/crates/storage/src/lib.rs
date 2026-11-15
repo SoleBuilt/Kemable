@@ -12,6 +12,11 @@
 //!
 //! A connection may sign in with a credential profile instead of its own
 //! user and password ([`profiles`]); `resolve` fills them in from it.
+//!
+//! A kept secret is bound to where it is sent (`docs/decisions/0033-bound-passwords.md`):
+//! the vault keeps, beside it, the engine, host, port and user (and SSH server)
+//! it was kept for. The file may be shared with other Windows users, the vault
+//! never is, so a connection someone else pointed elsewhere gets no kept secret.
 
 pub mod history;
 pub mod profiles;
@@ -20,7 +25,7 @@ pub mod queries;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kemable_core::config::{ConnectionConfig, Secret, Target};
+use kemable_core::config::{ConnectionConfig, Secret, SshTunnel, Target};
 use kemable_core::{DriverError, ErrorCode, Result};
 use serde::{Deserialize, Serialize};
 
@@ -83,6 +88,89 @@ pub fn password_key(id: &str) -> String {
 /// (`docs/decisions/0024-ssh-tunnels.md`).
 pub fn ssh_key(id: &str) -> String {
     format!("connection/{id}/ssh")
+}
+
+/// Where the vault keeps what the connection's password was kept for: [`secret_target`].
+pub fn password_for_key(id: &str) -> String {
+    format!("connection/{id}/password-for")
+}
+
+/// Where the vault keeps what the connection's SSH secret was kept for: [`ssh_target`].
+pub fn ssh_for_key(id: &str) -> String {
+    format!("connection/{id}/ssh-for")
+}
+
+/// Where a connection's password or token goes: the engine, the host, the port,
+/// the user and the SSH server it passes through; for an HTTP engine its endpoint.
+/// None for a file, which has no secret.
+pub fn secret_target(config: &ConnectionConfig) -> Option<String> {
+    let through = config.ssh.as_ref().map(ssh_target).unwrap_or_default();
+    match &config.target {
+        Target::Network { host, port, user, .. } => Some(format!(
+            "{}|{}|{}|{}|{}",
+            config.engine,
+            host.trim().to_lowercase(),
+            port.map(|port| port.to_string()).unwrap_or_default(),
+            user.as_deref().unwrap_or_default(),
+            through,
+        )),
+        Target::Http { endpoint, .. } => Some(format!("{}|{}", config.engine, endpoint.trim())),
+        Target::File { .. } => None,
+    }
+}
+
+/// Where an SSH password goes: the SSH server, its port and the user.
+pub fn ssh_target(ssh: &SshTunnel) -> String {
+    format!("ssh|{}|{}|{}", ssh.host.trim().to_lowercase(), ssh.port(), ssh.user)
+}
+
+/// The kept secrets `resolve` left out, because the saved connection no longer
+/// points where they were kept for. Connecting asks for them again.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Moved {
+    /// The password or token.
+    pub password: bool,
+    /// The SSH password or key passphrase.
+    pub ssh: bool,
+}
+
+enum Kept {
+    None,
+    Here(Secret),
+    Elsewhere,
+}
+
+/// The secret under `key` when it was kept for `target`.
+fn kept_for(vault: &dyn SecretVault, key: &str, for_key: &str, target: &str) -> Result<Kept> {
+    let Some(secret) = vault.get(key)? else {
+        return Ok(Kept::None);
+    };
+    match vault.get(for_key)? {
+        Some(bound) if bound.expose() == target => Ok(Kept::Here(secret)),
+        Some(_) => Ok(Kept::Elsewhere),
+        // Kept before secrets were bound: it belongs to the connection as it is
+        // saved now, and is bound to that once.
+        None => {
+            vault.set(for_key, &Secret::new(target))?;
+            Ok(Kept::Here(secret))
+        }
+    }
+}
+
+/// A secret left blank in the form keeps the kept one, and follows the user's own
+/// edit from `before` to `after`, but only while it was kept for `before`: an
+/// edit saved over a connection someone else moved leaves it where it was.
+fn follow(vault: &dyn SecretVault, key: &str, for_key: &str, before: Option<&str>, after: &str) -> Result<()> {
+    let Some(before) = before else {
+        return Ok(());
+    };
+    if before == after || vault.get(key)?.is_none() {
+        return Ok(());
+    }
+    match vault.get(for_key)? {
+        Some(bound) if bound.expose() != before => Ok(()),
+        _ => vault.set(for_key, &Secret::new(after)),
+    }
 }
 
 /// Clears the SSH secret a config carries, if it goes through SSH.
@@ -194,13 +282,34 @@ impl ConnectionLibrary {
         if connection.id.is_empty() {
             connection.id = uuid::Uuid::new_v4().to_string();
         }
+        let id = connection.id.clone();
+        let before = file
+            .connections
+            .iter()
+            .find(|saved| saved.id == id)
+            .map(|saved| saved.config.clone());
         // A tunnel cannot ask for its secret when it connects, so a secret
         // given is kept whatever Save password says; a blank one keeps the one
         // kept, and a connection without SSH keeps none.
         match &connection.config.ssh {
-            Some(ssh) if !ssh.secret().is_empty() => vault.set(&ssh_key(&connection.id), ssh.secret())?,
-            Some(_) => {}
-            None => vault.delete(&ssh_key(&connection.id))?,
+            Some(ssh) if !ssh.secret().is_empty() => {
+                vault.set(&ssh_key(&id), ssh.secret())?;
+                vault.set(&ssh_for_key(&id), &Secret::new(ssh_target(ssh)))?;
+            }
+            Some(ssh) => {
+                let was = before.as_ref().and_then(|config| config.ssh.as_ref()).map(ssh_target);
+                follow(
+                    vault,
+                    &ssh_key(&id),
+                    &ssh_for_key(&id),
+                    was.as_deref(),
+                    &ssh_target(ssh),
+                )?;
+            }
+            None => {
+                vault.delete(&ssh_key(&id))?;
+                vault.delete(&ssh_for_key(&id))?;
+            }
         }
         clear_ssh_secret(&mut connection.config);
         // A colour the UI has no token for would draw nothing: it is dropped.
@@ -215,18 +324,27 @@ impl ConnectionLibrary {
                 *user = Some(profile.user);
             }
             connection.save_password = false;
-            vault.delete(&password_key(&connection.id))?;
+            vault.delete(&password_key(&id))?;
+            vault.delete(&password_for_key(&id))?;
             set_secret(&mut connection.config, Secret::default());
             return self.put(file, connection);
         }
         let secret = secret
             .or_else(|| secret_of(&connection.config).cloned())
             .unwrap_or_default();
-        let key = password_key(&connection.id);
+        let key = password_key(&id);
+        let target = secret_target(&connection.config);
         if connection.save_password && !secret.is_empty() {
             vault.set(&key, &secret)?;
+            if let Some(target) = &target {
+                vault.set(&password_for_key(&id), &Secret::new(target.as_str()))?;
+            }
         } else if !connection.save_password {
             vault.delete(&key)?;
+            vault.delete(&password_for_key(&id))?;
+        } else if let Some(target) = &target {
+            let was = before.as_ref().and_then(secret_target);
+            follow(vault, &key, &password_for_key(&id), was.as_deref(), target)?;
         }
         set_secret(&mut connection.config, Secret::default());
         self.put(file, connection)
@@ -267,12 +385,16 @@ impl ConnectionLibrary {
         file.connections.retain(|saved| saved.id != id);
         self.write(&file)?;
         vault.delete(&ssh_key(id))?;
+        vault.delete(&ssh_for_key(id))?;
+        vault.delete(&password_for_key(id))?;
         vault.delete(&password_key(id))
     }
 
     /// The saved connection and its config with the secret filled in from the
-    /// vault, when one is kept, or with the login of its credential profile.
-    pub fn resolve(&self, id: &str, vault: &dyn SecretVault) -> Result<(SavedConnection, ConnectionConfig)> {
+    /// vault, when one is kept for where the connection points now, or with the
+    /// login of its credential profile; and the kept secrets left out because
+    /// the connection points elsewhere.
+    pub fn resolve(&self, id: &str, vault: &dyn SecretVault) -> Result<(SavedConnection, ConnectionConfig, Moved)> {
         let saved = self
             .read()?
             .connections
@@ -280,19 +402,44 @@ impl ConnectionLibrary {
             .find(|saved| saved.id == id)
             .ok_or_else(|| DriverError::not_found("saved connection"))?;
         let mut config = saved.config.clone();
+        let mut moved = Moved::default();
         if let Some(profile_id) = &saved.profile_id {
             self.profiles.apply(profile_id, vault, &mut config)?;
         } else if saved.save_password
-            && let Some(secret) = vault.get(&password_key(id))?
+            && let Some(target) = secret_target(&saved.config)
         {
-            set_secret(&mut config, secret);
+            match kept_for(vault, &password_key(id), &password_for_key(id), &target)? {
+                Kept::Here(secret) => set_secret(&mut config, secret),
+                Kept::Elsewhere => moved.password = true,
+                Kept::None => {}
+            }
         }
-        if let Some(ssh) = &mut config.ssh
-            && let Some(secret) = vault.get(&ssh_key(id))?
-        {
-            ssh.set_secret(secret);
+        if let Some(ssh) = &mut config.ssh {
+            match kept_for(vault, &ssh_key(id), &ssh_for_key(id), &ssh_target(ssh))? {
+                Kept::Here(secret) => ssh.set_secret(secret),
+                Kept::Elsewhere => moved.ssh = true,
+                Kept::None => {}
+            }
         }
-        Ok((saved, config))
+        Ok((saved, config, moved))
+    }
+
+    /// Keeps `secret` as the password of the saved connection `id`, for where it
+    /// points now, when it keeps its password: the user typed it to connect after
+    /// the connection was moved.
+    pub fn keep_password(&self, id: &str, secret: &Secret, vault: &dyn SecretVault) -> Result<()> {
+        let file = self.read()?;
+        let Some(saved) = file.connections.iter().find(|saved| saved.id == id) else {
+            return Err(DriverError::not_found("saved connection"));
+        };
+        if !saved.save_password || saved.profile_id.is_some() || secret.is_empty() {
+            return Ok(());
+        }
+        let Some(target) = secret_target(&saved.config) else {
+            return Ok(());
+        };
+        vault.set(&password_key(id), secret)?;
+        vault.set(&password_for_key(id), &Secret::new(target))
     }
 
     /// Records that `id` was opened now.
