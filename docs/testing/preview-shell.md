@@ -67,3 +67,14 @@ Mật khẩu (hoặc token) giữ trong Credential Manager gắn với engine, h
   **Đúng:** dải đỏ **This connection's SSH server changed since its SSH password was kept: edit the connection to enter it again**, có nút **Edit connection** mở form; không có kết nối SSH nào được mở.
 - [ ] Bản cài cho mọi người: kết nối qua SSH tới một server mới, bấm **Trust this key and connect**. Xem `%APPDATA%\kemable.app\known_hosts` và `data\known_hosts` cạnh exe.
   **Đúng:** khoá nằm trong `%APPDATA%\kemable.app\known_hosts`; `data\known_hosts` không được ghi.
+
+## C16. Bộ cài mang theo văn bản giấy phép
+
+Bộ cài đặt `LICENSE.txt` (văn bản AGPL-3.0) cạnh `Kemable.exe`; Settings › About › **License** mở nó bằng Notepad, như Third-party notices, không cần mạng hay GitHub.
+
+- [ ] Build bộ cài (`pnpm tauri build`), cài, rồi xem thư mục cài.
+  **Đúng:** có `LICENSE.txt` và `THIRD-PARTY-NOTICES.md` cạnh `Kemable.exe`; `LICENSE.txt` bắt đầu bằng `GNU AFFERO GENERAL PUBLIC LICENSE`.
+- [ ] Rút mạng, mở **Settings** (Ctrl+,) › About › **License**.
+  **Đúng:** Notepad mở `LICENSE.txt` trong thư mục cài; không mở trình duyệt.
+- [ ] Bản dev (`pnpm tauri dev`): bấm **License**.
+  **Đúng:** Notepad mở `LICENSE.txt` từ thư mục build (`target\debug`).
