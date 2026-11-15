@@ -560,3 +560,21 @@ export interface ResultWhere {
   /** Indexes into the filters of the conditions left out: their column's name is empty or shared. */
   leftOut: number[];
 }
+
+/** A newer version than this one, as its release announces it (docs/decisions/0028-updates.md). */
+export interface UpdateInfo {
+  version: string;
+  currentVersion: string;
+  /** What changed, as the release's notes say it: Markdown, shown as text. */
+  notes: string;
+  /** When it was published (RFC 3339), when the release says. */
+  date: string | null;
+  /** A critical fix: the app is not used until it is installed. */
+  critical: boolean;
+}
+
+/** How much of an update's installer has arrived. */
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
+}

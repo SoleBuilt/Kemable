@@ -59,6 +59,11 @@ pub enum ErrorCode {
     /// The SSH server would not open a link to the database's host and port.
     #[serde(rename = "ssh.forward")]
     SshForward,
+    /// An update the app downloaded does not match the signature its release
+    /// announced, or the app holds no key to check it with; nothing was
+    /// installed (`docs/decisions/0028-updates.md`).
+    #[serde(rename = "update.signature")]
+    UpdateSignature,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -86,6 +91,7 @@ impl ErrorCode {
             Self::SshHostUnknown => "ssh.host_unknown",
             Self::SshHostChanged => "ssh.host_changed",
             Self::SshForward => "ssh.forward",
+            Self::UpdateSignature => "update.signature",
             Self::Internal => "internal",
         }
     }

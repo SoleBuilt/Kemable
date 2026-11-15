@@ -3227,6 +3227,40 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License
 
 Used by:
+- tempfile 3.27.0
+
+~~~~text
+Copyright (c) 2015 Steven Allen
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+~~~~
+
+### MIT License
+
+Used by:
 - heck 0.5.0
 - unicode-bidi 0.3.18
 - unicode-normalization 0.1.26
@@ -7894,9 +7928,11 @@ Used by:
 - dpi 0.1.2
 - md5 0.6.1
 - md5 0.8.1
+- minisign-verify 0.3.0
 - p12-keystore 0.2.1
 - tauri-plugin-dialog 2.8.4
 - tauri-plugin-fs 2.7.1
+- tauri-plugin-updater 2.14.1
 - tiberius-macros 0.1.0
 - webview2-com-macros 0.8.1
 - webview2-com-sys 0.39.1

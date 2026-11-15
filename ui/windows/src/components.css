@@ -265,6 +265,13 @@ input.pb-input:focus, textarea.pb-input:focus { outline: none; }
 .pb-form-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
 .pb-codebox { margin: 0; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--canvas); font-family: var(--font-mono); font-size: 13px; line-height: 20px; white-space: pre; overflow: auto; }
 .pb-codebox .k { color: var(--syntax-keyword); } .pb-codebox .s { color: var(--syntax-string); } .pb-codebox .n { color: var(--syntax-number); }
+/* An update's release notes, and what updating would stop (docs/decisions/0028-updates.md) */
+.pb-notes { margin: 0; padding: var(--space-3); max-height: 240px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--canvas); color: var(--fg-secondary); font-family: var(--font-sans); font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; }
+.pb-dialog-list { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding-left: var(--space-5); color: var(--fg-secondary); }
+/* Progress: a thin bar; with no total it is full and faint */
+.pb-progress { height: 6px; border-radius: var(--radius-full); background: var(--line); overflow: hidden; }
+.pb-progress-bar { height: 100%; border-radius: inherit; background: var(--accent); }
+.pb-progress.is-unknown .pb-progress-bar { width: 100%; opacity: .35; }
 .pb-setting { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .pb-setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 /* Show Structure: a table's columns, one per row */

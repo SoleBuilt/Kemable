@@ -406,6 +406,56 @@ Dùng kết nối Firebase ở mục 9 (cần Realtime Database). Thay đổi d�
 - [ ] Đang nghe thì tắt mạng.
   **Đúng:** tab dừng với "The connection was lost" (có thể sau một lúc); các dòng đã nhận vẫn còn.
 
+## 11. Cập nhật ứng dụng (thêm 2026-11-14, ADR 0028)
+
+App tự hỏi GitHub Releases có bản mới không, **một lần lúc mở**, rồi tải và cài tại chỗ (`docs/decisions/0028-updates.md`). Bản chạy bằng `pnpm tauri dev` **không** hỏi lúc mở (installer của nó sẽ đè bản đã cài); ở đó chỉ thử được **Check now**.
+
+**Cần chuẩn bị cho mục 11.2 trở đi:** đã làm phần "The key, once" trong ADR 0028 (public key thật trong `tauri.conf.json`, hai secret trên GitHub); đã phát hành bản A (ví dụ `v0.1.0`) bằng workflow Release và cài installer của bản A (Install for me); rồi phát hành bản B cao hơn (ví dụ `v0.1.1`, có `docs/releases/0.1.1.md`), bấm **Publish** bản nháp, **không** đánh dấu pre-release.
+
+### 11.1 Settings và khi chưa có bản mới
+- [ ] Mở **Settings** (Ctrl+,), xem mục **Updates**.
+  **Đúng:** dòng **New versions** ghi `You have Kemable <version>.` và có nút **Check now**; dưới đó là ô tick **Check for a new version when Kemable opens** (mặc định bật), kèm câu nói việc kiểm tra chỉ đọc một file từ GitHub, không gửi gì về bạn hay database. Mục **About** vẫn ghi `Kemable <version>`.
+- [ ] Khi chưa có release nào được publish, bấm **Check now**.
+  **Đúng:** nút mờ trong lúc hỏi, dòng gợi ý ghi "Checking…", rồi một lỗi ngắn (Could not connect, kèm lời của updater). App không treo, không có hộp thoại nào bật lên.
+- [ ] Tắt mạng, bấm **Check now**.
+  **Đúng:** báo lỗi "Could not connect" hoặc "The server took too long", không treo quá 30 giây.
+- [ ] Bỏ tick ô kiểm tra lúc mở, **Save**, đóng rồi mở lại app; mở Settings.
+  **Đúng:** ô vẫn bỏ tick. Tick lại, Save.
+
+### 11.2 Thông báo có bản mới (app bản A đã cài, bản B đã publish)
+- [ ] Mở app bản A.
+  **Đúng:** sau vài giây hiện hộp thoại **Kemable B is available**: ghi bản đang có là A, bên dưới là ghi chú của bản B (đúng nội dung `docs/releases/B.md`, không có phần front matter), các nút **Skip this version**, **Later**, **Update**.
+- [ ] Nhấn **Esc** (hoặc **Later**). Đóng rồi mở lại app ngay.
+  **Đúng:** lần mở này **không** hỏi. Trong `ui.json` (thư mục dữ liệu, Settings › Data › Open) có `"updates"` với `later.version` là B, `times` là 1 và `until` khoảng 3 ngày sau.
+- [ ] Đóng app, sửa `until` trong `ui.json` thành `0`, mở lại app.
+  **Đúng:** hỏi lại. Bấm Later lần nữa: `times` thành 2. Khi `times` đã là 7, đặt `until` về `0` rồi mở lại: **không** hỏi nữa, nhưng **Check now** trong Settings vẫn hiện hộp thoại.
+- [ ] Bấm **Skip this version**, đóng và mở lại app.
+  **Đúng:** không hỏi; `ui.json` có `"skipped": "B"`. **Check now** vẫn hiện bản B. Xoá `"skipped"` để thử tiếp.
+- [ ] Tắt ô kiểm tra lúc mở, mở lại app.
+  **Đúng:** không hỏi, kể cả khi chưa từng Later hay Skip.
+
+### 11.3 Cập nhật
+- [ ] Mở một file `.sql`, gõ thêm vài chữ (không lưu); mở một tab Live đang nghe. Trong hộp thoại cập nhật bấm **Update**.
+  **Đúng:** hộp thoại chuyển sang "Updating closes Kemable now. Before it does:" và liệt kê tên file "has changes not saved to its file", tab Live "is listening: it stops". Có **Back** và **Update anyway**. Bấm **Back**: quay về thông báo ban đầu.
+- [ ] Lưu file, dừng tab Live, bấm **Update** lần nữa.
+  **Đúng:** không hỏi gì thêm; hiện "Downloading … of … MB" với thanh tiến trình chạy dần; trong lúc tải không đóng được hộp thoại (Esc không làm gì). Tải xong thì app đóng, một cửa sổ cài đặt nhỏ chạy tự động không hỏi gì, rồi app **bản B** tự mở lại.
+- [ ] Sau khi mở lại, xem Settings › Updates.
+  **Đúng:** ghi `You have Kemable B.`; kết nối đã lưu, mật khẩu (Credential Manager), các tab query, theme, kích thước và vị trí cửa sổ đều còn như trước; thư mục `data` cạnh app còn nguyên.
+- [ ] Làm lại 11.3 với bản A **cài cho mọi người** (Install for anyone using this computer, vào Program Files), bằng tài khoản admin.
+  **Đúng:** khi installer chạy, Windows hỏi quyền admin (UAC). Đồng ý thì cập nhật xong và app mở lại; từ chối thì không có gì được cài, mở lại vẫn là bản A.
+- [ ] Ngắt mạng ngay sau khi bấm **Update**.
+  **Đúng:** hộp thoại báo "The update could not be installed: …" màu đỏ, có **Try again**; app vẫn dùng được, không có gì bị cài.
+
+### 11.4 Bản sửa lỗi nghiêm trọng
+- [ ] Phát hành bản C với `docs/releases/C.md` bắt đầu bằng front matter `critical: true` (xem `docs/releases/README.md`), publish. Mở app bản B (kể cả khi đã bấm Skip bản C trước đó).
+  **Đúng:** hộp thoại **Kemable C is a critical fix**, có câu nói app cập nhật trước khi dùng tiếp; chỉ có **Close Kemable** và **Update**; không có nút ✕, Esc không đóng được, không bấm được gì phía sau.
+- [ ] Bấm **Close Kemable**, mở lại app.
+  **Đúng:** app đóng; lần mở sau lại hỏi như trên.
+
+### 11.5 Chữ ký
+- [ ] Khi public key vẫn là `REPLACE_WITH_THE_UPDATER_PUBLIC_KEY_…` (chưa làm "The key, once"), với một release đã publish, bấm **Check now** rồi **Update**.
+  **Đúng:** tải xong thì báo "The update is not signed by Kemable"; không có gì được cài, app vẫn chạy bản cũ.
+
 ## 12. Giới hạn dòng không huỷ câu lệnh (thêm 2026-11-14, ADR 0004)
 
 Giới hạn dòng (ô **Limit** trên thanh công cụ, mặc định 1.000) chỉ quyết định kết quả giữ bao nhiêu dòng, không quyết định câu lệnh chạy tới đâu. Trước đây khi kết quả đầy, Kemable huỷ câu trên server, và một câu đang ghi bị bỏ cả câu. Giờ một câu chỉ đọc (`SELECT`, `VALUES`, `TABLE`, `WITH ... SELECT`) dừng ngay sau dòng cuối cùng được giữ, và giữ lại những gì các dòng đã đọc đã làm; mọi câu khác chạy tới cuối, các dòng thừa bị bỏ qua.

@@ -12,6 +12,7 @@ mod library;
 mod live;
 mod run;
 mod state;
+mod updates;
 mod window;
 
 #[cfg(test)]
@@ -48,7 +49,10 @@ pub fn run() {
     let state = Arc::new(AppState::new(registry()));
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // Asked by the UI only: once at launch and from Settings (docs/decisions/0028-updates.md).
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
+        .manage(updates::PendingUpdate::default())
         .setup(|app| {
             // Everything the app remembers is in one folder: `data` beside the app when
             // the installer made it, else %APPDATA%\<identifier>: kemable.app installed,
@@ -142,6 +146,8 @@ pub fn run() {
             commands::open_data_folder,
             commands::open_terms,
             commands::open_about,
+            updates::check_update,
+            updates::install_update,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

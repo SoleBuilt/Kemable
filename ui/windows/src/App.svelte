@@ -57,6 +57,8 @@
   import StatusBar from "./lib/shell/StatusBar.svelte";
   import TitleBar from "./lib/shell/TitleBar.svelte";
   import TermsDialog, { TERMS_VERSION } from "./lib/shell/TermsDialog.svelte";
+  import UpdateDialog from "./lib/shell/UpdateDialog.svelte";
+  import { offerAtLaunch, putOff, skip } from "./lib/updates";
   import Welcome from "./lib/shell/Welcome.svelte";
   import Badge from "./lib/ui/Badge.svelte";
   import Button from "./lib/ui/Button.svelte";
@@ -102,6 +104,7 @@
     TextEncoding,
     TextFile,
     FileStamp,
+    UpdateInfo,
   } from "./lib/types";
 
   /**
@@ -670,6 +673,46 @@
     keepPages();
     await flushStore();
   });
+
+  // --- Update in place (docs/decisions/0028-updates.md) ------------------------
+
+  /** A newer version to offer, from the launch check or Settings › Check now. */
+  let updateOffer = $state.raw<UpdateInfo | null>(null);
+
+  // Once at launch, never on a timer. No network, or any failure, says nothing. A
+  // development build is left alone: its installer would replace the installed app.
+  if (startSettings.checkForUpdates && !import.meta.env.DEV) {
+    void ipc
+      .checkUpdate()
+      .then((update) => {
+        if (update && offerAtLaunch(update)) updateOffer = update;
+      })
+      .catch(() => {});
+  }
+
+  /** What closing the app to update would stop or leave unsaved, said before it closes. */
+  function updateBlockers(): string[] {
+    const items: string[] = [];
+    if (running) items.push("A query is running: it stops.");
+    for (const page of pages) {
+      const title = pageTitle(page);
+      if (page.file && pageDirty(page)) items.push(`${title} has changes not saved to its file.`);
+      const pending = page.id === activePage ? edits : page.state.edits;
+      if (pending.cells.size > 0 || pending.deleted.size > 0 || pending.added > 0) {
+        items.push(`${title} has table edits not saved: they are lost.`);
+      }
+      if (page.live && (page.live.status === "listening" || page.live.status === "starting")) {
+        items.push(`${title} is listening: it stops.`);
+      }
+    }
+    return items;
+  }
+
+  /** The installer ends the app without closing its window: what it keeps is written first. */
+  async function beforeUpdate() {
+    keepPages();
+    await flushStore();
+  }
 
   /** Every page's result sets go, and one empty query page stays; the editor keeps its text. */
   function resetPages() {
@@ -2862,7 +2905,7 @@
 {/if}
 
 {#if settingsOpen}
-  <SettingsDialog {settings} onSave={saveSettings} onClose={() => (settingsOpen = false)} />
+  <SettingsDialog {settings} onSave={saveSettings} onClose={() => (settingsOpen = false)} onUpdateFound={(update) => (updateOffer = update)} />
 {/if}
 
 {#if connectDialog}
@@ -2919,6 +2962,24 @@
 {#if closing}
   {@const target = closing}
   <UnsavedDialog name={target.name} onAnswer={(answer) => void answerClosing(answer)} />
+{/if}
+
+{#if updateOffer}
+  {@const update = updateOffer}
+  <UpdateDialog
+    {update}
+    blockers={updateBlockers}
+    beforeInstall={beforeUpdate}
+    onLater={() => {
+      putOff(update.version);
+      updateOffer = null;
+    }}
+    onSkip={() => {
+      skip(update.version);
+      updateOffer = null;
+    }}
+    onQuit={() => void appWindow.close()}
+  />
 {/if}
 
 {#if askPassword}

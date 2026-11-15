@@ -23,6 +23,7 @@ const TITLES: Record<string, string> = {
   "ssh.host_unknown": "This SSH server is not known yet",
   "ssh.host_changed": "This SSH server's key has changed",
   "ssh.forward": "The SSH server would not reach the database",
+  "update.signature": "The update is not signed by Kemable",
   internal: "Something went wrong inside Kemable",
 };
 

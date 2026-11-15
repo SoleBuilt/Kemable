@@ -21,6 +21,8 @@ import type {
   LineEnding,
   TextEncoding,
   TextFile,
+  UpdateInfo,
+  UpdateProgress,
   FileStamp,
   SqlFolder,
   BrowseQuery,
@@ -334,6 +336,20 @@ export const ipc = {
   openAbout: (which: "source" | "license" | "notices") => invoke<void>("open_about", { which }),
   /** The app's version, as built (tauri.conf.json). */
   appVersion: () => getVersion(),
+
+  // Update in place (docs/decisions/0028-updates.md).
+  /** Asks GitHub Releases for a newer version; null when this one is the latest. */
+  checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
+  /**
+   * Downloads the update the last check found, checks its signature and runs its
+   * installer, which ends the app and starts the new version. Resolves only when
+   * something failed; write what the app keeps first.
+   */
+  installUpdate: (onProgress: (progress: UpdateProgress) => void) => {
+    const channel = new Channel<UpdateProgress>();
+    channel.onmessage = onProgress;
+    return invoke<void>("install_update", { channel });
+  },
 };
 
 

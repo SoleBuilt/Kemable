@@ -16,14 +16,14 @@ The window also kept the system's title bar above the toolbar. That is two bars 
 
 1. **Small parts in `ui/windows/src/lib/ui/`.** Each knows nothing about databases. It renders one design system class with typed props, as shadcn's components do.
    - Controls: `Button`, `Input`, `Textarea`, `SearchField`, `Checkbox`, `Segmented`, `Swatches` (a connection's colour), `Combobox` (with `custom`, a value typed by hand). A list opens on the side of its trigger that has room, and scrolls inside that room (`lib/ui/place.ts`).
-   - Labels and marks: `Field`, `Keys`, `Badge`, `Count`, `Dot`, `Icon`.
+   - Labels and marks: `Field`, `Keys`, `Badge`, `Count`, `Dot`, `Icon`, `Progress`.
    - Menus: `Menu`, `MenuItem`, `MenuLabel`, `MenuSeparator`, `Popover`, `ContextMenu`.
    - Tabs, lists and trees: `TabList`, `Tab`, `ListItem`, `TreeRow`.
    - Surfaces: `Dialog`, `InfoBar`, `EmptyState`, `Setting`, `ErrorNote`, `Note`, `Confirm`.
    - Layout: `Splitter`, `Spacer`, `Separator`.
    - Built from the parts above: `CommandPalette` and `SettingsDialog`.
 2. **Larger parts that know the app.**
-   - In `lib/shell/`: `TitleBar`, `WindowControls`, `PaletteTrigger`, `PageTabs`, `SidePane`, `StatusBar`, `Welcome`.
+   - In `lib/shell/`: `TitleBar`, `WindowControls`, `PaletteTrigger`, `PageTabs`, `SidePane`, `StatusBar`, `Welcome`, `UpdateDialog`.
    - Beside the feature they serve: `connect/ConnectionMenu`, `connect/PasswordDialog`, `editor/RunControls`, `grid/ResultBar`, `grid/WhereStrip`, `grid/MessageList`, `grid/KeyBar`, `grid/TableTools`, `grid/FilterRow`, `grid/Pager`.
    - They are built only from layer 1.
 3. **Pages** (`App.svelte`, the dialogs, the sidebar lists) hold state and call the core. Their markup puts layers 1 and 2 together.

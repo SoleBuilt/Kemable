@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
-use tauri::{App, PhysicalPosition, PhysicalSize, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{App, Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 use crate::data::{self, DataFolder};
 
@@ -62,7 +62,13 @@ pub fn open(app: &App, folder: &DataFolder) -> tauri::Result<()> {
     if let Some(place) = place {
         let _ = put_back(&window, &place);
     }
-    track(&window, place.unwrap_or_else(|| current_place(&window)), path);
+    let kept = KeptPlace {
+        window: window.clone(),
+        place: Arc::new(Mutex::new(place.unwrap_or_else(|| current_place(&window)))),
+        path,
+    };
+    track(kept.clone());
+    app.manage(kept);
     window.show()?;
     window.set_focus()
 }
@@ -134,13 +140,35 @@ fn current_place(window: &WebviewWindow) -> Place {
     }
 }
 
+/// The main window's place as it follows it, and the file it is kept in.
+#[derive(Clone)]
+pub struct KeptPlace {
+    window: WebviewWindow,
+    place: Arc<Mutex<Place>>,
+    path: PathBuf,
+}
+
+impl KeptPlace {
+    /// Writes the place now: as the window closes, and before an update's
+    /// installer ends the app without closing it (docs/decisions/0028-updates.md).
+    pub fn keep(&self) {
+        let mut place = self.place.lock().unwrap_or_else(PoisonError::into_inner);
+        place.maximized = self.window.is_maximized().unwrap_or_default();
+        write_place(&self.path, &place);
+    }
+}
+
 /// Follows moves and resizes while the window is neither minimized nor
 /// maximized, and writes the place when the window is asked to close.
-fn track(window: &WebviewWindow, start: Place, path: PathBuf) {
-    let place = Arc::new(Mutex::new(start));
-    let watched = window.clone();
+fn track(kept: KeptPlace) {
+    let window = kept.window.clone();
     window.on_window_event(move |event| {
-        let mut place = place.lock().unwrap_or_else(PoisonError::into_inner);
+        let watched = &kept.window;
+        if let WindowEvent::CloseRequested { .. } = event {
+            kept.keep();
+            return;
+        }
+        let mut place = kept.place.lock().unwrap_or_else(PoisonError::into_inner);
         match event {
             WindowEvent::Moved(position) if !watched.is_minimized().unwrap_or_default() => {
                 place.prev_x = place.x;
@@ -156,10 +184,6 @@ fn track(window: &WebviewWindow, start: Place, path: PathBuf) {
             {
                 place.width = size.width;
                 place.height = size.height;
-            }
-            WindowEvent::CloseRequested { .. } => {
-                place.maximized = watched.is_maximized().unwrap_or_default();
-                write_place(&path, &place);
             }
             _ => {}
         }

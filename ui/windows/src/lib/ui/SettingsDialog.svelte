@@ -19,6 +19,8 @@
     followCreatedDatabase: boolean;
     /** VS Code's zoom level: 0 is 100 %, each step 20 % more or less (Ctrl+=, Ctrl+-, Ctrl+0). */
     zoomLevel: number;
+    /** Ask GitHub Releases for a newer version once at launch (docs/decisions/0028-updates.md). */
+    checkForUpdates: boolean;
   }
 
   /** The zoom levels on offer: 58 % to 249 %. */
@@ -52,6 +54,7 @@
     rowCap: 1_000,
     followCreatedDatabase: true,
     zoomLevel: 0,
+    checkForUpdates: true,
   };
 
   export function readSettings(): Settings {
@@ -69,6 +72,7 @@
           typeof saved.zoomLevel === "number" && Number.isInteger(saved.zoomLevel)
             ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, saved.zoomLevel))
             : 0,
+        checkForUpdates: saved.checkForUpdates !== false,
       };
     } catch {
       return { ...DEFAULTS };
@@ -134,16 +138,20 @@
   import Segmented from "./Segmented.svelte";
   import Setting from "./Setting.svelte";
   import Spacer from "./Spacer.svelte";
-  import { ipc } from "../ipc";
+  import { errorTitle } from "../errors";
+  import { asCoreError, ipc } from "../ipc";
   import { dataFolder } from "../store";
+  import type { UpdateInfo } from "../types";
 
   interface Props {
     settings: Settings;
     onSave: (settings: Settings) => void;
     onClose: () => void;
+    /** Check now found a newer version: the update dialog shows it. */
+    onUpdateFound: (update: UpdateInfo) => void;
   }
 
-  let { settings, onSave, onClose }: Props = $props();
+  let { settings, onSave, onClose, onUpdateFound }: Props = $props();
 
   // svelte-ignore state_referenced_locally
   let draft: Settings = $state({ ...settings });
@@ -154,6 +162,25 @@
     .then((built) => (version = built))
     .catch(() => {});
   const numberFormat = new Intl.NumberFormat();
+
+  /** What Check now last said, in the Updates hint. */
+  let checked: string | null = $state(null);
+  let checking = $state(false);
+
+  async function checkNow() {
+    checking = true;
+    checked = "Checking…";
+    try {
+      const update = await ipc.checkUpdate();
+      checked = update ? `Kemable ${update.version} is available.` : "This is the latest version.";
+      if (update) onUpdateFound(update);
+    } catch (caught) {
+      const error = asCoreError(caught);
+      checked = `${errorTitle(error)}: ${error.message}`;
+    } finally {
+      checking = false;
+    }
+  }
 
   // The theme, style and Mica show at once, so the choice can be judged; Cancel puts the old ones back.
   $effect(() => applyTheme(draft.theme));
@@ -229,6 +256,20 @@
   <h3 class="pb-section-title">Running</h3>
   <Checkbox top bind:checked={draft.followCreatedDatabase}>
     <span>After <span class="pb-mono">CREATE DATABASE</span>, run the rest of the script in the new database</span>
+  </Checkbox>
+
+  <h3 class="pb-section-title">Updates</h3>
+  <Setting
+    title="New versions"
+    hint={checked ?? `${version ? `You have Kemable ${version}. ` : ""}New versions come from Kemable's releases on GitHub, signed, and install in place.`}
+  >
+    <Button variant="secondary" size="sm" disabled={checking} onclick={() => void checkNow()}>Check now</Button>
+  </Setting>
+  <Checkbox top bind:checked={draft.checkForUpdates}>
+    <span
+      >Check for a new version when Kemable opens. The check reads one file from GitHub and sends nothing about you or your
+      databases; GitHub sees your IP address, as it does for any download.</span
+    >
   </Checkbox>
 
   {#if dataFolder}
