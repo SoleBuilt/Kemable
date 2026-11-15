@@ -50,3 +50,14 @@ Làm theo `site/README.md` (Deploying) một lần: tạo project Pages `kemable
   **Đúng:** không có hộp thoại Terms (vẫn ẩn, như trước).
 - [ ] Tìm trong mã nguồn và ADR tên sản phẩm cũ dùng làm trang tạm: `git grep -i -n "clause/terms"`.
   **Đúng:** không còn kết quả; `open_terms` trong `commands.rs` chỉ biết `https://kemable.pages.dev/terms` và `/privacy`.
+
+---
+
+## C18. README tiếng Anh, bản tiếng Việt bên cạnh
+
+- [ ] Mở trang repository trên GitHub.
+  **Đúng:** README bằng tiếng Anh: Kemable là gì, ảnh chụp app (giao diện sáng) hiện ra, phần Download dẫn tới `releases/latest`, bảng engine, Building from source, License.
+- [ ] Bấm **Tiếng Việt** ở đầu README.
+  **Đúng:** mở `README.vi.md`; ở đầu có **English** dẫn ngược về `README.md`.
+- [ ] Làm theo phần "Chạy từ mã nguồn" của `README.vi.md` trên một máy sạch.
+  **Đúng:** màn hình Welcome có đúng các nút README nhắc (**Open an in-memory database**, **Open file…**, **New connection…**); câu SQL 2 triệu dòng chạy được.
