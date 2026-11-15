@@ -8,7 +8,8 @@
 
 <script lang="ts">
   // The terms, asked once before the app is used, by the app alone, installed or copied
-  // (docs/decisions/0019-data-folder.md): one sentence with its two links, as CapCut asks.
+  // (docs/decisions/0019-data-folder.md): one sentence with its two links, which open the
+  // pages on Kemable's site (docs/decisions/0030-website.md).
   import { ipc } from "../ipc";
   import Button from "../ui/Button.svelte";
   import Dialog from "../ui/Dialog.svelte";

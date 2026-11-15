@@ -6,7 +6,7 @@
 
 ## Context
 
-Kemable is open source under the AGPL and is also to be sold under a commercial license with premium features; contributors sign a CLA (`CLA.md`) so their work can go into both. Looking at other open-source projects with a paid edition showed what was missing. Measured on 2026-11-13 with `cargo metadata` and `pnpm licenses list --prod`: about 520 Rust crates, nearly all MIT, Apache-2.0 or BSD, five MPL-2.0 (CSS parsing that Tauri pulls in), none GPL; 21 npm packages, MIT or Apache-2.0, and the Geist fonts under OFL-1.1. The icons' path data is Lucide's (ISC, MIT for the Feather ones). Nothing listed which licenses ship inside the installer, nothing stopped a GPL dependency from coming in, and the terms dialog pointed at another company's terms as stand-ins.
+Kemable is open source under the AGPL and is also to be sold under a commercial license with premium features; contributors sign a CLA (`CLA.md`) so their work can go into both. Looking at other open-source projects with a paid edition showed what was missing. Measured on 2026-11-13 with `cargo metadata` and `pnpm licenses list --prod`: about 520 Rust crates, nearly all MIT, Apache-2.0 or BSD, five MPL-2.0 (CSS parsing that Tauri pulls in), none GPL; 21 npm packages, MIT or Apache-2.0, and the Geist fonts under OFL-1.1. The icons' path data is Lucide's (ISC, MIT for the Feather ones). Nothing listed which licenses ship inside the installer, nothing stopped a GPL dependency from coming in, and the terms dialog pointed at placeholder pages.
 
 ## Decision
 
@@ -15,7 +15,7 @@ Kemable is open source under the AGPL and is also to be sold under a commercial 
 - **The notices ship with the app.** `scripts/licenses.mjs` writes `ui/windows/THIRD-PARTY-NOTICES.md` from cargo-about (`about.toml`, `about.hbs`) for the crates, `pnpm licenses list` for the npm packages, and the license files kept beside vendored code (`LUCIDE-LICENSE`). The installer puts it beside the app (`bundle.resources`); Settings › About opens it in Notepad (`open_about`).
 - **Checked on every change.** `node scripts/verify.mjs` runs `cargo deny check licenses bans sources` and `node scripts/licenses.mjs --check`, which fails on a license not allowed or a notices file out of date. `.github/workflows/licenses.yml` runs the same on every pull request and push to `test` and `main`, so a ruleset can require it before a merge.
 - **The source is one click away.** Settings › About shows the version and the license, and opens the source on GitHub, the license and the notices (AGPL section 6: whoever has the app can get its source).
-- **The terms dialog is hidden** (commented out in `App.svelte`), its code kept, until Kemable has terms and a privacy policy of its own.
+- **The terms dialog is hidden** (commented out in `App.svelte`), its code kept, until Kemable has terms and a privacy policy of its own. Its site now holds drafts of both (`docs/decisions/0030-website.md`); the dialog comes back once they are reviewed.
 
 ## Rationale
 

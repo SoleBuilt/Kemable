@@ -1,0 +1,192 @@
+---
+import Base from "../layouts/Base.astro";
+import { DOWNLOAD, REPOSITORY } from "../links";
+
+const engines = ["SQLite", "PostgreSQL", "Neon", "Supabase", "SQL Server", "Redis", "Cloudflare D1", "RabbitMQ", "Firebase"];
+
+const measured = [
+  { value: "2 ms", label: "to the first page of a 300,000-row join" },
+  { value: "1.07 s", label: "to stream 2,000,000 rows into the grid" },
+  { value: "0.13 s", label: "to sort them by a number" },
+];
+
+const features = [
+  {
+    tag: "Edit",
+    title: ["Change cells.", "Read the SQL.", "Then save."],
+    text: "Every edit shows the exact statements first, and saves all or nothing.",
+    image: "/preview.webp",
+    alt: "The Save 3 changes dialog lists three UPDATE statements",
+    imageFirst: false,
+    shadow: "#000000",
+  },
+  {
+    tag: "Ctrl K",
+    title: ["Keyboard first."],
+    text: "Every connection and command, one shortcut away.",
+    image: "/palette.webp",
+    alt: "The command palette lists new query, connection, file and settings commands",
+    imageFirst: true,
+    shadow: "#000000",
+  },
+  {
+    tag: "Light or dark",
+    title: ["Quiet frame.", "Loud data."],
+    text: "Black and white, so the only thing that stands out is your data.",
+    image: "/hero-light.webp",
+    alt: "Kemable in its light theme showing a query and its result",
+    imageFirst: false,
+    shadow: "#00000066",
+  },
+];
+
+const cards = [
+  { title: "Live tabs", text: "NOTIFY, pub/sub, Realtime and queues, as rows.", icon: "live" },
+  { title: "SSH tunnels", text: "Password or key, with the host checked.", icon: "ssh" },
+  { title: "Passwords stay put", text: "In Windows Credential Manager, never in a file.", icon: "lock" },
+  { title: "A safe row limit", text: "It never cancels a statement that writes.", icon: "limit" },
+];
+
+const primary =
+  "inline-flex h-12 items-center gap-2 rounded-[10px] bg-accent px-[22px] font-medium text-on-accent hover:text-on-accent";
+const secondary = "inline-flex h-12 items-center rounded-[10px] border border-line-strong px-[22px] font-medium text-fg hover:text-fg";
+---
+
+<Base title="Kemable: a fast, light database client" description="The database client that streams millions of rows without a stutter. Free and open source, for Windows.">
+  <section class="relative px-6 pt-28 text-center">
+    <div
+      aria-hidden="true"
+      class="absolute left-1/2 top-[420px] h-[520px] w-[1100px] -translate-x-1/2 opacity-[0.22] blur-[40px]"
+      style="background: radial-gradient(closest-side, var(--glow), transparent);"
+    >
+    </div>
+    <div class="relative mx-auto flex max-w-[960px] flex-col items-center gap-[22px]">
+      <a
+        href={DOWNLOAD}
+        class="inline-flex items-center gap-2 rounded-full border border-line-strong py-[5px] pl-1.5 pr-3 text-[13px] text-fg2"
+      >
+        <span class="rounded-full bg-ember px-2 py-px text-xs font-semibold text-[#0a0a0a]">New</span>
+        Preview 0.1 for Windows is out →
+      </a>
+      <h1 class="m-0 text-[clamp(48px,8vw,96px)] font-semibold leading-[0.98] tracking-[-0.045em]">Fast is the feature.</h1>
+      <p class="m-0 max-w-[560px] text-xl text-fg2">The database client that streams millions of rows without a stutter.</p>
+      <div class="mt-1.5 flex flex-wrap justify-center gap-3">
+        <a href={DOWNLOAD} class={primary}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+            ><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg
+          >
+          Download for Windows
+        </a>
+        <a href={REPOSITORY} class={secondary}>Star on GitHub</a>
+      </div>
+      <p class="m-0 text-[13px] text-fg3">Free and open source · Windows x64 · macOS and Linux later</p>
+    </div>
+
+    <div class="relative mx-auto mt-16 max-w-[1160px]">
+      <div class="rounded-[14px] p-1.5" style="background: linear-gradient(180deg, var(--line-strong), transparent 70%);">
+        <video
+          autoplay
+          muted
+          loop
+          playsinline
+          width="1440"
+          height="900"
+          poster="/demo-poster.webp"
+          aria-label="Kemable runs a query that returns two million rows and scrolls through them"
+          class="block h-auto w-full rounded-[10px] border border-line-strong bg-[#0a0a0a] shadow-[0_40px_120px_-30px_#000000]"
+        >
+          <source src="/kemable-demo.webm" type="video/webm" />
+          <source src="/kemable-demo.mp4" type="video/mp4" />
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <section id="engines" class="px-6 pt-14">
+    <div class="mx-auto flex max-w-[1100px] flex-wrap items-center justify-center gap-x-9 gap-y-3 text-[17px] font-medium text-fg3">
+      <span class="text-[13px] font-normal">Works with</span>
+      {engines.map((engine) => <span>{engine}</span>)}
+    </div>
+  </section>
+
+  <section aria-label="Measured" class="px-6 py-24">
+    <div
+      class="mx-auto grid max-w-[1100px] gap-px overflow-hidden rounded-2xl border border-line bg-line"
+      style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));"
+    >
+      {
+        measured.map(({ value, label }) => (
+          <div class="flex flex-col gap-1 bg-bg p-8">
+            <span class="text-[52px] font-semibold tracking-[-0.04em] tabular-nums">{value}</span>
+            <span class="text-[15px] text-fg3">{label}</span>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  <section id="features" class="flex flex-col gap-[120px] px-6">
+    {
+      features.map((feature) => (
+        <div class:list={["mx-auto flex w-full max-w-[1160px] items-center gap-12", feature.imageFirst ? "flex-wrap-reverse" : "flex-wrap"]}>
+          <div class="flex flex-[1_1_300px] flex-col gap-3.5">
+            <span class="font-mono text-[13px] text-ember">{feature.tag}</span>
+            <h2 class="m-0 text-[44px] font-semibold leading-[1.05] tracking-[-0.035em]">
+              {feature.title.map((line, index) => (index === 0 ? line : [<br />, line]))}
+            </h2>
+            <p class="m-0 text-lg text-fg2">{feature.text}</p>
+          </div>
+          {/* Left of the text when imageFirst; below it, as in the design, once they wrap. */}
+          <img
+            src={feature.image}
+            alt={feature.alt}
+            width="1440"
+            height="900"
+            loading="lazy"
+            decoding="async"
+            class:list={["h-auto w-full min-w-0 flex-[2_1_560px] rounded-xl border border-line-strong", { "order-first": feature.imageFirst }]}
+            style={`box-shadow: 0 30px 80px -30px ${feature.shadow};`}
+          />
+        </div>
+      ))
+    }
+  </section>
+
+  <section class="px-6 pt-[140px]">
+    <div class="mx-auto grid max-w-[1160px] gap-3" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+      {
+        cards.map((card) => (
+          <div class="flex flex-col gap-2 rounded-[14px] border border-line bg-chrome p-6">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ember)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              {card.icon === "live" && <path d="M2 12h3l3-8 4 16 3-8h7" />}
+              {card.icon === "ssh" && [<path d="M4 17l6-6-6-6" />, <path d="M12 19h8" />]}
+              {card.icon === "lock" && [<rect x="4" y="11" width="16" height="10" rx="2" />, <path d="M8 11V7a4 4 0 0 1 8 0v4" />]}
+              {card.icon === "limit" && [<path d="M12 3v18" />, <path d="M3 12h18" />, <rect x="3" y="3" width="18" height="18" rx="2" />]}
+            </svg>
+            <h3 class="m-0 text-base font-semibold">{card.title}</h3>
+            <p class="m-0 text-sm text-fg3">{card.text}</p>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  <section class="px-6 py-[140px]">
+    <div class="relative mx-auto max-w-[1160px] overflow-hidden rounded-[20px] border border-line bg-chrome px-8 py-[72px] text-center">
+      <div
+        aria-hidden="true"
+        class="absolute -bottom-[220px] left-1/2 h-[360px] w-[760px] -translate-x-1/2 opacity-[0.28] blur-[30px]"
+        style="background: radial-gradient(closest-side, var(--glow), transparent);"
+      >
+      </div>
+      <div class="relative flex flex-col items-center gap-5">
+        <h2 class="m-0 text-[clamp(36px,5vw,56px)] font-semibold leading-[1.02] tracking-[-0.04em]">Open your data in seconds.</h2>
+        <p class="m-0 text-lg text-fg2">Open source under AGPL-3.0. No telemetry.</p>
+        <div class="flex flex-wrap justify-center gap-3">
+          <a href={DOWNLOAD} class={primary}>Download for Windows</a>
+          <a href={REPOSITORY} class={secondary}>Read the source</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>

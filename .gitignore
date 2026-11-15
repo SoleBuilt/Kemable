@@ -7,3 +7,4 @@ dist/
 /.analysis/
 ui/windows/src-tauri/gen/
 CLAUDE.local.md
+site/.astro/
