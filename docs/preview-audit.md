@@ -87,3 +87,10 @@ The paths name a function or a place; line numbers move, so search for the name.
 - [ ] **D14.** `capabilities/default.json` grants all of `core:default` (menu, tray, image, resources), more than `.claude/rules/ipc.md` allows.
 - [ ] **D15.** Some failures say nothing: Settings' About buttons and the data folder's Open discard their errors (`SettingsDialog.svelte`); a Credential Manager failure is coded `driver.io`, worded as a file or network error (`library.rs`).
 - [ ] **D16.** `docs/releases/0.1.0.md` ends "Kemable now updates itself", which on a first release suggests an earlier one.
+
+Seen while recording the landing page's video (2026-11-15, release build, SQLite in memory):
+
+- [ ] **D17.** SQLite: a `CREATE TABLE` or `CREATE VIEW` reports the row count of the statement before it ("2,000 rows affected" after an insert of 2,000), since `sqlite3_changes` keeps the last DML's count (`core/crates/drivers/sqlite/src/lib.rs`, `run_statement`). A statement that is not DML reports no count.
+- [ ] **D18.** The grid's row-number column is too narrow past six digits: at row 2,000,000 the numbers run into the first column (`ui/windows/src/lib/grid/engine.ts`). Its width follows the result's total rows.
+- [ ] **D19.** A column's width is taken from the first rows, so later, longer values are cut ("row 1" sets the width, "row 600" is clipped) with no way to see them but resizing (`engine.ts`).
+- [ ] **D20.** An edited number is drawn left-aligned until it is saved, unlike the numbers around it (`engine.ts`, the edit overlay).
