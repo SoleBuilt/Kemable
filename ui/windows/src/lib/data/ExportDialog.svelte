@@ -118,6 +118,9 @@
     <Field label="Rows" as="group" hint={filtered ? undefined : "Open the table and set a filter to export only its rows."}>
       <Segmented label="Rows" fill options={SCOPES} value={scope} onChange={(next) => (scope = next)} />
     </Field>
+    {#if format !== "insert"}
+      <p class="pb-hint">Binary values are written as hex text with a 0x prefix, as in 0x00ff.</p>
+    {/if}
     <p class="pb-hint">Rows are written as the server sends them, so a large table never sits in memory. Stop deletes the file.</p>
   {:else}
     <p class="pb-dialog-text">{stopping ? "Stopping…" : `Writing ${numberFormat.format(rows)} rows…`}</p>
