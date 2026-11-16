@@ -245,8 +245,7 @@ fn row_count_prefix(batch: &str, sink: &dyn ResultSink) -> Option<String> {
 /// batch as it goes to the server, `batch` as the user wrote it, for error
 /// lines. Once the sink takes no more of a set, the set's other rows are
 /// read and dropped and the batch runs to its end: an attention would end
-/// its other statements, and through tiberius the session with them
-/// (`docs/decisions/0004-engines.md`, The row cap).
+/// its other statements (`docs/decisions/0004-engines.md`, The row cap).
 async fn stream_batch(client: &mut MssqlClient, sent: &str, batch: &str, sink: &dyn ResultSink) -> Result<ExecOutcome> {
     let map = |error| errors::map(error, Some(batch), Phase::Run);
     let mut stream = client.simple_query(sent).await.map_err(map)?;

@@ -56,3 +56,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0026 | [RabbitMQ: an AMQP connection, a console that publishes, and Live tabs that watch or take](0026-rabbitmq.md) |
 | 0027 | [Firebase: Firestore and the Realtime Database over REST, signed in with a service account's key file](0027-firebase.md) |
 | 0028 | [The app updates itself from GitHub Releases, asked once at launch, with installers only CI signs](0028-updates.md) |
+| 0029 | [SQL Server's TDS client is tabstream, Kemable's own fork of tiberius 0.13.0](0029-tabstream.md) |

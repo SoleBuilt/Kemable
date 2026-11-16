@@ -1,3 +1,5 @@
+// Changed by Kemable for tabstream (README.md): `in_transaction`.
+
 pub(crate) mod auth;
 mod config;
 mod connection;
@@ -708,6 +710,16 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
     pub async fn cancel_query(&mut self) -> crate::Result<()> {
         self.connection.cancel_request().await?;
         Ok(())
+    }
+
+    /// Whether a transaction is open on this session, as the server last said
+    /// in its ENVCHANGE tokens: a `BEGIN TRANSACTION` in a batch or
+    /// [`begin_transaction`] opens one, its commit or rollback ends it
+    /// (Kemable).
+    ///
+    /// [`begin_transaction`]: #method.begin_transaction
+    pub fn in_transaction(&self) -> bool {
+        self.connection.context().transaction_descriptor() != [0; 8]
     }
 
     /// Closes this database connection explicitly.

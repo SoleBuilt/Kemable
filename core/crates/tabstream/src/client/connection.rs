@@ -1,3 +1,7 @@
+// Changed by Kemable for tabstream (README.md): an attention's acknowledgement
+// is read on into the following messages, and a token left half read by a
+// dropped stream is skipped by packets (`read_attention_ack`).
+
 #[cfg(any(
     feature = "rustls",
     feature = "native-tls",
@@ -8,8 +12,8 @@ use crate::{
     client::{tls::MaybeTlsStream, AuthMethod, Config},
     tds::{
         codec::{
-            self, Encode, LoginMessage, Packet, PacketCodec, PacketHeader, PacketStatus,
-            PreloginMessage, TokenDone,
+            self, DoneStatus, Encode, LoginMessage, Packet, PacketCodec, PacketHeader,
+            PacketStatus, PreloginMessage, TokenDone, TokenType,
         },
         stream::TokenStream,
         Context, HEADER_BYTES,
@@ -83,6 +87,10 @@ where
     ///
     /// [`ensure_not_poisoned`]: Self::ensure_not_poisoned
     command_desync: Arc<AtomicBool>,
+    /// Set while the token reader is inside a token. A result stream dropped
+    /// there leaves the rest of the token unread, so the bytes that follow are
+    /// not a token's start (Kemable).
+    mid_token: bool,
 }
 
 impl<S: AsyncRead + AsyncWrite + Unpin + Send> Debug for Connection<S> {
@@ -175,6 +183,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
             buf: BytesMut::new(),
             poisoned: false,
             command_desync: Arc::new(AtomicBool::new(false)),
+            mid_token: false,
         };
 
         let fed_auth_required = matches!(config.auth, AuthMethod::AADToken(_));
@@ -431,7 +440,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
     /// The Attention message carries no payload, so it is written to the wire
     /// as a single end-of-message packet. Draining the acknowledgement leaves
     /// the connection clean and ready to be reused for further queries.
-    pub(crate) async fn cancel_request(&mut self) -> crate::Result<TokenDone> {
+    pub(crate) async fn cancel_request(&mut self) -> crate::Result<()> {
         // Consistency with the other write paths (`send`,
         // `send_sensitive_login`, `flush_stream`): if a previous multi-packet
         // write was interrupted, the connection is already desynced with a
@@ -457,7 +466,79 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
         self.flush_sink().await?;
         self.poisoned = false;
 
-        TokenStream::new(self).flush_done_attention().await
+        self.read_attention_ack().await
+    }
+
+    /// Reads to the acknowledgement of an attention (Kemable). It ends the
+    /// response in flight, or, when the server had already sent the whole
+    /// response, comes as a message of its own after it: the read goes on
+    /// into the following messages until it comes, and the caller bounds the
+    /// wait. Tokens are read wherever they can be, so the session state they
+    /// carry (ENVCHANGE: the transaction, the packet size) stays right.
+    async fn read_attention_ack(&mut self) -> crate::Result<()> {
+        if self.mid_token && self.skip_message_to_ack().await? {
+            return Ok(());
+        }
+
+        loop {
+            if self.is_eof() {
+                self.flushed = false;
+            }
+
+            if TokenStream::new(self).flush_done_attention().await? {
+                return Ok(());
+            }
+        }
+    }
+
+    /// Reads the rest of a message a dropped stream left inside a token, as
+    /// packets, and says whether its last token acknowledges the attention:
+    /// the acknowledgement is always the last token of its message (Kemable).
+    async fn skip_message_to_ack(&mut self) -> crate::Result<bool> {
+        self.mid_token = false;
+        let mut tail = std::mem::take(&mut self.buf);
+
+        if self.flushed {
+            // The message had ended before the attention went out.
+            return Ok(false);
+        }
+
+        let width = 5 + usize::from(self.context.version().done_row_count_bytes());
+
+        loop {
+            let packet = self.try_next().await?.ok_or_else(|| {
+                crate::Error::Protocol(
+                    "the connection closed before the attention's acknowledgement".into(),
+                )
+            })?;
+            let last = packet.is_last();
+            let (_, payload) = packet.into_parts();
+            tail.extend_from_slice(&payload);
+
+            if tail.len() > width {
+                let _ = tail.split_to(tail.len() - width);
+            }
+
+            if last {
+                break;
+            }
+        }
+
+        let done = [
+            TokenType::Done as u8,
+            TokenType::DoneProc as u8,
+            TokenType::DoneInProc as u8,
+        ];
+        let attention = DoneStatus::Attention as u16;
+
+        Ok(tail.len() == width
+            && done.contains(&tail[0])
+            && u16::from_le_bytes([tail[1], tail[2]]) & attention != 0)
+    }
+
+    /// Marks the token reader inside a token, or out of it (Kemable).
+    pub(crate) fn set_mid_token(&mut self, mid_token: bool) {
+        self.mid_token = mid_token;
     }
 
     /// Cleans the packet stream from previous use. It is important to use the
@@ -479,6 +560,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
         // if a previous result stream was dropped part-way through a value
         // (the lost bytes belonged to a packet we are discarding anyway).
         self.buf.truncate(0);
+        self.mid_token = false;
 
         if self.flushed {
             return Ok(());
@@ -897,6 +979,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
                     buf: BytesMut::new(),
                     poisoned: false,
                     command_desync,
+                    mid_token: false,
                 })
             }
         }
@@ -943,7 +1026,13 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
             buf: BytesMut::new(),
             poisoned,
             command_desync: Arc::new(AtomicBool::new(false)),
+            mid_token: false,
         }
+    }
+
+    /// Whether the token reader was left inside a token (Kemable).
+    pub(crate) fn is_mid_token(&self) -> bool {
+        self.mid_token
     }
 }
 

@@ -1,3 +1,7 @@
+// Changed by Kemable for tabstream (README.md): `flush_done_attention` stops
+// at the end of a message and leaves the next one to its caller, and the
+// reader marks the connection while it is inside a token.
+
 use crate::tds::codec::TokenSspi;
 use crate::{
     client::Connection,
@@ -214,28 +218,30 @@ where
     }
 
     /// Drain the token stream after a client Attention signal has been sent,
-    /// discarding every remaining token of the cancelled request until the
-    /// acknowledging DONE token (with the `DONE_ATTN` status bit set) is
-    /// received, per MS-TDS section 2.2.1.6. Returns that DONE token so the
-    /// connection is left clean and ready for reuse.
-    pub(crate) async fn flush_done_attention(self) -> crate::Result<TokenDone> {
+    /// discarding every remaining token of the cancelled request, per MS-TDS
+    /// section 2.2.1.6. Returns `true` at the acknowledging DONE token (with
+    /// the `DONE_ATTN` status bit set), and `false` at the end of a message
+    /// without it: when the server had already sent the whole response, the
+    /// acknowledgement comes in the next message, which the caller reads
+    /// (Kemable).
+    pub(crate) async fn flush_done_attention(self) -> crate::Result<bool> {
         let mut stream = self.try_unfold();
 
         loop {
-            match stream.try_next().await? {
-                Some(ReceivedToken::Done(token))
-                | Some(ReceivedToken::DoneProc(token))
-                | Some(ReceivedToken::DoneInProc(token))
+            match stream.try_next().await {
+                Ok(Some(ReceivedToken::Done(token)))
+                | Ok(Some(ReceivedToken::DoneProc(token)))
+                | Ok(Some(ReceivedToken::DoneInProc(token)))
                     if token.is_attention() =>
                 {
-                    return Ok(token);
+                    return Ok(true);
                 }
-                Some(_) => (),
-                None => {
-                    return Err(crate::Error::Protocol(
-                        "Never got a DONE token acknowledging the Attention signal.".into(),
-                    ))
-                }
+                Ok(Some(_)) => (),
+                Ok(None) => return Ok(false),
+                // The cancelled request's own error, handed back at the end of
+                // its message: the acknowledgement is still to come.
+                Err(Error::Server(_)) => return Ok(false),
+                Err(error) => return Err(error),
             }
         }
     }
@@ -475,7 +481,10 @@ where
                 }
             }
 
+            // A read of one byte takes it whole or not at all: the token
+            // starts once its type is read (Kemable).
             let ty_byte = this.conn.read_u8().await?;
+            this.conn.set_mid_token(true);
 
             let ty = TokenType::try_from(ty_byte)
                 .map_err(|_| Error::Protocol(format!("invalid token type {:x}", ty_byte).into()))?;
@@ -508,6 +517,7 @@ where
                 // rather than silently falling through. Unknown token *bytes*
                 // are already rejected by the `TokenType::try_from` above.
             };
+            this.conn.set_mid_token(false);
 
             Ok(Some((token, this)))
         });
@@ -960,6 +970,166 @@ mod tests {
             outcome.is_err(),
             "with no command timeout the read should stay pending on the stalled server"
         );
+    }
+
+    // --- Kemable: the attention's acknowledgement -----------------------------
+
+    const DONE_ATTN: u16 = 1 << 5;
+
+    // ENVCHANGE token (0xE3) of type RollbackTransaction (10): no new value,
+    // the old transaction descriptor as the old value.
+    fn envchange_rollback(old: [u8; 8]) -> Vec<u8> {
+        let mut body = vec![10u8, 0, 8];
+        body.extend_from_slice(&old);
+
+        let mut v = vec![0xE3u8];
+        v.extend_from_slice(&(body.len() as u16).to_le_bytes());
+        v.extend_from_slice(&body);
+        v
+    }
+
+    fn script(messages: &[Vec<u8>]) -> Vec<u8> {
+        messages.concat()
+    }
+
+    #[tokio::test]
+    async fn attention_ack_in_the_message_after_a_finished_response_is_read() {
+        // The whole response was read before the attention went out, its own
+        // error included; the acknowledgement comes as a message of its own.
+        let mut response = error_token(50000, "boom", "srv", "", 1);
+        response.extend_from_slice(&done_token(0x2, 0, 0));
+        let ack = done_token(DONE_ATTN, 0, 0);
+        let mut conn = Connection::test_over(
+            MockStream::new(script(&[packet_bytes(&response), packet_bytes(&ack)])),
+            false,
+        );
+        TokenStream::new(&mut conn)
+            .flush_done()
+            .await
+            .expect_err("the response's error");
+        assert!(conn.is_eof());
+
+        conn.cancel_request()
+            .await
+            .expect("the acknowledgement in the next message");
+        assert!(conn.is_eof(), "nothing left to read");
+    }
+
+    #[tokio::test]
+    async fn attention_ack_after_an_unread_response_and_its_error() {
+        // The response is still unread, error and all, when the attention goes
+        // out: its tokens are dropped and the next message holds the ack.
+        let mut response = error_token(50000, "boom", "srv", "", 1);
+        response.extend_from_slice(&done_token(0x2, 0, 0));
+        let ack = done_token(DONE_ATTN, 0, 0);
+        let mut conn = Connection::test_over(
+            MockStream::new(script(&[packet_bytes(&response), packet_bytes(&ack)])),
+            false,
+        );
+
+        conn.cancel_request()
+            .await
+            .expect("the acknowledgement in the next message");
+        assert!(conn.is_eof());
+    }
+
+    #[tokio::test]
+    async fn attention_ack_at_the_end_of_the_response_in_flight() {
+        let mut response = done_token(0x1, 0xC1, 3);
+        response.extend_from_slice(&done_token(DONE_ATTN, 0, 0));
+        let mut conn = conn_over(&response);
+
+        conn.cancel_request().await.expect("the acknowledgement");
+        assert!(conn.is_eof());
+    }
+
+    #[tokio::test]
+    async fn attention_reads_the_next_message_s_transaction_change() {
+        let descriptor = [1, 2, 3, 4, 5, 6, 7, 8];
+        let mut ack = envchange_rollback(descriptor);
+        ack.extend_from_slice(&done_token(DONE_ATTN, 0, 0));
+        let mut conn = Connection::test_over(
+            MockStream::new(script(&[
+                packet_bytes(&done_token(0, 0, 0)),
+                packet_bytes(&ack),
+            ])),
+            false,
+        );
+        conn.context_mut().set_transaction_descriptor(descriptor);
+
+        conn.cancel_request().await.expect("the acknowledgement");
+        assert_eq!(conn.context().transaction_descriptor(), [0; 8]);
+    }
+
+    #[tokio::test]
+    async fn a_token_left_half_read_is_skipped_and_the_ack_ends_its_message() {
+        // A stream dropped inside a row: what follows is not a token's start.
+        // The rest of the message is read as packets; its last token is the ack.
+        let mut tail = vec![0x07, 0x00, 0x41, 0x00];
+        tail.extend_from_slice(&done_token(DONE_ATTN, 0, 0));
+        let mut conn = Connection::test_over(
+            MockStream::new(script(&[
+                normal_packet_bytes(&[0xD1, 0x05, 0x00]),
+                packet_bytes(&tail),
+            ])),
+            false,
+        );
+        conn.read_u8().await.expect("the row's type");
+        conn.set_mid_token(true);
+
+        conn.cancel_request()
+            .await
+            .expect("the acknowledgement at the message's end");
+        assert!(conn.is_eof());
+    }
+
+    #[tokio::test]
+    async fn a_token_left_half_read_then_the_ack_in_the_next_message() {
+        let mut tail = vec![0x07, 0x00, 0x41, 0x00];
+        tail.extend_from_slice(&done_token(0, 0, 0));
+        let mut conn = Connection::test_over(
+            MockStream::new(script(&[
+                normal_packet_bytes(&[0xD1, 0x05, 0x00]),
+                packet_bytes(&tail),
+                packet_bytes(&done_token(DONE_ATTN, 0, 0)),
+            ])),
+            false,
+        );
+        conn.read_u8().await.expect("the row's type");
+        conn.set_mid_token(true);
+
+        conn.cancel_request()
+            .await
+            .expect("the acknowledgement in the next message");
+        assert!(conn.is_eof());
+    }
+
+    #[tokio::test]
+    async fn a_dropped_stream_marks_the_connection_inside_a_token() {
+        // The first packet ends inside a DONE token and the server goes quiet:
+        // the read is dropped there.
+        let done = done_token(0, 0, 0);
+        let mut conn = Connection::test_over(
+            AnswerThenSilent {
+                data: normal_packet_bytes(&done[..5]),
+                pos: 0,
+            },
+            false,
+        );
+        let read = tokio::time::timeout(std::time::Duration::from_millis(50), async {
+            TokenStream::new(&mut conn).flush_done().await
+        })
+        .await;
+        assert!(read.is_err(), "the read waits for the rest of the token");
+        assert!(conn.is_mid_token());
+    }
+
+    #[tokio::test]
+    async fn attention_with_no_ack_fails_when_the_connection_closes() {
+        let mut conn = conn_over(&done_token(0, 0, 0));
+        conn.cancel_request()
+            .await
+            .expect_err("no acknowledgement before the end of the stream");
     }
 }
 
