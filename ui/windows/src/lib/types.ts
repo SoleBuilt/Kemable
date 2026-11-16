@@ -184,7 +184,8 @@ export type RunEvent =
   /** The sets of `statement` did not match how its batch was read: drop their parts. */
   | { type: "partsDropped"; statement: number }
   | { type: "rows"; result: number; total: number }
-  | { type: "setFinished"; result: number; total: number; limited: boolean }
+  /** `stoppedAtBytes`: the set stopped at the memory budget (about a quarter of the machine's memory), holding about that many bytes. */
+  | { type: "setFinished"; result: number; total: number; limited: boolean; stoppedAtBytes: number | null }
   | { type: "commandDone"; statement: number; rowsAffected: number | null; changesSchema: boolean }
   | { type: "notice"; statement: number; text: string }
   | { type: "databaseChanged"; statement: number; database: string }
@@ -509,6 +510,8 @@ export interface KeyRead {
   detail: KeyDetail;
   totalRows: number;
   limited: boolean;
+  /** The set stopped at the memory budget holding about this many bytes. */
+  stoppedAtBytes: number | null;
   notices: string[];
 }
 

@@ -10,6 +10,7 @@ mod folders;
 mod jobs;
 mod library;
 mod live;
+mod memory;
 mod run;
 mod state;
 mod updates;

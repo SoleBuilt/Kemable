@@ -1569,6 +1569,8 @@ pub struct KeyRead {
     detail: KeyDetail,
     total_rows: u64,
     limited: bool,
+    /// The set stopped at the memory budget holding about this many bytes.
+    stopped_at_bytes: Option<u64>,
     /// What the driver said beside the rows.
     notices: Vec<String>,
 }
@@ -1583,6 +1585,7 @@ pub async fn read_key(
 ) -> CommandResult<KeyRead> {
     let session = state.server(conn)?.session(database.as_deref()).await?;
     let sink = Arc::new(KeySink {
+        state: Arc::clone(&state),
         row_limit,
         store: Mutex::new(None),
         notices: Mutex::new(Vec::new()),
@@ -1607,6 +1610,7 @@ pub async fn read_key(
                 detail,
                 total_rows: shown.total_rows,
                 limited: shown.limited,
+                stopped_at_bytes: shown.memory_limited.then_some(shown.bytes),
                 notices,
             }
         }
@@ -1616,6 +1620,7 @@ pub async fn read_key(
             detail,
             total_rows: 0,
             limited: false,
+            stopped_at_bytes: None,
             notices,
         },
     })
@@ -1623,6 +1628,7 @@ pub async fn read_key(
 
 /// Keeps the one set a key read gives.
 struct KeySink {
+    state: Arc<AppState>,
     row_limit: Option<u64>,
     store: Mutex<Option<Arc<ResultStore>>>,
     notices: Mutex<Vec<String>>,
@@ -1631,7 +1637,7 @@ struct KeySink {
 impl ResultSink for KeySink {
     fn begin_set(&self, columns: Vec<ColumnMeta>) {
         *self.store.lock().unwrap_or_else(PoisonError::into_inner) =
-            Some(Arc::new(ResultStore::new(columns, self.row_limit)));
+            Some(Arc::new(self.state.new_store(columns, self.row_limit)));
     }
 
     fn push_rows(&self, values: &[Value]) -> bool {
@@ -1644,6 +1650,10 @@ impl ResultSink for KeySink {
 
     fn row_limit(&self) -> Option<u64> {
         self.row_limit
+    }
+
+    fn byte_limit(&self) -> Option<u64> {
+        self.state.result_bytes
     }
 
     fn end_set(&self) {}

@@ -190,6 +190,9 @@ fn push_documents(columns: &DocumentColumns, documents: &[Json], sink: &dyn Resu
     true
 }
 
+/// How many times its text's size a JSON value takes once parsed, about.
+const PARSED_GROWTH: u64 = 4;
+
 impl FirebaseConnection {
     async fn get(
         &self,
@@ -240,7 +243,14 @@ impl FirebaseConnection {
         sink: &dyn ResultSink,
         options: &CallOptions,
     ) -> Result<ExecOutcome> {
-        let value = options.run(self.firebase.rtdb(path, false, limit)).await?;
+        // A read with no limit is one JSON value, held whole before its first
+        // row: its text is bounded so the parsed value stays inside the
+        // sink's budget, which takes several times the text's size.
+        let max_bytes = match limit {
+            Some(_) => None,
+            None => sink.byte_limit().map(|budget| budget / PARSED_GROWTH),
+        };
+        let value = options.run(self.firebase.rtdb(path, false, limit, max_bytes)).await?;
         let column = |name: &str, kind| ColumnMeta {
             name: name.to_owned(),
             type_name: String::new(),
@@ -329,7 +339,7 @@ impl Connection for FirebaseConnection {
     async fn list_objects(&self, schema: Option<&str>, options: CallOptions) -> Result<Vec<ObjectInfo>> {
         match schema.unwrap_or(FIRESTORE) {
             REALTIME => {
-                let root = options.run(self.firebase.rtdb("", true, None)).await?;
+                let root = options.run(self.firebase.rtdb("", true, None, None)).await?;
                 let keys: BTreeMap<String, Json> = match root {
                     Json::Object(children) => children.into_iter().collect(),
                     _ => BTreeMap::new(),

@@ -26,6 +26,7 @@ A query can return millions of rows while more are still arriving. The Windows U
 - The window format is a contract between `window.rs` and `window.ts`. A change updates both and this file.
 - Sorting is decided in `0005-sorting-a-result.md`: the statement runs again with `ORDER BY` when the column can be named, else the core sorts the rows held through a row order over the same chunks. Filtering is decided in `0011-filtering-a-result.md`: the core keeps a row order of the matching rows, the sort orders that, and a window's row count is then the rows shown, not the rows held. Editing is `0010-editing-rows.md`.
 - Each result set stops at the row cap the run names (the toolbar's Limit, none for Run Without Limit and Fetch All) and says so.
+- Each result set also stops at a memory budget, about a quarter of the machine's physical memory, read by the app at startup (`ui/windows/src-tauri/src/memory.rs`) and passed in as the row cap is (`ResultStore::with_byte_limit`). The store counts each cell's text or bytes and its kind, raw value and offset; past the budget it takes no more rows, as at the row cap, and the UI says "Stopped at N MB" with no Fetch all. A driver that must hold a whole reply before its first row reads `ResultSink::byte_limit` and refuses a bigger one with `result.too_big` (the Realtime Database with no limit, ADR 0027). Added 2026-11-15 (`docs/preview-audit.md`, A8).
 
 ## Alternatives considered
 

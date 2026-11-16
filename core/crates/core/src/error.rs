@@ -64,6 +64,10 @@ pub enum ErrorCode {
     /// installed (`docs/decisions/0028-updates.md`).
     #[serde(rename = "update.signature")]
     UpdateSignature,
+    /// An answer the driver must hold whole before it shows a row of it is
+    /// bigger than a result set may hold in memory (`ResultSink::byte_limit`).
+    #[serde(rename = "result.too_big")]
+    TooBig,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -92,6 +96,7 @@ impl ErrorCode {
             Self::SshHostChanged => "ssh.host_changed",
             Self::SshForward => "ssh.forward",
             Self::UpdateSignature => "update.signature",
+            Self::TooBig => "result.too_big",
             Self::Internal => "internal",
         }
     }

@@ -807,3 +807,29 @@ fn two_million_rows_sort_what_a_key_could_not_hold() {
         println!("sort 2,000,000 rows by {what}: {:?}", started.elapsed());
     }
 }
+
+#[test]
+fn a_set_stops_at_its_byte_limit_and_says_so() {
+    let store = ResultStore::new(vec![column("t", ValueKind::Text)], None).with_byte_limit(Some(10_000));
+    let row = [Value::Text("x".repeat(100))];
+    let mut pushed = 0;
+    while store.push_rows(&row) {
+        pushed += 1;
+        assert!(pushed < 1_000, "the set never stopped");
+    }
+    let state = store.state();
+    assert!(state.limited && state.memory_limited);
+    assert!(state.bytes >= 10_000, "{}", state.bytes);
+    // Each row costs its text and the cell's kind, raw value and offset: about 113 bytes.
+    assert_eq!(state.total_rows, 89);
+    assert!(!store.push_rows(&row), "a full set takes no more rows");
+
+    let capped = ResultStore::new(vec![column("t", ValueKind::Text)], Some(2)).with_byte_limit(Some(10_000));
+    assert!(capped.push_rows(&[Value::Text("a".into()), Value::Text("b".into())]));
+    assert!(!capped.push_rows(&[Value::Text("c".into())]));
+    let state = capped.state();
+    assert!(
+        state.limited && !state.memory_limited,
+        "the row cap, not memory, stopped it"
+    );
+}

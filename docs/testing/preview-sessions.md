@@ -24,3 +24,19 @@ Kemable giữ một phiên cho mỗi database đang dùng. Một batch có `USE 
   **Đúng:** ở `KemableA` dòng 1 thành `sua`; chạy `select ten from KemableB.dbo.t` ra `b` (không bị sửa).
 - [ ] Dọn dẹp: chọn `master`, chạy `drop database KemableA;` rồi `drop database KemableB;`.
   **Đúng:** cả hai câu chạy được, không bị từ chối vì "database is in use".
+
+## A8. Một kết quả dừng ở khoảng 25% bộ nhớ máy
+
+Fetch all và "No limit" không còn giới hạn số dòng, nên mỗi kết quả dừng khi giữ khoảng một phần tư bộ nhớ vật lý của máy, và nói "Stopped at N MB" như khi dừng ở giới hạn dòng.
+
+- [ ] Mở SQLite `:memory:` (hoặc một file trống), chọn giới hạn **No limit** trên thanh trang, chạy:
+  ```sql
+  with recursive c(x) as (select 1 union all select x + 1 from c limit 200000000)
+  select x, printf('%.200c', 'x') as dai from c;
+  ```
+  Mở Task Manager, xem bộ nhớ của Kemable.
+  **Đúng:** bộ nhớ tăng tới khoảng một phần tư RAM của máy rồi dừng; thanh kết quả ghi **Stopped at N MB** (N gần một phần tư RAM, tính bằng MB), không có nút **Fetch all**; app vẫn cuộn, sắp xếp, lọc được; không bị tắt.
+- [ ] Chạy lại câu trên với giới hạn **Limit 1,000**.
+  **Đúng:** ghi **Stopped at 1,000 rows** và có nút **Fetch all** như trước.
+- [ ] Firebase (nếu có project thử): ở console chạy `rtdb /` trên một Realtime Database lớn (hàng trăm MB).
+  **Đúng:** báo lỗi "The answer is too big to hold in memory: read it with a limit"; `rtdb / limit 100` vẫn đọc được.

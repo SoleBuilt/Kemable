@@ -96,7 +96,7 @@ impl LiveSink {
 
 impl ResultSink for LiveSink {
     fn begin_set(&self, columns: Vec<ColumnMeta>) {
-        let store = Arc::new(ResultStore::new(columns.clone(), Some(self.max_events)));
+        let store = Arc::new(self.state.new_store(columns.clone(), Some(self.max_events)));
         let result = self.state.add_result(Arc::clone(&store), None);
         *self.store.lock().unwrap_or_else(PoisonError::into_inner) = Some(store);
         self.send(LiveEvent::Listening { result, columns });

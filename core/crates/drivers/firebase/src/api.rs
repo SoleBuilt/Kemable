@@ -307,8 +307,15 @@ impl Firebase {
     }
 
     /// The Realtime Database's value at `path`: whole, its children's keys
-    /// only (`shallow`), or its first `limit` children by key.
-    pub(crate) async fn rtdb(&self, path: &str, shallow: bool, limit: Option<u64>) -> Result<Json> {
+    /// only (`shallow`), or its first `limit` children by key. A reply whose
+    /// text passes `max_bytes` is not read on: `result.too_big`.
+    pub(crate) async fn rtdb(
+        &self,
+        path: &str,
+        shallow: bool,
+        limit: Option<u64>,
+        max_bytes: Option<u64>,
+    ) -> Result<Json> {
         let mut query = self.rtdb_query().await?;
         if shallow {
             query.push(("shallow", "true".to_owned()));
@@ -317,7 +324,7 @@ impl Firebase {
             query.push(("orderBy", "\"$key\"".to_owned()));
             query.push(("limitToFirst", limit.to_string()));
         }
-        let response = self
+        let mut response = self
             .http
             .get(self.rtdb_url(path))
             .query(&query)
@@ -325,7 +332,18 @@ impl Firebase {
             .await
             .map_err(|error| transport_error(&error))?;
         let status = response.status();
-        let text = response.text().await.map_err(|error| transport_error(&error))?;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|error| transport_error(&error))? {
+            bytes.extend_from_slice(&chunk);
+            if let Some(max) = max_bytes.filter(|max| bytes.len() as u64 > *max) {
+                // Dropping the response closes the request: nothing more is read.
+                return Err(DriverError::new(
+                    ErrorCode::TooBig,
+                    format!("the value at /{path} is over {max} bytes"),
+                ));
+            }
+        }
+        let text = String::from_utf8_lossy(&bytes).into_owned();
         let body: Json = serde_json::from_str(&text).unwrap_or(Json::String(text));
         if status.is_success() {
             Ok(body)

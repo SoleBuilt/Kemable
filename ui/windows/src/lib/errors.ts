@@ -24,6 +24,7 @@ const TITLES: Record<string, string> = {
   "ssh.host_changed": "This SSH server's key has changed",
   "ssh.forward": "The SSH server would not reach the database",
   "update.signature": "The update is not signed by Kemable",
+  "result.too_big": "The answer is too big to hold in memory: read it with a limit",
   internal: "Something went wrong inside Kemable",
 };
 

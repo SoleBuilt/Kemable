@@ -23,6 +23,13 @@ pub trait ResultSink: Send + Sync {
         None
     }
 
+    /// The most bytes the sink keeps of one set (the app's memory budget),
+    /// for a driver that must hold a whole reply before it can push a row of
+    /// it, such as a Realtime Database read. `None` when it keeps any size.
+    fn byte_limit(&self) -> Option<u64> {
+        None
+    }
+
     fn end_set(&self);
 
     fn command_done(&self, rows_affected: Option<u64>);
