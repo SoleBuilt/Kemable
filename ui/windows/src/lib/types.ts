@@ -171,6 +171,9 @@ export interface CoreError {
   position?: { byteOffset: number };
 }
 
+/** A run's event with the run it belongs to, so a page drops what an older run still sends. */
+export type RunMessage = RunEvent & { run: number };
+
 export type RunEvent =
   | { type: "statementStarted"; index: number; text: string }
   | {

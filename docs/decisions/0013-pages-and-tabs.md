@@ -22,7 +22,7 @@ The first window had one editor and one row of result tabs. A table opened from 
 - **Query pages** (Query 1, Query 2, …). Each keeps its own editor state (text, cursor, undo), its results, its messages and its run counts while another page is shown. There is one CodeMirror view; a page's state is swapped in with `saveState` / `restoreState`.
 - **Table pages.** Opening a table or view from the tree opens it on a page of its own, with no editor: its filter row, its grid and the pager in the status bar (ADR 0006). Opening a table that is already open shows its page. Open in New Tab, in the tree menu, opens another page.
 - **The tabs.** Tabs sit on the left of a 40 px bar and scroll sideways. Each has a ×; a table tab shows its row count. `+` and Ctrl+T open a query page, Ctrl+W closes the page shown, and Ctrl+Tab and Ctrl+Shift+Tab move between pages. Closing the last query page opens a new empty one, so there is always an editor.
-- **While a run is going,** its page stays shown: switching or closing a page asks to wait or Stop first. A table page with unsaved edits does not close (ADR 0010).
+- **While a run is going,** its page stays shown: switching or closing a page asks to wait or Stop first. A table page with unsaved edits does not close (ADR 0010). Opening another connection asks to Stop first too, as Disconnect does; a run's cancel is a child of its connection's, so closing the connection stops it, and each run event names its run, so a page drops what a run it no longer follows still sends (amended 2026-11-15, `docs/preview-audit.md` B12).
 
 ### The tools of the page shown sit on the right of the same bar
 

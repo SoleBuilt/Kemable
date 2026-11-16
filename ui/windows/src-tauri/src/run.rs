@@ -91,6 +91,15 @@ pub enum RunEvent {
     },
 }
 
+/// A run's event with the run it belongs to: the page drops events of a run
+/// that is no longer its own.
+#[derive(Debug, Clone, Serialize)]
+pub struct RunMessage {
+    pub run: u64,
+    #[serde(flatten)]
+    pub event: RunEvent,
+}
+
 /// Byte offsets into a statement's text.
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Part {
@@ -108,7 +117,8 @@ struct OpenSet {
 /// id, and events tell the UI what changed.
 struct RunSink {
     state: Arc<AppState>,
-    channel: Channel<RunEvent>,
+    run: u64,
+    channel: Channel<RunMessage>,
     statement: AtomicUsize,
     open: Mutex<Option<OpenSet>>,
     /// What a set started now came from; updated before each statement.
@@ -130,7 +140,7 @@ struct RunSink {
 impl RunSink {
     fn send(&self, event: RunEvent) {
         // A closed window drops the channel; the run then ends on its own.
-        let _ = self.channel.send(event);
+        let _ = self.channel.send(RunMessage { run: self.run, event });
     }
 
     fn statement(&self) -> usize {
@@ -287,8 +297,9 @@ pub struct Run {
     pub row_limit: Option<u64>,
     /// Record each statement in the query history (a run from the editor).
     pub record: bool,
+    /// A child of the server's `closing`, so closing the connection stops the run.
     pub cancel: CancellationToken,
-    pub channel: Channel<RunEvent>,
+    pub channel: Channel<RunMessage>,
 }
 
 /// Executes each statement in turn. The first failure stops the rest, as the
@@ -297,6 +308,7 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
     let started = Instant::now();
     let sink = Arc::new(RunSink {
         state: Arc::clone(&state),
+        run: run.id,
         channel: run.channel.clone(),
         statement: AtomicUsize::new(0),
         open: Mutex::new(None),

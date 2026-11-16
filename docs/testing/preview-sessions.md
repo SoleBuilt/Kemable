@@ -66,3 +66,14 @@ Một phiên báo mất kết nối thì bị bỏ; việc đọc (cây, gợi �
   **Đúng:** gợi ý và cây có thể chưa ra (chờ câu kia), nhưng câu dài vẫn chạy tới hết và ra `100000000`; không báo "The server took too long".
 - [ ] Chạy lại câu dài, bấm **Stop** (Esc) ngay sau khi bấm Run.
   **Đúng:** dừng trong khoảng một giây, báo **Stopped**.
+
+## B12. Mở kết nối khác khi một câu đang chạy
+
+Khi một câu đang chạy, mở kết nối khác bị từ chối và nhắc dừng câu trước, như Disconnect. Đóng kết nối thì câu của nó dừng theo. Sự kiện của một lần chạy cũ không bao giờ hiện trên trang của kết nối mới.
+
+- [ ] Kết nối PostgreSQL, chạy `select pg_sleep(30);`. Trong lúc nó chạy, mở một kết nối đã lưu khác (Ctrl+K).
+  **Đúng:** kết nối mới không mở; dải lỗi ghi "Stop the running query first (Esc)". Trang vẫn hiện câu đang chạy.
+- [ ] Nhấn **Esc** để dừng, rồi mở lại kết nối kia.
+  **Đúng:** mở được; trang mới không có kết quả, lỗi hay chữ "finished" nào của lần chạy cũ.
+- [ ] SQL Server: chạy `waitfor delay '00:00:30';`, nhấn Esc, mở ngay kết nối khác.
+  **Đúng:** kết nối mới mở trong vài giây, không đứng ở "Running".

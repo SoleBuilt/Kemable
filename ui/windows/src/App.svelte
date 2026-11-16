@@ -96,6 +96,7 @@
     ResultWhere,
     RowSpan,
     RunEvent,
+    RunMessage,
     SavedConnection,
     SavedQuery,
     TableRef,
@@ -288,6 +289,12 @@
   let messages: Message[] = $state([]);
   let activeTab: number | "messages" = $state(0);
   let runId: number | null = $state(null);
+  /**
+   * Which run the page listens to. A run's events go to it only while it is
+   * the latest, so a run left behind by another connection opening never
+   * lands on the new connection's page.
+   */
+  let runToken = 0;
   let running = $state(false);
   let elapsedMs: number | null = $state(null);
   let refreshKey = $state(0);
@@ -771,9 +778,12 @@
   /** Opens a connection in place of the current one. Resolves to the error, or null. */
   async function openWith(opening: () => Promise<OpenedConnection>, filePath: string | null = null): Promise<CoreError | null> {
     if (anyEdits()) return { code: "config.invalid", message: "Save or discard the table's edits first (Ctrl+S)" };
+    // As disconnect: a run goes on until it is stopped, and its results belong to this connection.
+    if (running) return { code: "config.invalid", message: "Stop the running query first (Esc)" };
     connecting = true;
     try {
       const opened = await opening();
+      runToken++;
       if (connection) void ipc.disconnect(connection.id);
       // Files opened and queries written with no connection go to the one that opens now (ADR 0016).
       const carried = connection ? [] : keepCurrent().filter((page) => page.kind === "query" && (page.file || pageText(page).trim() !== ""));
@@ -1261,6 +1271,11 @@
     // What a person ran goes to the history; what the app wrote for them does not.
     const record = overrides.record ?? fromEditor;
     recording = record;
+    const token = ++runToken;
+    // Events can come before runQuery resolves with the run's id: the token decides until then.
+    const ownEvent = (event: RunMessage) => {
+      if (token === runToken && (runId === null || event.run === runId)) onEvent(event);
+    };
     try {
       const started = await ipc.runQuery(
         connection.id,
@@ -1270,9 +1285,9 @@
         settings.followCreatedDatabase,
         rowLimit,
         record,
-        onEvent,
+        ownEvent,
       );
-      runId = started.run;
+      if (token === runToken) runId = started.run;
       ranCount = { ran: started.ranges.length, total: started.scriptStatements };
       if (fromEditor) {
         editor?.showRan(request, started.ranges);
