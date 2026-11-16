@@ -77,6 +77,10 @@ pub enum ErrorCode {
     /// The same for a kept SSH password or key passphrase: its SSH server changed.
     #[serde(rename = "ssh.secret_moved")]
     SshSecretMoved,
+    /// The platform's secret store (Windows Credential Manager) refused to
+    /// keep, read or forget a password; the message is its own text.
+    #[serde(rename = "secret.vault")]
+    Vault,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -108,6 +112,7 @@ impl ErrorCode {
             Self::Unreadable => "storage.unreadable",
             Self::SecretMoved => "secret.moved",
             Self::SshSecretMoved => "ssh.secret_moved",
+            Self::Vault => "secret.vault",
             Self::Internal => "internal",
         }
     }

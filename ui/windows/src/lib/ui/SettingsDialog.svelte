@@ -135,13 +135,14 @@
   import Checkbox from "./Checkbox.svelte";
   import Combobox from "./Combobox.svelte";
   import Dialog from "./Dialog.svelte";
+  import InfoBar from "./InfoBar.svelte";
   import Segmented from "./Segmented.svelte";
   import Setting from "./Setting.svelte";
   import Spacer from "./Spacer.svelte";
   import { errorTitle } from "../errors";
   import { asCoreError, ipc } from "../ipc";
   import { dataFolder } from "../store";
-  import type { UpdateInfo } from "../types";
+  import type { CoreError, UpdateInfo } from "../types";
 
   interface Props {
     settings: Settings;
@@ -152,6 +153,14 @@
   }
 
   let { settings, onSave, onClose, onUpdateFound }: Props = $props();
+
+  /** Why the data folder, the license, the source or the notices did not open. */
+  let openError = $state<CoreError | null>(null);
+
+  function opening(call: Promise<void>) {
+    openError = null;
+    call.catch((caught: unknown) => (openError = asCoreError(caught)));
+  }
 
   // svelte-ignore state_referenced_locally
   let draft: Settings = $state({ ...settings });
@@ -278,7 +287,7 @@
       title="Data folder"
       hint={`${dataFolder.besideApp ? "Beside the app, where it was installed" : "In your Windows profile"}: ${dataFolder.path}. Passwords stay in Windows Credential Manager.`}
     >
-      <Button variant="secondary" size="sm" icon="folder" onclick={() => void ipc.openDataFolder()}>Open</Button>
+      <Button variant="secondary" size="sm" icon="folder" onclick={() => opening(ipc.openDataFolder())}>Open</Button>
     </Setting>
   {/if}
 
@@ -287,14 +296,18 @@
     title={version ? `Kemable ${version}` : "Kemable"}
     hint="Free software under the GNU Affero General Public License, version 3 only, whose text is installed with the app. Copyright (C) 2026 Huỳnh Trung Đức."
   >
-    <Button variant="secondary" size="sm" icon="file" onclick={() => void ipc.openAbout("license")}>License</Button>
+    <Button variant="secondary" size="sm" icon="file" onclick={() => opening(ipc.openAbout("license"))}>License</Button>
   </Setting>
   <Setting title="Source code" hint="The code this app is built from, on GitHub: yours to read, build, change and share under the license.">
-    <Button variant="secondary" size="sm" onclick={() => void ipc.openAbout("source")}>Open</Button>
+    <Button variant="secondary" size="sm" onclick={() => opening(ipc.openAbout("source"))}>Open</Button>
   </Setting>
   <Setting title="Third-party notices" hint="The libraries and fonts inside Kemable, and their licenses.">
-    <Button variant="secondary" size="sm" icon="file" onclick={() => void ipc.openAbout("notices")}>Open</Button>
+    <Button variant="secondary" size="sm" icon="file" onclick={() => opening(ipc.openAbout("notices"))}>Open</Button>
   </Setting>
+
+  {#if openError}
+    <InfoBar tone="danger" title={`Not opened: ${errorTitle(openError)}`} message={openError.message} onDismiss={() => (openError = null)} />
+  {/if}
 
   {#snippet footer()}
     <Spacer />
