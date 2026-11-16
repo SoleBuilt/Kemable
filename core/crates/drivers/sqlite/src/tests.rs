@@ -358,3 +358,38 @@ async fn indexes_list_the_key_first_with_their_columns_order_and_filter() {
         .unwrap();
     assert!(columns[0].generated && !columns[1].generated);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_call_waiting_for_a_running_query_gives_up_at_its_deadline_without_stopping_it() {
+    let conn = memory().await;
+    let long = {
+        let conn = Arc::clone(&conn);
+        tokio::spawn(async move {
+            run(
+                &conn,
+                "with recursive c(x) as (select 1 union all select x + 1 from c limit 5000000) select count(*) from c",
+            )
+            .await
+        })
+    };
+    // Let the query take the connection first, as a user's run does.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let started = std::time::Instant::now();
+    let error = conn
+        .list_schemas(CallOptions::default().with_timeout(Duration::from_millis(50)))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Timeout);
+    let waited = started.elapsed();
+    let (sink, result) = long.await.unwrap();
+    assert!(
+        result.is_ok(),
+        "the tree's deadline stopped the user's query: {result:?}"
+    );
+    assert!(
+        waited < Duration::from_millis(1_000),
+        "it gave up at its deadline: {waited:?}"
+    );
+    let store = sink.store.lock().unwrap().clone().unwrap();
+    assert_eq!(store.cell_text(0, 0), Some(Some("5000000".into())));
+}

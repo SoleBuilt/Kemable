@@ -82,9 +82,25 @@ pub struct SqliteConnection {
     version: String,
 }
 
+/// How often a stopped call interrupts its work until the work ends.
+const INTERRUPT_AGAIN: Duration = Duration::from_millis(20);
+
+/// Where a call's work is. The connection has one interrupt, which stops
+/// whatever statement holds it, so a call may fire it only while its own
+/// work holds the connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    /// Waiting for another call (a long query) to free the connection.
+    Waiting,
+    Working,
+    Done,
+}
+
 impl SqliteConnection {
     /// Runs `work` on the blocking pool with the connection, interrupting it
-    /// when the call is cancelled or passes its deadline.
+    /// when the call is cancelled or passes its deadline. A call still
+    /// waiting for the connection then gives up without interrupting: the
+    /// statement running is another call's, a user's query say.
     async fn blocking<T: Send + 'static>(
         &self,
         options: &CallOptions,
@@ -92,21 +108,50 @@ impl SqliteConnection {
     ) -> Result<T> {
         options.check()?;
         let conn = Arc::clone(&self.conn);
-        let task = tokio::task::spawn_blocking(move || {
-            let conn = conn.lock().unwrap_or_else(PoisonError::into_inner);
-            work(&conn)
-        });
-        let interrupt = Arc::clone(&self.interrupt);
-        let watcher = {
+        let phase = Arc::new(Mutex::new(Phase::Waiting));
+        let mut task = {
+            let phase = Arc::clone(&phase);
             let options = options.clone();
-            tokio::spawn(async move {
-                options.stopped().await;
-                interrupt.interrupt();
+            tokio::task::spawn_blocking(move || {
+                let conn = conn.lock().unwrap_or_else(PoisonError::into_inner);
+                {
+                    let mut phase = phase.lock().unwrap_or_else(PoisonError::into_inner);
+                    // The caller may have given up while this waited.
+                    if let Err(stopped) = options.check() {
+                        *phase = Phase::Done;
+                        return Err(stopped);
+                    }
+                    *phase = Phase::Working;
+                }
+                let result = work(&conn);
+                *phase.lock().unwrap_or_else(PoisonError::into_inner) = Phase::Done;
+                result
             })
         };
-        let result = task.await.map_err(join_error);
-        watcher.abort();
-        match result? {
+        let result = tokio::select! {
+            result = &mut task => result,
+            () = options.stopped() => loop {
+                // Under the phase's lock, so the work cannot end and free the
+                // connection to another call between the look and the interrupt.
+                let waiting = {
+                    let phase = phase.lock().unwrap_or_else(PoisonError::into_inner);
+                    if *phase == Phase::Working {
+                        self.interrupt.interrupt();
+                    }
+                    *phase == Phase::Waiting
+                };
+                if waiting {
+                    return Err(options.stop_reason());
+                }
+                // SQLite drops an interrupt that lands before the work's
+                // statement starts, so it is sent again until the work ends.
+                tokio::select! {
+                    result = &mut task => break result,
+                    () = tokio::time::sleep(INTERRUPT_AGAIN) => {}
+                }
+            },
+        };
+        match result.map_err(join_error)? {
             Err(error) if error.code == ErrorCode::Cancelled => Err(options.stop_reason()),
             other => other,
         }
