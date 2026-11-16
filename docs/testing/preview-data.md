@@ -121,3 +121,16 @@ Trước đây gõ `1.10` vào cột TEXT của SQLite thì lưu thành `1.1`, `
   **Đúng:** `n` là `10`, `typeof(n)` là `integer` (cột số đổi chữ thành số khi không mất gì).
 - [ ] Import một CSV `id,ma,x` / `2,1.10,12345678901234567890` vào `thu_so`.
   **Đúng:** dòng `id = 2` có `ma = 1.10` và `x = 12345678901234567890`, cả hai là text.
+
+---
+
+## D1. Xoá trắng một ô không phải chữ thì thành NULL
+
+Trước đây xoá hết chữ trong một ô số hay ngày của SQL Server rồi lưu thì gửi `N''`, server lưu thành `0` hoặc `1900-01-01`. Giờ ô không phải chữ được lưu `NULL`; ô chữ vẫn giữ chuỗi rỗng.
+
+- [ ] Kết nối SQL Server, chạy `create table thu_rong (id int primary key, n int, d datetime, t nvarchar(10)); insert into thu_rong values (1, 5, '20240102', N'abc');`. Mở `thu_rong`.
+- [ ] Nhấn F2 trên ô `n`, xoá hết chữ, Enter; làm tương tự với `d` và `t`. **Ctrl+S**.
+  **Đúng:** preview ghi `[n] = NULL`, `[d] = NULL`, `[t] = N''`. Sau khi lưu, `select n, d, t, len(t) from thu_rong;` ra `NULL`, `NULL`, chuỗi rỗng và `0`.
+- [ ] Làm lại với PostgreSQL (`int`, `timestamp`, `text`).
+  **Đúng:** preview ghi `"n" = NULL`, `"d" = NULL`, `"t" = ''`; trước đây PostgreSQL báo lỗi kiểu.
+- [ ] Dọn: `drop table thu_rong;`
