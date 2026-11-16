@@ -2988,6 +2988,7 @@
   {@const action = objectAction}
   <ObjectActionDialog
     conn={connection.id}
+    connectionTitle={connection.title}
     database={action.target.database}
     engine={connection.engine.id}
     object={action.target.object}
