@@ -67,3 +67,19 @@ Trước đây, khi trong editor còn một `BEGIN` chưa `COMMIT`, việc lưu 
 - [ ] Chạy `ROLLBACK TRANSACTION;` rồi `select * from thu_tx;`.
   **Đúng:** chỉ còn `1 a`.
 - [ ] Dọn: `drop table thu_tx;`
+
+---
+
+## A4. Sửa ô nhị phân ghi đúng các byte
+
+Trước đây sửa một ô `bytea` từ `0x00ff` thành `0x00fe` thì PostgreSQL lưu sáu ký tự ASCII `0x00fe`, SQLite lưu chữ vào cột blob. Giờ giá trị hex được đọc thành byte.
+
+- [ ] Kết nối `Local PG`, chạy `create table thu_bin2 (id int primary key, data bytea); insert into thu_bin2 values (1, '\x00ff');`. Mở `thu_bin2`, nhấn F2 trên ô `data`.
+  **Đúng:** ô sửa bắt đầu bằng `0x00ff`.
+- [ ] Sửa thành `0x00fe`, Enter, **Ctrl+S**.
+  **Đúng:** preview ghi `SET "data" = '\x00fe'::bytea`. Save xong, chạy `select length(data), data from thu_bin2;`: ra `2` và `\x00fe` (hai byte, không phải sáu).
+- [ ] Sửa ô thành `abc`, **Ctrl+S**.
+  **Đúng:** không lưu, báo lỗi nói cột nhận byte viết dạng hex như `0x00ff`.
+- [ ] Làm lại với SQL Server (`varbinary(10)`) và SQLite (`blob`).
+  **Đúng:** preview ghi `0x00fe` (SQL Server) và `X'00fe'` (SQLite); `select datalength(data)` / `select length(data), typeof(data)` ra `2` (và `blob` ở SQLite). Ở SQLite, gõ `abc` thì lưu thành chữ `abc` (SQLite cho mọi kiểu trong mọi cột).
+- [ ] Dọn: `drop table thu_bin2;`

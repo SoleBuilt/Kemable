@@ -1755,12 +1755,6 @@ pub fn edit_statements(state: &AppState, grammar: SqlGrammar, request: &EditRequ
                 .ok_or_else(|| DriverError::config(format!("the key column {name} is not in the page")))
         })
         .collect::<CommandResult<_>>()?;
-    let name_of = |column: usize| {
-        names
-            .get(column)
-            .cloned()
-            .ok_or_else(|| DriverError::config(format!("no column {column}")))
-    };
     let key_of = |row: u64| {
         key.iter()
             .map(|(index, name)| {
@@ -1772,10 +1766,18 @@ pub fn edit_statements(state: &AppState, grammar: SqlGrammar, request: &EditRequ
             })
             .collect::<CommandResult<Vec<_>>>()
     };
+    // Each value goes with its column, so the core writes it for the column's type.
     let cells = |cells: &[CellEdit]| {
         cells
             .iter()
-            .map(|cell| Ok((name_of(cell.column)?, cell.value.clone())))
+            .map(|cell| {
+                let column = store
+                    .columns()
+                    .get(cell.column)
+                    .cloned()
+                    .ok_or_else(|| DriverError::config(format!("no column {}", cell.column)))?;
+                Ok((column, cell.value.clone()))
+            })
             .collect::<CommandResult<Vec<_>>>()
     };
 
