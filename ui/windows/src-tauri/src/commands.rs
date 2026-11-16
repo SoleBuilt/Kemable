@@ -947,10 +947,11 @@ pub async fn import_plan(
         .map_err(|error| DriverError::internal(error.to_string()))??;
     let read = crate::jobs::preview(&text, Some(options.delimiter), options.header, grammar);
     let targets = crate::jobs::import_columns(&target, &read.header, &columns);
-    let mut records = CsvReader::new(&text, options.delimiter);
+    let mut reader = CsvReader::new(&text, options.delimiter);
     if options.header {
-        records.next();
+        reader.next_fields();
     }
+    let records = std::iter::from_fn(move || reader.next_fields());
     let first_insert = if targets.iter().any(Option::is_some) {
         crate::jobs::insert_batches(
             grammar,
