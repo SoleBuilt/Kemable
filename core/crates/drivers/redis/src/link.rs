@@ -19,6 +19,9 @@ use tokio_rustls::TlsConnector;
 
 use crate::resp::{self, ReadError, Reply};
 
+const KEEPALIVE_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
+const KEEPALIVE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
 pub(crate) trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
 
@@ -110,6 +113,12 @@ pub(crate) async fn connect(endpoint: &Endpoint) -> Result<Stream, DriverError> 
     }
     .map_err(|error| DriverError::new(ErrorCode::Connect, error.to_string()))?;
     let _ = tcp.set_nodelay(true);
+    // A quiet link is probed, so one that died silently fails as lost and
+    // the next call opens a new one, instead of a call waiting for ever.
+    let keepalive = socket2::TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL);
+    let _ = socket2::SockRef::from(&tcp).set_tcp_keepalive(&keepalive);
     let io: Box<dyn Io> = match &endpoint.tls {
         None => Box::new(tcp),
         Some(config) => {

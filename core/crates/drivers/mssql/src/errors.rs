@@ -32,8 +32,11 @@ pub(crate) fn map(error: tiberius::error::Error, batch: Option<&str>, phase: Pha
             }
         }
         Error::Io { kind, message } => {
+            // Once connected, a timed-out socket (WSAETIMEDOUT: keepalive
+            // found the link dead) is lost, so the session is dropped and
+            // never used again.
             let code = match (kind, phase) {
-                (std::io::ErrorKind::TimedOut, _) => ErrorCode::Timeout,
+                (std::io::ErrorKind::TimedOut, Phase::Connect) => ErrorCode::Timeout,
                 (_, Phase::Connect) => ErrorCode::Connect,
                 (_, Phase::Run) => ErrorCode::Lost,
             };

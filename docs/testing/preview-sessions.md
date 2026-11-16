@@ -86,3 +86,16 @@ Phiên của một database mở trong một tác vụ riêng: các database kh�
   **Đúng:** cây của home và câu `select 1` ra ngay, không phải chờ database kia mở xong.
 - [ ] Chọn database đang mở chậm ở thanh công cụ, chạy `select 1;`, nhấn **Esc** khi còn đang "Running".
   **Đúng:** dừng ngay, báo **Stopped**; chạy lại sau vài giây thì chạy được trên phiên đã mở xong.
+
+## D9. Đường truyền chết giữa câu không để "Running" mãi
+
+SQL Server và Redis bật TCP keepalive; D1 và Firebase hết chờ nếu server im quá 120 giây; câu SQL Server chạy lâu hơn 30 giây không còn bị cắt.
+
+- [ ] SQL Server: chạy `waitfor delay '00:00:40'; select 1;`.
+  **Đúng:** sau 40 giây ra `1`; không báo "The server took too long" ở giây thứ 30.
+- [ ] SQL Server qua mạng (không phải localhost): chạy `waitfor delay '00:05:00';`, rồi rút dây mạng hoặc tắt Wi-Fi.
+  **Đúng:** trong khoảng 2 phút báo **The connection was lost** (không treo "Running" mãi); cắm mạng lại, chạy `select 1;` thì chạy được.
+- [ ] SQL Server: chạy `waitfor delay '00:00:20';` ở một tab; trong lúc đó mở tab khác và mở cây một bảng.
+  **Đúng:** cây báo hết thời gian chờ hoặc chờ xong, không làm treo app; câu ở tab đầu vẫn chạy tới hết.
+- [ ] Redis: mở console, ngắt mạng tới server khoảng 2 phút, chạy `PING`.
+  **Đúng:** lần đầu báo mất kết nối hoặc lỗi; nối mạng lại, `PING` lần sau ra `PONG`.
