@@ -195,3 +195,14 @@ Cột số dòng rộng theo số dòng của kết quả: đủ cho số dòng 
   **Đúng:** cột rộng tới 360 px là dừng; giá trị bị cắt ở 360 px như trước.
 - [ ] Đo: F12 › Performance, ghi 5 giây cuộn liên tục (bánh xe và kéo thanh cuộn) trên câu của D18.
   **Đúng:** khung hình dưới 8 ms như `.claude/rules/data-grid.md` yêu cầu; không có tác vụ dài khi khối dòng về.
+
+## D20. Số đang sửa canh phải như các số xung quanh
+
+- [ ] Mở một bảng có cột số (ví dụ `int`, `decimal`). Nhấp đúp một ô số, gõ `12345`, Enter (chưa lưu).
+  **Đúng:** ô tô màu sửa, `12345` canh phải như các số khác trong cột, không nhảy sang trái.
+- [ ] Ở cùng cột, đặt một ô thành NULL (nút NULL trong editor).
+  **Đúng:** `NULL` vẫn canh trái, chữ nghiêng nhạt như mọi NULL.
+- [ ] Thêm một dòng mới vào bảng, gõ số vào cột số.
+  **Đúng:** số canh phải; các cột chữ canh trái; ô chưa gõ ghi `DEFAULT` canh trái.
+- [ ] Sửa một ô của cột chữ thành `123`.
+  **Đúng:** canh trái (theo kiểu của ô, không theo nội dung).
