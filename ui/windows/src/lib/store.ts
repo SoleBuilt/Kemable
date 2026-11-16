@@ -16,6 +16,8 @@ interface Startup {
   prefs: Record<string, unknown> | null;
   pagesWithout: unknown;
   folder: DataFolderInfo | null;
+  /** Kept files that could not be read at launch, set aside rather than written over. */
+  setAside?: string[];
 }
 
 declare global {
@@ -29,6 +31,11 @@ const startup: Startup = window.__KEMABLE__ ?? { prefs: null, pagesWithout: null
 export const dataFolder: DataFolderInfo | null = startup.folder;
 
 let prefs: Record<string, unknown> = startup.prefs ?? {};
+
+/** What was set aside at launch, each with the file it was and where it went. */
+export function setAsideAtStart(): string[] {
+  return startup.setAside ?? [];
+}
 
 /** The pages of files opened with no connection, as kept. */
 export function pagesWithoutConnection(): unknown {

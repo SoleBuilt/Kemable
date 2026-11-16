@@ -26,7 +26,7 @@
   import Pager, { PAGE_SIZES } from "./lib/grid/Pager.svelte";
   import RowDetail from "./lib/grid/RowDetail.svelte";
   import { appWindow, asCoreError, ipc } from "./lib/ipc";
-  import { flushStore, readPref, writePref } from "./lib/store";
+  import { flushStore, readPref, setAsideAtStart, writePref } from "./lib/store";
   import HistoryList from "./lib/sidebar/HistoryList.svelte";
   import KeyBrowser from "./lib/sidebar/KeyBrowser.svelte";
   import ObjectTree, { type TreeScope, type TreeTarget } from "./lib/sidebar/ObjectTree.svelte";
@@ -621,7 +621,13 @@
    */
   async function restorePages(key: string, carried: Page[] = []) {
     pagesKey = key;
-    const kept = await readPages(key);
+    let kept: Awaited<ReturnType<typeof readPages>> = null;
+    try {
+      kept = await readPages(key);
+    } catch (caught) {
+      // The file was set aside, not written over: the new pages go to a new file.
+      setAside = [...setAside, asCoreError(caught).message];
+    }
     if ((!kept && carried.length === 0) || !editor) return;
     const view = editor;
     const restored: Page[] = await Promise.all(
@@ -667,6 +673,9 @@
     drafting = true;
     void tick().then(() => restorePages(NO_CONNECTION));
   }
+
+  /** Kept pages or preferences that could not be read: set aside, never written over, and said in a strip. */
+  let setAside = $state.raw<string[]>(setAsideAtStart());
 
   /** What closing the window would stop or lose, while the window asks before it closes. */
   let closeAsk = $state.raw<string[] | null>(null);
@@ -2434,7 +2443,7 @@
   }}
 />
 
-<div class="pb-app" style:grid-template-rows={connectError ? "auto auto minmax(0, 1fr) auto" : undefined}>
+<div class="pb-app" style:grid-template-rows={connectError || setAside.length > 0 ? `auto ${connectError ? "auto " : ""}${setAside.length > 0 ? "auto " : ""}minmax(0, 1fr) auto` : undefined}>
   <!-- The title bar says where you are (D14) and holds the window's buttons. -->
   <!-- The stripe shows only for a connection with a colour of its own. -->
   <TitleBar conn={connection ? connectionColor : null}>
@@ -2481,6 +2490,18 @@
         {/if}
       </InfoBar>
     {/if}
+  {/if}
+
+  {#if setAside.length > 0}
+    <InfoBar
+      tone="warning"
+      strip
+      title="Kemable could not read what it kept, so it set the file aside and did not write over it"
+      message={setAside.join(" · ")}
+      onDismiss={() => (setAside = [])}
+    >
+      <Button size="sm" icon="folder" onclick={openDataFolder}>Open its folder</Button>
+    </InfoBar>
   {/if}
 
   {#if workspace}

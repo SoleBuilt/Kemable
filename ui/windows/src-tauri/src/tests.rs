@@ -1226,20 +1226,20 @@ fn data_folder(name: &str) -> crate::data::DataFolder {
 #[test]
 fn pages_and_prefs_come_back_as_written_and_only_for_their_key() {
     let folder = data_folder("pages");
-    assert_eq!(folder.prefs(), None);
+    assert_eq!(folder.prefs().unwrap(), None);
     folder
         .write_prefs(&serde_json::json!({ "settings": { "theme": "dark" } }))
         .unwrap();
-    assert_eq!(folder.prefs().unwrap()["settings"]["theme"], "dark");
+    assert_eq!(folder.prefs().unwrap().unwrap()["settings"]["theme"], "dark");
 
     let kept = serde_json::json!({ "pages": [{ "number": 1, "text": "select 1", "cursor": 3 }], "active": 0, "at": 1 });
     folder.write_pages("saved:abc", kept.clone()).unwrap();
-    assert_eq!(folder.pages("saved:abc"), Some(kept));
-    assert_eq!(folder.pages("saved:other"), None);
+    assert_eq!(folder.pages("saved:abc").unwrap(), Some(kept));
+    assert_eq!(folder.pages("saved:other").unwrap(), None);
     // A long file path is a key like any other.
     let long = format!("file:{}", r"D:\folder\".repeat(60));
     folder.write_pages(&long, serde_json::json!({ "pages": [] })).unwrap();
-    assert!(folder.pages(&long).is_some());
+    assert!(folder.pages(&long).unwrap().is_some());
     // Nothing is left half written.
     let leftovers = std::fs::read_dir(folder.path.join("pages"))
         .unwrap()
@@ -1260,8 +1260,79 @@ fn only_the_forty_connections_written_last_keep_their_pages() {
         std::thread::sleep(std::time::Duration::from_millis(15));
     }
     assert_eq!(std::fs::read_dir(folder.path.join("pages")).unwrap().count(), 40);
-    assert!(folder.pages("saved:44").is_some());
-    assert!(folder.pages("saved:0").is_none());
+    assert!(folder.pages("saved:44").unwrap().is_some());
+    assert!(folder.pages("saved:0").unwrap().is_none());
+    let _ = std::fs::remove_dir_all(&folder.path);
+}
+
+#[test]
+fn past_the_limit_pages_with_unsaved_text_are_never_dropped() {
+    let folder = data_folder("prune-unsaved");
+    // The oldest five hold text kept nowhere else: a query, or a file's unsaved change.
+    for index in 0..45 {
+        let kept = match index {
+            0..3 => serde_json::json!({ "pages": [{ "number": 1, "text": "select 1", "cursor": 0 }] }),
+            3..5 => serde_json::json!({ "pages": [{ "number": 1, "text": "x", "cursor": 0,
+                "file": { "path": "D:\\a.sql", "encoding": "utf8", "lineEnding": "crlf", "dirty": true } }] }),
+            5..7 => serde_json::json!({ "pages": [{ "number": 1, "text": "x", "cursor": 0,
+                "file": { "path": "D:\\a.sql", "encoding": "utf8", "lineEnding": "crlf", "dirty": false } }] }),
+            _ => serde_json::json!({ "pages": [{ "number": 1, "text": "  ", "cursor": 0 }] }),
+        };
+        folder.write_pages(&format!("saved:{index}"), kept).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(15));
+    }
+    assert_eq!(std::fs::read_dir(folder.path.join("pages")).unwrap().count(), 40);
+    for index in 0..5 {
+        assert!(
+            folder.pages(&format!("saved:{index}")).unwrap().is_some(),
+            "{index} kept"
+        );
+    }
+    // The oldest without unsaved text went instead: two saved files' pages, three empty ones.
+    for index in 5..10 {
+        assert!(
+            folder.pages(&format!("saved:{index}")).unwrap().is_none(),
+            "{index} dropped"
+        );
+    }
+    assert!(folder.pages("saved:10").unwrap().is_some());
+    let _ = std::fs::remove_dir_all(&folder.path);
+}
+
+#[test]
+fn a_kept_file_that_cannot_be_read_is_set_aside_and_never_written_over() {
+    let folder = data_folder("aside");
+    folder
+        .write_pages("saved:abc", serde_json::json!({ "pages": [] }))
+        .unwrap();
+    let page_file = std::fs::read_dir(folder.path.join("pages"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    std::fs::write(&page_file, b"{ half a file").unwrap();
+    let error = folder.pages("saved:abc").unwrap_err();
+    assert_eq!(error.code, kemable_core::ErrorCode::Unreadable);
+    assert!(error.message.contains("kept as"), "{}", error.message);
+    // The bytes are still there, beside, and the next write does not touch them.
+    folder
+        .write_pages("saved:abc", serde_json::json!({ "pages": [] }))
+        .unwrap();
+    let aside: Vec<_> = std::fs::read_dir(folder.path.join("pages"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.to_string_lossy().contains(".unreadable-"))
+        .collect();
+    assert_eq!(aside.len(), 1);
+    assert_eq!(std::fs::read(&aside[0]).unwrap(), b"{ half a file");
+
+    // ui.json too, and the startup script says what was set aside.
+    std::fs::write(folder.path.join("ui.json"), b"not json").unwrap();
+    let script = folder.startup_script();
+    assert!(script.contains("\"setAside\":[\"cannot understand"), "{script}");
+    assert!(script.contains("\"prefs\":null"), "{script}");
+    assert_eq!(folder.prefs().unwrap(), None);
     let _ = std::fs::remove_dir_all(&folder.path);
 }
 
