@@ -159,3 +159,19 @@ Trước đây Export CSV ghi NULL và chuỗi rỗng đều là ô trống, và
   **Đúng:** hộp thoại Import ghi "An empty field is NULL ("" stays empty text)". Sau khi import, `select id, t is null, length(t) from thu_csv;` ra `1 1 NULL`, `2 0 0`, `3 0 1`.
 - [ ] Làm lại bước Import với ô tick đó tắt.
   **Đúng:** dòng 1 cũng là chuỗi rỗng (`t is null` là `0`).
+
+---
+
+## D17. SQLite: câu không sửa dòng thì không báo số dòng
+
+Trước đây sau một `INSERT` 2.000 dòng, câu `CREATE TABLE` hay `CREATE VIEW` chạy tiếp theo cũng báo "2,000 rows affected", vì SQLite giữ số dòng của câu sửa dữ liệu trước đó. Giờ chỉ `INSERT`, `UPDATE`, `DELETE`, `REPLACE` báo số dòng.
+
+- [ ] Mở SQLite in-memory, chạy cả khối (Ctrl+Enter trên từng câu, hoặc chạy hết):
+  ```sql
+  create table thu_dem (x int);
+  with recursive c(x) as (select 1 union all select x + 1 from c limit 2000) insert into thu_dem select x from c;
+  create view thu_dem_v as select * from thu_dem;
+  update thu_dem set x = x where 0;
+  drop view thu_dem_v;
+  ```
+  **Đúng:** câu `insert` báo 2,000 dòng; `create view` và `drop view` báo xong mà không có số dòng; `update ... where 0` báo 0 dòng.

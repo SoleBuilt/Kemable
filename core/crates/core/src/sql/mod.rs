@@ -27,7 +27,7 @@ pub use literal::{
     Affinity, exact_sqlite_number, sql_server_datetime, sqlite_affinity, typed as typed_literal, value_literal,
 };
 pub use object_action::{Maintenance, ObjectAction, action_statements, maintenance_tasks, view_definition};
-pub use plain_query::is_plain_query;
+pub use plain_query::{changes_rows, is_plain_query};
 pub use result_filter::{ResultFilter, ResultWhere, in_items, result_where};
 pub use result_source::{ResultSource, result_source};
 pub use schema_change::may_change_schema;

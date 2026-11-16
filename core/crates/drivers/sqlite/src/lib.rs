@@ -12,7 +12,7 @@ use kemable_core::connection::Connection;
 use kemable_core::driver::Driver;
 use kemable_core::engine::{DataModel, EngineInfo, TargetKind};
 use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
-use kemable_core::sql::{SqlGrammar, quote_ident};
+use kemable_core::sql::{SqlGrammar, changes_rows, quote_ident};
 use kemable_core::value::{Value, ValueKind};
 use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use rusqlite::types::ValueRef;
@@ -364,7 +364,10 @@ fn run_statement(conn: &rusqlite::Connection, sql: &str, sink: &dyn ResultSink) 
     let width = statement.column_count();
     if width == 0 {
         let changed = statement.raw_execute().map_err(map_error)?;
-        sink.command_done(Some(changed as u64));
+        // sqlite3_changes keeps the last INSERT, UPDATE or DELETE's count
+        // through any other statement, so only those report one.
+        let count = changes_rows(sql, SqlGrammar::Sqlite).then_some(changed as u64);
+        sink.command_done(count);
         return Ok(ExecOutcome::default());
     }
 

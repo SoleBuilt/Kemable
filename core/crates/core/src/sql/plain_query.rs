@@ -16,11 +16,40 @@
 //! keeps what the rows read did (`core/crates/drivers/postgres`).
 
 use super::SqlGrammar;
-use super::lex::{Kind, lex_strict};
+use super::lex::{Kind, lex, lex_strict};
 
 const STARTS: &[&str] = &["SELECT", "VALUES", "TABLE", "WITH"];
 
 const WRITES: &[&str] = &["INSERT", "UPDATE", "DELETE", "MERGE", "TRUNCATE", "INTO"];
+
+/// The words that make a statement change rows, which it then has a count of.
+const ROW_CHANGES: &[&str] = &["INSERT", "UPDATE", "DELETE", "REPLACE", "MERGE"];
+
+/// Whether `statement` changes rows (`INSERT`, `UPDATE`, `DELETE`, SQLite's
+/// `REPLACE`, `MERGE`), after any `WITH`'s named queries: the statements a
+/// row count belongs to. A `CREATE`, `DROP`, `BEGIN` or `PRAGMA` has none,
+/// though SQLite's `changes()` still holds the last count it made.
+pub fn changes_rows(statement: &str, grammar: SqlGrammar) -> bool {
+    let tokens = lex(statement, grammar).tokens;
+    let mut words = tokens
+        .iter()
+        .filter(|token| token.kind == Kind::Word && token.depth == 0);
+    let Some(first) = words.next() else {
+        return false;
+    };
+    let verb = if first.is_word(statement, "WITH") {
+        // The statement's own verb is the first word at the top level that is one; the named queries sit in parentheses.
+        words.find(|token| {
+            ROW_CHANGES
+                .iter()
+                .chain(&["SELECT", "VALUES"])
+                .any(|word| token.is_word(statement, word))
+        })
+    } else {
+        Some(first)
+    };
+    verb.is_some_and(|verb| ROW_CHANGES.iter().any(|word| verb.is_word(statement, word)))
+}
 
 /// Whether `statement` is one query that only reads (the module's comment
 /// says what counts). `false` when a quote, comment or parenthesis is left
@@ -62,6 +91,40 @@ mod tests {
 
     const PG: SqlGrammar = SqlGrammar::Postgres;
     const MS: SqlGrammar = SqlGrammar::SqlServer;
+
+    #[test]
+    fn only_statements_that_change_rows_have_a_row_count() {
+        let sqlite = SqlGrammar::Sqlite;
+        for statement in [
+            "insert into t values (1)",
+            "INSERT OR REPLACE INTO t VALUES (1)",
+            "replace into t values (1)",
+            "update t set a = 1 where 0",
+            "  -- gone\ndelete from t",
+            "with x(a) as (select 1) insert into t select a from x",
+            "with recursive c(x) as (select 1 union all select x + 1 from c limit 5) delete from t where a in c",
+        ] {
+            assert!(changes_rows(statement, sqlite), "{statement}");
+        }
+        for statement in [
+            "create table t (a int)",
+            "create view v as select * from t",
+            "create trigger g after insert on t begin update s set n = n + 1; end",
+            "drop table t",
+            "begin",
+            "commit",
+            "pragma user_version = 3",
+            "vacuum",
+            "with x as (select 1) select * from x",
+            "",
+        ] {
+            assert!(!changes_rows(statement, sqlite), "{statement}");
+        }
+        assert!(changes_rows(
+            "merge into t using s on t.a = s.a when matched then delete;",
+            MS
+        ));
+    }
 
     #[test]
     fn queries_that_only_read_are_plain() {

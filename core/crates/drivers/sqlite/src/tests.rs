@@ -72,6 +72,21 @@ async fn commands_report_rows_affected_and_queries_stream_rows() {
     result.unwrap();
     assert_eq!(*sink.commands.lock().unwrap(), [Some(2)]);
 
+    // A statement that changes no rows has no count, though SQLite keeps the insert's.
+    for statement in [
+        "create table u (a int)",
+        "create view v as select * from t",
+        "drop view v",
+        "pragma user_version = 3",
+    ] {
+        let (sink, result) = run(&conn, statement).await;
+        result.unwrap();
+        assert_eq!(*sink.commands.lock().unwrap(), [None], "{statement}");
+    }
+    let (sink, result) = run(&conn, "update t set name = 'b' where 0").await;
+    result.unwrap();
+    assert_eq!(*sink.commands.lock().unwrap(), [Some(0)], "an update of no row says 0");
+
     let (sink, result) = run(&conn, "select id, name, data from t order by id").await;
     result.unwrap();
     let store = sink.store.lock().unwrap().clone().expect("a result set");
