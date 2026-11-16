@@ -1,6 +1,6 @@
 [package]
 name = "kemable-driver-mssql"
-description = "SQL Server through tiberius, with Windows integrated login."
+description = "SQL Server through tabstream, Kemable's fork of tiberius, with Windows integrated login."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

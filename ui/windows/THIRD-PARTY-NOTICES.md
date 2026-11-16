@@ -6069,7 +6069,7 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License
 
 Used by:
-- tiberius 0.13.0
+- tabstream 0.1.0
 
 ~~~~text
 Copyright (c) 2021 Tiberius Contributors

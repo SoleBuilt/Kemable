@@ -11,12 +11,13 @@ core/crates/
 └── drivers/
     ├── d1/                     kemable-driver-d1: Cloudflare D1 through its REST API, reqwest with rustls
     ├── firebase/               kemable-driver-firebase: Firestore and the Realtime Database through REST, a service account's JWT
-    ├── mssql/                  kemable-driver-mssql: tiberius; SQL Server, Windows or SQL Server login
+    ├── mssql/                  kemable-driver-mssql: tabstream; SQL Server, Windows or SQL Server login
     ├── postgres/               kemable-driver-postgres: tokio-postgres and rustls; PostgreSQL, Neon, Supabase (and its Realtime)
     ├── rabbitmq/               kemable-driver-rabbitmq: lapin on tokio; RabbitMQ over AMQP
     ├── redis/                  kemable-driver-redis: its own RESP2 client on tokio and rustls; Redis, Valkey
     └── sqlite/                 kemable-driver-sqlite: rusqlite, SQLite compiled in
 core/crates/tunnel/             kemable-tunnel: SSH tunnels on russh, a local port forwarded to a database
+core/crates/tabstream/          tabstream: Kemable's fork of tiberius 0.13.0, the TDS client; MIT OR Apache-2.0, not a workspace member (ADR 0029)
 ui/windows/src-tauri/           kemable-windows: the Tauri app, the only crate that names every driver
 ```
 
@@ -30,6 +31,7 @@ Planned crates, in the order `docs/roadmap.md` gives: `session` (health, reconne
 | `store` | `core` |
 | `storage` | `core`. Secrets go through the `SecretVault` trait the app implements, never to the file |
 | `drivers/*` | `core` only. Never another driver, never `store`. Their tests may use `store` |
+| `tabstream` | no workspace crate. Only the SQL Server driver uses it, under the name `tiberius` |
 | `tunnel` | `core`. Drivers never use it: they dial `ConnectionConfig::dial`, which the app sets to a tunnel's local end (`docs/decisions/0024-ssh-tunnels.md`) |
 | an app (`ui/windows/src-tauri`) | everything above |
 

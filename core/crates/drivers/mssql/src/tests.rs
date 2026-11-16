@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use futures_util::TryStreamExt;
 use kemable_core::catalog::{ColumnMeta, ObjectKind, TableRef};
 use kemable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
 use kemable_core::connection::Connection;
@@ -10,8 +11,8 @@ use kemable_core::sink::ResultSink;
 use kemable_core::value::Value;
 use kemable_core::{CallOptions, ErrorCode};
 use kemable_store::{ResultStore, WindowReader, WindowRequest};
-use tiberius::ColumnData;
 use tiberius::time::{Date, DateTime2, Time};
+use tiberius::{ColumnData, QueryItem};
 
 use crate::MssqlDriver;
 use crate::decode::{decode, numeric_text};
@@ -408,6 +409,157 @@ async fn a_cancel_sends_an_attention_and_the_session_stays_usable() {
         "the server stopped the wait"
     );
     assert_eq!(first_row(&run(&conn, "select 1").await.last()), ["1"]);
+}
+
+/// Fires the cancel once the first rows have come.
+struct StopAfterFirstRows {
+    cancel: tokio_util::sync::CancellationToken,
+    rows: Mutex<usize>,
+}
+
+impl ResultSink for StopAfterFirstRows {
+    fn begin_set(&self, _columns: Vec<ColumnMeta>) {}
+
+    fn push_rows(&self, values: &[Value]) -> bool {
+        *self.rows.lock().unwrap() += values.len();
+        self.cancel.cancel();
+        true
+    }
+
+    fn end_set(&self) {}
+
+    fn command_done(&self, _rows_affected: Option<u64>) {}
+
+    fn notice(&self, _text: &str) {}
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn a_stop_keeps_the_session_its_temp_tables_and_its_transaction() {
+    // A result the server sends whole before the attention lands (its
+    // acknowledgement then comes in a message of its own), and one still in
+    // flight (`docs/decisions/0029-tabstream.md`).
+    let conn = live_in("tempdb").await;
+    run(&conn, "create table #kemable_stop (a int); set dateformat dmy").await;
+    run(&conn, "begin transaction").await;
+    let state = "select @@spid, @@trancount, case when object_id('tempdb..#kemable_stop') is null then 0 else 1 end,                  (select date_format from sys.dm_exec_sessions where session_id = @@spid)";
+    let before = first_row(&run(&conn, state).await.last());
+    assert_eq!(before[1..], ["1", "1", "dmy"]);
+    for rows in [3_000, 200_000] {
+        let options = CallOptions::default();
+        let sink = Arc::new(StopAfterFirstRows {
+            cancel: options.cancel.clone(),
+            rows: Mutex::new(0),
+        });
+        let error = conn
+            .execute(
+                &format!("select top {rows} a.object_id from sys.all_objects a cross join sys.all_objects b"),
+                sink.clone(),
+                options,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Cancelled, "{rows} rows");
+        assert!(*sink.rows.lock().unwrap() > 0, "{rows} rows: the first rows came");
+        assert_eq!(
+            first_row(&run(&conn, state).await.last()),
+            before,
+            "{rows} rows: the same session, its temp table, its transaction and its settings"
+        );
+    }
+    run(&conn, "rollback; drop table #kemable_stop; set dateformat mdy").await;
+}
+
+/// A tabstream client of its own on the live server, in `tempdb`.
+async fn live_client() -> tiberius::Client<tokio_util::compat::Compat<tokio::net::TcpStream>> {
+    use tokio_util::compat::TokioAsyncWriteCompatExt;
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let config = live_config();
+    let Target::Network {
+        host,
+        port,
+        user,
+        password,
+        ..
+    } = &config.target
+    else {
+        panic!("a network target");
+    };
+    let mut tds = tiberius::Config::new();
+    tds.host(host);
+    tds.port(port.unwrap_or(1433));
+    tds.database("tempdb");
+    tds.trust_cert();
+    tds.authentication(match user.as_deref().filter(|user| !user.is_empty()) {
+        Some(user) => tiberius::AuthMethod::sql_server(user, password.expose()),
+        None => tiberius::AuthMethod::Integrated,
+    });
+    let tcp = tokio::net::TcpStream::connect(tds.get_addr()).await.unwrap();
+    tiberius::Client::connect(tds, tcp.compat_write()).await.unwrap()
+}
+
+/// The first row of `sql`, every column text.
+async fn client_row(
+    client: &mut tiberius::Client<tokio_util::compat::Compat<tokio::net::TcpStream>>,
+    sql: &str,
+) -> Vec<String> {
+    let row = client
+        .simple_query(sql)
+        .await
+        .unwrap()
+        .into_row()
+        .await
+        .unwrap()
+        .expect("a row");
+    (0..row.len())
+        .map(|index| row.get::<&str, _>(index).unwrap_or("NULL").to_owned())
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn an_attention_after_the_whole_response_is_acknowledged_in_the_next_message() {
+    // The server sends a small result whole before the attention goes out, so
+    // its acknowledgement comes as a message of its own: tiberius 0.13 gave
+    // up there and the session was lost (docs/decisions/0029-tabstream.md).
+    let mut client = live_client().await;
+    client
+        .simple_query("create table #kemable_ack (a int); begin transaction")
+        .await
+        .unwrap()
+        .into_results()
+        .await
+        .unwrap();
+    assert!(client.in_transaction(), "BEGIN TRANSACTION in a batch opens one");
+    let state = "select cast(@@spid as nvarchar(10)), cast(@@trancount as nvarchar(10)),                  cast(object_id('tempdb..#kemable_ack') as nvarchar(20))";
+    let before = client_row(&mut client, state).await;
+    {
+        let mut stream = client
+            .simple_query("select top 3000 a.object_id from sys.all_objects a cross join sys.all_objects b")
+            .await
+            .unwrap();
+        while let Some(item) = stream.try_next().await.unwrap() {
+            if matches!(item, QueryItem::Row(_)) {
+                break;
+            }
+        }
+    }
+    // Long enough for the server to send the rest and go idle.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    tokio::time::timeout(Duration::from_secs(5), client.cancel_query())
+        .await
+        .expect("acknowledged in time")
+        .expect("acknowledged");
+    assert_eq!(client_row(&mut client, state).await, before);
+    assert!(client.in_transaction());
+    client
+        .simple_query("rollback")
+        .await
+        .unwrap()
+        .into_results()
+        .await
+        .unwrap();
+    assert!(!client.in_transaction(), "ROLLBACK ends it");
 }
 
 #[tokio::test(flavor = "multi_thread")]

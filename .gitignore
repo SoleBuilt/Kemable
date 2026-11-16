@@ -8,3 +8,5 @@ dist/
 ui/windows/src-tauri/gen/
 CLAUDE.local.md
 site/.astro/
+# tabstream's own test run (core/crates/tabstream/README.md)
+core/crates/tabstream/Cargo.lock

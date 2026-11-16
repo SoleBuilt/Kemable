@@ -17,6 +17,7 @@ The Rust crates every UI builds on: the domain types and the driver contract, on
 - `crates/store`: `ResultStore` (columnar chunks, with its sort and filter as row orders over them: `order.rs`, `filter.rs`) and `window` (the packed window format and its reader).
 - `crates/storage`: `ConnectionLibrary` (saved connections, `connections.json`, atomic writes, never over a file it cannot read), `profiles` (credential profiles, `profiles.json`, ADR 0015), `queries`, `history`, and the `SecretVault` trait.
 - `crates/tunnel`: SSH tunnels (`HostKeys`, `open`, `Tunnel`), on russh with ring (ADR 0024). The app opens one and sets `ConnectionConfig::dial`; a driver connects there and keeps the host for TLS.
+- `crates/tabstream`: Kemable's fork of tiberius 0.13.0, the SQL Server driver's TDS client (ADR 0029). MIT OR Apache-2.0, kept close to upstream: not a workspace member, so the workspace lints do not apply; a file Kemable changes says so at its top, and its `README.md` lists the changes and how to run its tests.
 - `crates/drivers/<engine>`: one crate per engine, each exporting a `Driver` and its `EngineInfo`. Today: `sqlite`, `postgres`, `mssql`, `redis`, `d1`, `rabbitmq`, `firebase`.
 
 ## Commands
