@@ -104,6 +104,12 @@ export class ResultWindow {
     return ((this.truncated[cell >> 3] ?? 0) & (1 << (cell & 7))) !== 0;
   }
 
+  /** The cell's text in UTF-8 bytes, read without decoding it: never fewer than its characters. */
+  byteLength(row: number, column: number): number {
+    const cell = this.cell(row, column);
+    return (this.offsets[cell + 1] ?? 0) - (this.offsets[cell] ?? 0);
+  }
+
   kind(row: number, column: number): number {
     return this.cellKinds[this.cell(row, column)] ?? Kind.Null;
   }

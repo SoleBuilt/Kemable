@@ -15,7 +15,7 @@ The grid is `GridEngine` (`engine.ts`): one canvas laid over a native scroll con
 - **Data arrives in blocks of `BLOCK_ROWS`** through `fetch_window`, with one block of read-ahead each way, an LRU of `MAX_BLOCKS`, and a re-read of a block that was read while rows were still arriving. A response from an older source is dropped by `generation`.
 - **Text is decoded lazily**, per cell, the first time it is drawn (`ResultWindow.text`).
 - **One `save`/`clip`/`restore` per column**, not per cell. Fonts and colours are set once per pass.
-- **`measureText` only** when sizing columns from the first block, never in the draw loop.
+- **`measureText` only** when sizing columns as a block arrives, never in the draw loop. The first block sizes them; a later block widens a column (up to `MAX_AUTO_WIDTH`, never one the user sized) and measures only a cell longer in bytes than the longest measured in its column (`widen`, `ResultWindow.byteLength`).
 
 ## Behaviour
 
