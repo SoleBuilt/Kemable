@@ -13,6 +13,15 @@ use crate::{DriverError, Result};
 /// Rows in one `INSERT`: SQL Server takes at most 1,000 in a VALUES list.
 pub const ROWS_PER_INSERT: usize = 500;
 
+/// One field of a CSV record: its text, and whether it was in quotes, so
+/// an empty field (NULL, when the import says so) is told from `""` (empty
+/// text).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CsvField {
+    pub text: String,
+    pub quoted: bool,
+}
+
 /// Reads CSV records one at a time from text the caller holds.
 pub struct CsvReader<'a> {
     text: &'a str,
@@ -28,10 +37,9 @@ impl<'a> CsvReader<'a> {
     }
 }
 
-impl Iterator for CsvReader<'_> {
-    type Item = Vec<String>;
-
-    fn next(&mut self) -> Option<Vec<String>> {
+impl CsvReader<'_> {
+    /// The next record's fields, each saying whether it was quoted.
+    pub fn next_fields(&mut self) -> Option<Vec<CsvField>> {
         let rest = self.text.get(self.at..)?;
         if rest.is_empty() {
             return None;
@@ -39,6 +47,11 @@ impl Iterator for CsvReader<'_> {
         let mut fields = Vec::new();
         let mut field = String::new();
         let mut quoted = false;
+        let mut was_quoted = false;
+        let take = |field: &mut String, was_quoted: &mut bool| CsvField {
+            text: std::mem::take(field),
+            quoted: std::mem::take(was_quoted),
+        };
         let mut chars = rest.char_indices().peekable();
         while let Some((offset, ch)) = chars.next() {
             if quoted {
@@ -52,10 +65,11 @@ impl Iterator for CsvReader<'_> {
                 } else {
                     field.push(ch);
                 }
-            } else if ch == '"' && field.is_empty() {
+            } else if ch == '"' && field.is_empty() && !was_quoted {
                 quoted = true;
+                was_quoted = true;
             } else if ch == self.delimiter {
-                fields.push(std::mem::take(&mut field));
+                fields.push(take(&mut field, &mut was_quoted));
             } else if ch == '\r' || ch == '\n' {
                 // \r\n, \n or a lone \r ends the record.
                 let mut end = offset + ch.len_utf8();
@@ -63,7 +77,7 @@ impl Iterator for CsvReader<'_> {
                     end += 1;
                 }
                 self.at += end;
-                fields.push(field);
+                fields.push(take(&mut field, &mut was_quoted));
                 return Some(fields);
             } else {
                 field.push(ch);
@@ -71,8 +85,17 @@ impl Iterator for CsvReader<'_> {
         }
         // The last record, with no line break after it (or a quote left open, read to the end).
         self.at = self.text.len();
-        fields.push(field);
+        fields.push(take(&mut field, &mut was_quoted));
         Some(fields)
+    }
+}
+
+impl Iterator for CsvReader<'_> {
+    type Item = Vec<String>;
+
+    fn next(&mut self) -> Option<Vec<String>> {
+        self.next_fields()
+            .map(|fields| fields.into_iter().map(|field| field.text).collect())
     }
 }
 
@@ -261,7 +284,8 @@ fn date_type(type_name: &str) -> bool {
 
 /// A CSV field as a literal for a column of `type_name`: bare for a number
 /// in a numeric column, quoted otherwise (the server reads dates, booleans
-/// and text from quotes), NULL for an empty field when `empty_is_null`.
+/// and text from quotes), NULL for an empty field when `empty_is_null`. A
+/// caller passes `empty_is_null` false for a quoted field: `""` is empty text.
 pub fn field_literal(grammar: SqlGrammar, type_name: &str, value: &str, empty_is_null: bool) -> String {
     if value.is_empty() && empty_is_null {
         return "NULL".to_owned();
@@ -329,6 +353,28 @@ mod tests {
 
     fn records(text: &str, delimiter: char) -> Vec<Vec<String>> {
         CsvReader::new(text, delimiter).collect()
+    }
+
+    #[test]
+    fn an_empty_field_is_told_from_an_empty_quoted_one() {
+        let mut reader = CsvReader::new("a,\"\",,\"x\"\"\"\n\"\"", ',');
+        let quoted = |fields: Vec<CsvField>| {
+            fields
+                .into_iter()
+                .map(|field| (field.text, field.quoted))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            quoted(reader.next_fields().unwrap()),
+            [
+                ("a".to_owned(), false),
+                (String::new(), true),
+                (String::new(), false),
+                ("x\"".to_owned(), true)
+            ]
+        );
+        assert_eq!(quoted(reader.next_fields().unwrap()), [(String::new(), true)]);
+        assert_eq!(reader.next_fields(), None);
     }
 
     #[test]

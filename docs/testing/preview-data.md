@@ -146,3 +146,16 @@ Trước đây ô có xuống dòng kiểu Windows (CRLF) sau khi sửa bị đ�
   **Đúng:** ô không bị đánh dấu là đã sửa (không có màu sửa, không có gì để lưu).
 - [ ] F2 trên `note` dòng 1, đặt con trỏ cuối, Shift+Enter, gõ `c`, Enter; làm tương tự với dòng 2 (gõ `e`). Lưu.
   **Đúng:** `select id, hex(note) from thu_dong;` ra `610D0A620D0A63` cho dòng 1 (mọi dòng đều CRLF) và `630A640A65` cho dòng 2 (vẫn LF).
+
+---
+
+## D3. CSV phân biệt NULL với chuỗi rỗng
+
+Trước đây Export CSV ghi NULL và chuỗi rỗng đều là ô trống, và Import (với "An empty field is NULL" bật sẵn) đọc mọi ô trống thành NULL. Giờ Export ghi NULL là ô trống không nháy, chuỗi rỗng là `""`; Import đọc ô trống không nháy là NULL (khi ô tick bật) và `""` là chuỗi rỗng.
+
+- [ ] Mở SQLite in-memory, chạy `create table thu_csv (id integer primary key, t text); insert into thu_csv values (1, null), (2, ''), (3, 'x');`. Export `thu_csv` ra CSV, mở bằng Notepad.
+  **Đúng:** `1,`, `2,""`, `3,x`.
+- [ ] Chạy `delete from thu_csv;`, rồi Import chính file đó vào `thu_csv`.
+  **Đúng:** hộp thoại Import ghi "An empty field is NULL ("" stays empty text)". Sau khi import, `select id, t is null, length(t) from thu_csv;` ra `1 1 NULL`, `2 0 0`, `3 0 1`.
+- [ ] Làm lại bước Import với ô tick đó tắt.
+  **Đúng:** dòng 1 cũng là chuỗi rỗng (`t is null` là `0`).

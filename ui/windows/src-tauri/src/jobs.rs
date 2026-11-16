@@ -11,8 +11,8 @@ use kemable_core::catalog::{ColumnInfo, ColumnMeta, TableRef};
 use kemable_core::connection::{Connection, Transaction};
 use kemable_core::generate;
 use kemable_core::import::{
-    CsvReader, NewColumn, ROWS_PER_INSERT, ValueShape, create_statement, detect_delimiter, field_literal, infer_shape,
-    insert_statement, match_columns, transaction,
+    CsvField, CsvReader, NewColumn, ROWS_PER_INSERT, ValueShape, create_statement, detect_delimiter, field_literal,
+    infer_shape, insert_statement, match_columns, transaction,
 };
 use kemable_core::sink::ResultSink;
 use kemable_core::sql::SqlGrammar;
@@ -324,7 +324,7 @@ pub fn insert_batches<'a>(
     grammar: SqlGrammar,
     table: &'a TableRef,
     targets: &'a [Option<(String, String)>],
-    records: impl Iterator<Item = Vec<String>> + 'a,
+    records: impl Iterator<Item = Vec<CsvField>> + 'a,
     empty_is_null: bool,
     rows_per_insert: usize,
 ) -> impl Iterator<Item = Result<(String, u64), DriverError>> + 'a {
@@ -341,11 +341,14 @@ pub fn insert_batches<'a>(
                     .enumerate()
                     .filter_map(|(index, target)| {
                         target.as_ref().map(|(_, type_name)| {
+                            let field = record.get(index);
+                            // A quoted empty field is empty text, never NULL.
+                            let quoted = field.is_some_and(|field| field.quoted);
                             field_literal(
                                 grammar,
                                 type_name,
-                                record.get(index).map_or("", String::as_str),
-                                empty_is_null,
+                                field.map_or("", |field| field.text.as_str()),
+                                empty_is_null && !quoted,
                             )
                         })
                     })
@@ -400,7 +403,7 @@ async fn import(job: &ImportJob) -> Result<u64, DriverError> {
         job.grammar,
         &table,
         &targets,
-        reader,
+        std::iter::from_fn(move || reader.next_fields()),
         job.options.empty_is_null,
         ROWS_PER_INSERT,
     );
@@ -555,14 +558,19 @@ mod tests {
             None,
             Some(("c".to_owned(), "text".to_owned())),
         ];
-        let records = (1..=5).map(|n| vec![n.to_string(), "skip".to_owned(), String::new()]);
+        let field = |text: &str, quoted: bool| CsvField {
+            text: text.to_owned(),
+            quoted,
+        };
+        let records = (1..=5).map(|n| vec![field(&n.to_string(), false), field("skip", false), field("", n == 2)]);
         let batches: Vec<(String, u64)> = insert_batches(SqlGrammar::Postgres, &table, &targets, records, true, 2)
             .map(Result::unwrap)
             .collect();
         assert_eq!(batches.iter().map(|(_, count)| *count).collect::<Vec<_>>(), [2, 2, 1]);
+        // An empty field is NULL, a quoted one ("") empty text.
         assert_eq!(
             batches[0].0,
-            "INSERT INTO \"t\" (\"a\", \"c\") VALUES\n(1, NULL),\n(2, NULL)"
+            "INSERT INTO \"t\" (\"a\", \"c\") VALUES\n(1, NULL),\n(2, '')"
         );
     }
 }

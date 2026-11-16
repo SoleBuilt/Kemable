@@ -121,7 +121,8 @@ impl ExportWriter {
     }
 
     /// RFC 4180: a field holding the separator, a quote or a line break goes
-    /// in quotes, its quotes doubled. NULL is an empty field.
+    /// in quotes, its quotes doubled. NULL is an empty field and empty text
+    /// is `""`, so an import tells them apart.
     fn csv_field(&self, text: &str) -> String {
         let delimiter = self.options.delimiter;
         if text.contains([delimiter, '"', '\n', '\r']) {
@@ -139,7 +140,11 @@ impl ExportWriter {
             }
             if !matches!(value, Value::Null) {
                 let text = self.text(value);
-                out.extend_from_slice(self.csv_field(&text).as_bytes());
+                if text.is_empty() {
+                    out.extend_from_slice(b"\"\"");
+                } else {
+                    out.extend_from_slice(self.csv_field(&text).as_bytes());
+                }
             }
         }
         out.extend_from_slice(b"\r\n");
@@ -332,6 +337,28 @@ mod tests {
             write_bytes(ExportFormat::Csv),
             "id,data\r\n1,0x00ff10\r\n2,0x\r\n3,\r\n"
         );
+    }
+
+    #[test]
+    fn csv_tells_null_from_empty_text() {
+        let options = ExportOptions {
+            format: ExportFormat::Csv,
+            delimiter: ';',
+            header: false,
+            bom: false,
+        };
+        let table = TableRef {
+            schema: None,
+            name: "t".into(),
+        };
+        let mut writer = ExportWriter::new(options, SqlGrammar::Sqlite, table);
+        let mut out = Vec::new();
+        writer.start(vec!["a".into(), "b".into(), "c".into()], &mut out);
+        writer.rows(
+            &[Value::Null, Value::Text(String::new()), Value::Text("x".into())],
+            &mut out,
+        );
+        assert_eq!(String::from_utf8(out).unwrap(), ";\"\";x\r\n");
     }
 
     #[test]

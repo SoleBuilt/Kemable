@@ -164,7 +164,7 @@
             void read({ delimiter, header });
           }}>The first line names the columns</Checkbox
         >
-        <Checkbox bind:checked={emptyIsNull}>An empty field is NULL</Checkbox>
+        <Checkbox bind:checked={emptyIsNull}>An empty field is NULL ("" stays empty text)</Checkbox>
       </div>
     </div>
     <Field label="Rows go" as="group">
