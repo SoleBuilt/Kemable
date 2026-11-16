@@ -1412,6 +1412,14 @@ fn realtime_key(library: &Library, url: &str, typed: Option<String>) -> CommandR
     })
 }
 
+/// The databases whose table tabs hold unsaved edits: their sessions are
+/// not closed for being idle (`OpenServer::close_idle`).
+#[tauri::command]
+pub async fn keep_sessions(state: State<'_, Arc<AppState>>, conn: u64, databases: Vec<String>) -> CommandResult<()> {
+    state.server(conn)?.keep_for_edits(databases);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn cancel_run(state: State<'_, Arc<AppState>>, run: u64) -> CommandResult<()> {
     state.cancel_run(run);

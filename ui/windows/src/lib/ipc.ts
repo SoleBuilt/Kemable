@@ -260,6 +260,8 @@ export const ipc = {
     invoke<SortOutcome>("sort_result", { result, keys }),
 
   cancelRun: (run: number) => invoke<void>("cancel_run", { run }),
+  /** The databases whose table tabs hold unsaved edits: the core keeps their sessions open while idle. */
+  keepSessions: (conn: number, databases: string[]) => invoke<void>("keep_sessions", { conn, databases }),
 
   /**
    * Starts a Live tab listening in `database` and resolves at once to an id

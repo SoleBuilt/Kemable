@@ -2618,3 +2618,44 @@ async fn a_slow_session_open_blocks_no_other_database_and_its_wait_ends_at_stop(
     assert_eq!(driver.connects.load(std::sync::atomic::Ordering::SeqCst), 3);
     server.close().await;
 }
+
+// --- Idle sessions (docs/preview-audit.md, D12) ---------------------------------
+
+#[tokio::test(flavor = "multi_thread")]
+async fn idle_sessions_close_but_not_home_nor_one_in_use_listened_in_or_edited() {
+    let (server, driver) = gated_server().await;
+    let open = |name: &'static str| {
+        let server = Arc::clone(&server);
+        async move { server.session(Some(name), &CallOptions::default()).await.unwrap() }
+    };
+    drop(open("idle").await);
+    let running = open("running").await;
+    drop(open("listened").await);
+    drop(open("edited").await);
+    let listening = server.start_listening(Some("listened"));
+    server.keep_for_edits(vec!["edited".into()]);
+
+    // Nothing is idle for ten minutes yet.
+    assert_eq!(server.close_idle(crate::state::IDLE_AFTER).await, 0);
+    assert_eq!(
+        server.close_idle(std::time::Duration::ZERO).await,
+        1,
+        "only `idle` closes"
+    );
+
+    let connects = || driver.connects.load(std::sync::atomic::Ordering::SeqCst);
+    let before = connects();
+    for name in ["running", "listened", "edited"] {
+        open(name).await;
+    }
+    server.session(None, &CallOptions::default()).await.unwrap();
+    assert_eq!(connects(), before, "home and the kept sessions are still open");
+    open("idle").await;
+    assert_eq!(connects(), before + 1, "the closed one opens again when used");
+
+    drop(running);
+    server.stop_listening(&listening);
+    server.keep_for_edits(Vec::new());
+    assert_eq!(server.close_idle(std::time::Duration::ZERO).await, 4);
+    server.close().await;
+}

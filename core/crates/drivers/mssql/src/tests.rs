@@ -1805,3 +1805,24 @@ async fn a_batch_longer_than_thirty_seconds_is_not_cut_by_the_client() {
         .await
         .expect("a run has no deadline of its own");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn a_session_says_whether_it_holds_an_open_transaction() {
+    let connection = live_in("master").await;
+    assert!(!connection.in_transaction(CallOptions::default()).await.unwrap());
+    connection
+        .execute(
+            "begin transaction",
+            Arc::new(Collect::default()),
+            CallOptions::default(),
+        )
+        .await
+        .unwrap();
+    assert!(connection.in_transaction(CallOptions::default()).await.unwrap());
+    connection
+        .execute("rollback", Arc::new(Collect::default()), CallOptions::default())
+        .await
+        .unwrap();
+    assert!(!connection.in_transaction(CallOptions::default()).await.unwrap());
+}

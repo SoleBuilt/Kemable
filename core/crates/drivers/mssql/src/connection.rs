@@ -1137,6 +1137,26 @@ impl Connection for MssqlConnection {
         }))
     }
 
+    /// Asked on the editor session, where the user's batches run; a session
+    /// busy with one says yes.
+    async fn in_transaction(&self, options: CallOptions) -> Result<bool> {
+        let Ok(mut guard) = self.editor.try_lock() else {
+            return Ok(true);
+        };
+        let Some(client) = guard.as_mut() else {
+            return Ok(false);
+        };
+        let rows = options
+            .run(async {
+                let row = async { client.simple_query("select @@TRANCOUNT").await?.into_row().await }
+                    .await
+                    .map_err(|error| errors::map(error, None, Phase::Run))?;
+                Ok(row)
+            })
+            .await?;
+        Ok(rows.is_some_and(|row| number::<i32>(&row, 0).ok().flatten().unwrap_or(0) > 0))
+    }
+
     async fn close(&self) -> Result<()> {
         for slot in [&self.editor, &self.catalog] {
             if let Some(client) = slot.lock().await.take() {

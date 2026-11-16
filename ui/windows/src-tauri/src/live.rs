@@ -141,6 +141,7 @@ pub async fn listen(state: Arc<AppState>, live: Live) {
     });
     let reporter = tokio::spawn(report(Arc::clone(&sink)));
     let config = live.server.config_for(live.database.as_deref());
+    let listening = live.server.start_listening(live.database.as_deref());
     let shared: Arc<dyn ResultSink> = sink.clone();
     let options = CallOptions::new(live.cancel.clone());
     let outcome = match &live.realtime {
@@ -150,6 +151,7 @@ pub async fn listen(state: Arc<AppState>, live: Live) {
         None => live.server.driver.listen(&config, &live.topics, shared, options).await,
     };
     reporter.abort();
+    live.server.stop_listening(&listening);
     state.remove_run(live.id);
     if let Some(store) = sink.store() {
         store.finish();

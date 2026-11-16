@@ -1116,6 +1116,12 @@ impl Connection for PostgresConnection {
         Ok(nested.then(|| self.unit(true, "job")))
     }
 
+    /// Asked on the editor session, where the user's statements run. A failed
+    /// block is open too: closing the session would end it.
+    async fn in_transaction(&self, options: CallOptions) -> Result<bool> {
+        options.run(self.block_open()).await
+    }
+
     async fn close(&self) -> Result<()> {
         for task in &self.tasks {
             task.abort();
