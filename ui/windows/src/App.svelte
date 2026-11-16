@@ -770,6 +770,24 @@
     deleteRequested: (rows) => markDeleted(rows),
   };
 
+  /** The databases whose table tabs hold unsaved edits, so the core keeps their sessions while idle (D12). */
+  const editedDatabases = $derived.by(() => {
+    const held = new Set<string>();
+    const add = (tab: TableTab | null, pending: Edits) => {
+      if (tab && (pending.cells.size > 0 || pending.deleted.size > 0 || pending.added > 0)) held.add(tab.database ?? connection?.database ?? "");
+    };
+    add(tableTab, edits);
+    for (const page of pages) if (page.id !== activePage) add(page.state.tableTab, page.state.edits);
+    held.delete("");
+    return [...held].sort().join("\n");
+  });
+
+  $effect(() => {
+    const databases = editedDatabases;
+    const id = connection?.id;
+    if (id !== undefined) void ipc.keepSessions(id, databases === "" ? [] : databases.split("\n")).catch(() => {});
+  });
+
   function anyEdits(): boolean {
     if (hasEdits) return true;
     return pages.some((page) => page.id !== activePage && (page.state.edits.cells.size > 0 || page.state.edits.deleted.size > 0 || page.state.edits.added > 0));

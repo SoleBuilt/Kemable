@@ -1050,6 +1050,21 @@ impl Connection for PostgresConnection {
         result
     }
 
+    /// Asked on the editor session, where the user's statements run.
+    async fn in_transaction(&self, options: CallOptions) -> Result<bool> {
+        let messages = options
+            .run(async {
+                self.editor
+                    .simple_query("select statement_timestamp() <> transaction_timestamp()")
+                    .await
+                    .map_err(|error| errors::map(&error, None, Phase::Run))
+            })
+            .await?;
+        Ok(messages
+            .iter()
+            .any(|message| matches!(message, tokio_postgres::SimpleQueryMessage::Row(row) if row.get(0) == Some("t"))))
+    }
+
     async fn close(&self) -> Result<()> {
         for task in &self.tasks {
             task.abort();

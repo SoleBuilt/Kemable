@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -18,6 +18,13 @@ use crate::catalog::CatalogCache;
 
 /// Neon wakes a suspended compute in a few seconds; leave room for it.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// A database's session unused this long is closed (`docs/roadmap.md`): each
+/// PostgreSQL database touched holds two server connections until then.
+pub const IDLE_AFTER: Duration = Duration::from_secs(10 * 60);
+
+/// How often idle sessions are looked for.
+const IDLE_CHECK: Duration = Duration::from_secs(60);
 
 /// What the app holds open. The UI names each thing by an id from one
 /// counter, so an id is never reused within a launch.
@@ -95,6 +102,11 @@ pub struct OpenServer {
     /// it closes with the server, and opens again when its SSH session ended
     /// (`docs/decisions/0024-ssh-tunnels.md`).
     tunnel: tokio::sync::Mutex<Option<kemable_tunnel::Tunnel>>,
+    /// The databases Live tabs listen in, and how many each: their sessions
+    /// are not closed for being idle.
+    listening: Mutex<HashMap<String, usize>>,
+    /// The databases whose table tabs hold unsaved edits, as the UI says.
+    edited: Mutex<HashSet<String>>,
 }
 
 impl OpenServer {
@@ -120,7 +132,86 @@ impl OpenServer {
             home,
             closing: CancellationToken::new(),
             tunnel: tokio::sync::Mutex::new(None),
+            listening: Mutex::default(),
+            edited: Mutex::default(),
         }
+    }
+
+    /// A Live tab starts listening in `database`; `stop_listening` with the
+    /// key returned ends it.
+    pub fn start_listening(&self, database: Option<&str>) -> String {
+        let key = self.key(database);
+        *lock(&self.listening).entry(key.clone()).or_default() += 1;
+        key
+    }
+
+    pub fn stop_listening(&self, key: &str) {
+        let mut listening = lock(&self.listening);
+        if let Some(count) = listening.get_mut(key) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                listening.remove(key);
+            }
+        }
+    }
+
+    /// The databases whose table tabs hold unsaved edits now.
+    pub fn keep_for_edits(&self, databases: Vec<String>) {
+        *lock(&self.edited) = databases.into_iter().collect();
+    }
+
+    /// Closes the sessions unused for `idle`: never the home session (the
+    /// tree and the database list go through it), nor one that a run, an
+    /// export or a job holds, one in a database a Live tab listens in or
+    /// whose table tab holds unsaved edits, nor one with an open transaction.
+    /// Says how many it closed.
+    pub async fn close_idle(&self, idle: Duration) -> usize {
+        let candidates: Vec<(String, Arc<dyn Connection>, Instant)> = {
+            let sessions = lock(&self.sessions);
+            let listening = lock(&self.listening);
+            let edited = lock(&self.edited);
+            sessions
+                .iter()
+                .filter_map(|(key, slot)| match slot {
+                    Slot::Open { session, used }
+                        if *key != self.home
+                            && used.elapsed() >= idle
+                            // Only the map holds it: no call is using it.
+                            && Arc::strong_count(session) == 1
+                            && !listening.contains_key(key)
+                            && !edited.contains(key) =>
+                    {
+                        Some((key.clone(), Arc::clone(session), *used))
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let mut closed = 0;
+        for (key, session, seen) in candidates {
+            let options = CallOptions::new(self.closing.child_token()).with_timeout(IDLE_PROBE_TIMEOUT);
+            // A session that cannot answer is not worth keeping either.
+            if session.in_transaction(options).await.unwrap_or(false) {
+                continue;
+            }
+            let dropped = {
+                let mut sessions = lock(&self.sessions);
+                match sessions.get(&key) {
+                    // Untouched since it was picked: this loop's clone and the map's.
+                    Some(Slot::Open { session: held, used })
+                        if Arc::ptr_eq(held, &session) && *used == seen && Arc::strong_count(held) == 2 =>
+                    {
+                        sessions.remove(&key)
+                    }
+                    _ => None,
+                }
+            };
+            if dropped.is_some() {
+                close_later(session);
+                closed += 1;
+            }
+        }
+        closed
     }
 
     /// A Supabase project's URL, when this server is one.
@@ -352,6 +443,27 @@ fn close_later(session: Arc<dyn Connection>) {
     });
 }
 
+/// How long an idle session has to say whether it holds a transaction.
+const IDLE_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Looks for idle sessions of `server` every `IDLE_CHECK` until it closes.
+fn close_when_idle(server: &Arc<OpenServer>) {
+    let weak = Arc::downgrade(server);
+    let closing = server.closing.clone();
+    tokio::spawn(async move {
+        let mut ticks = tokio::time::interval(IDLE_CHECK);
+        loop {
+            tokio::select! {
+                () = closing.cancelled() => break,
+                _ = ticks.tick() => {
+                    let Some(server) = weak.upgrade() else { break };
+                    server.close_idle(IDLE_AFTER).await;
+                }
+            }
+        }
+    });
+}
+
 /// The same server, pointed at another database.
 pub(crate) fn with_database(config: &ConnectionConfig, database: &str) -> ConnectionConfig {
     let mut config = config.clone();
@@ -407,6 +519,7 @@ impl AppState {
 
     pub fn add_server(&self, server: Arc<OpenServer>) -> u64 {
         let id = self.next_id();
+        close_when_idle(&server);
         lock(&self.servers).insert(id, server);
         id
     }

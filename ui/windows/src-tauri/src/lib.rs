@@ -117,6 +117,7 @@ pub fn run() {
             commands::fetch_columns,
             commands::run_query,
             commands::cancel_run,
+            commands::keep_sessions,
             commands::start_live,
             commands::sort_result,
             commands::filter_result,

@@ -1613,3 +1613,20 @@ fn every_kind_the_catalog_lists_has_a_folder_in_the_tree() {
         );
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
+async fn a_session_says_whether_it_holds_an_open_transaction() {
+    let connection = live().await;
+    assert!(!connection.in_transaction(CallOptions::default()).await.unwrap());
+    connection
+        .execute("begin", Arc::new(Collect::default()), CallOptions::default())
+        .await
+        .unwrap();
+    assert!(connection.in_transaction(CallOptions::default()).await.unwrap());
+    connection
+        .execute("rollback", Arc::new(Collect::default()), CallOptions::default())
+        .await
+        .unwrap();
+    assert!(!connection.in_transaction(CallOptions::default()).await.unwrap());
+}

@@ -83,5 +83,12 @@ pub trait Connection: Send + Sync {
         Err(DriverError::unsupported("this engine has no keys"))
     }
 
+    /// Whether the session holds an open transaction, which closing it would
+    /// roll back: an idle session that does is kept. `false` for an engine
+    /// whose sessions hold none.
+    async fn in_transaction(&self, _options: CallOptions) -> Result<bool> {
+        Ok(false)
+    }
+
     async fn close(&self) -> Result<()>;
 }

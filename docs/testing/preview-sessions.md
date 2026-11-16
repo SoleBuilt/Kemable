@@ -117,3 +117,19 @@ Khi một lần chạy bị dừng mà lệnh huỷ không tới server, lần c
   **Đúng:** chạy được (channel bị broker đóng đã được mở lại).
 - [ ] Chạy `publish amq.direct khong_ai_nghe hello` (không queue nào bind khoá này).
   **Đúng:** Done, kèm một dòng ở Messages: "The broker returned the message: no queue is bound to take it."
+
+## D12. Phiên rảnh 10 phút được đóng
+
+Phiên của một database không phải home, không dùng trong 10 phút, được đóng; lần dùng sau mở lại. Không đóng phiên home, phiên đang chạy câu, database có tab Live đang nghe, database có tab bảng còn sửa chưa lưu, hay phiên còn transaction mở.
+
+- [ ] Kết nối PostgreSQL. Mở cây hai database khác home (ví dụ `db1`, `db2`). Ở một tab query chạy trên home:
+  ```sql
+  select datname, count(*) from pg_stat_activity where application_name = 'Kemable' group by datname;
+  ```
+  **Đúng:** `db1`, `db2` mỗi cái có 2 kết nối.
+- [ ] Không dùng `db1`, `db2` trong 11 phút, chạy lại câu trên.
+  **Đúng:** `db1`, `db2` không còn trong kết quả; home vẫn còn. Mở lại cây `db1` thì vẫn đọc được bình thường.
+- [ ] Chọn `db1`, chạy `begin; create temp table t (x int);` (không commit). Để rảnh 11 phút, chạy `select * from t;` trên `db1`.
+  **Đúng:** câu chạy được (phiên còn transaction mở nên không bị đóng). Chạy `rollback;` để dọn.
+- [ ] Mở tab bảng của một bảng trong `db2`, sửa một ô nhưng không lưu. Để rảnh 11 phút, rồi Save.
+  **Đúng:** phiên `db2` vẫn còn (câu kiểm tra ở bước 1 vẫn thấy `db2`), lưu được.
