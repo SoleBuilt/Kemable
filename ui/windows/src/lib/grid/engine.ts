@@ -23,6 +23,8 @@ const MAX_BLOCKS = 96;
 const CELL_PADDING = 8;
 const MIN_WIDTH = 48;
 const MAX_AUTO_WIDTH = 360;
+/** A column's kinds, as the core names them, whose values align right. */
+const NUMERIC_COLUMN_KINDS: ReadonlySet<string> = new Set(["int", "uInt", "float", "float32", "decimal"]);
 /** Before the number of a row marked for delete. */
 const DELETED_MARK = "− ";
 const RESIZE_HANDLE = 4;
@@ -532,6 +534,17 @@ export class GridEngine {
     this.updateSpacer();
   }
 
+  /**
+   * Whether a value typed into a cell is a number: by the cell's own kind when it holds a
+   * value (SQLite mixes kinds in a column), else by its column's.
+   */
+  private numericAt(row: number, column: number): boolean {
+    const window = row < this.dataRows ? this.windowFor(row) : undefined;
+    if (window && !window.isNull(row, column)) return isNumericKind(window.kind(row, column));
+    const kind = this.source?.columns[column]?.kind;
+    return kind !== undefined && NUMERIC_COLUMN_KINDS.has(kind);
+  }
+
   private windowFor(row: number): ResultWindow | undefined {
     const window = this.blocks.get(Math.floor(row / BLOCK_ROWS));
     return window?.has(row) ? window : undefined;
@@ -607,9 +620,15 @@ export class GridEngine {
               context.fillStyle = theme.edited;
               context.fillRect(x, y - ROW_HEIGHT / 2, columnWidth, ROW_HEIGHT);
             }
-            context.textAlign = "left";
             context.fillStyle = edited === undefined || edited === null ? theme.muted : theme.text;
-            context.fillText(edited === undefined ? "DEFAULT" : (edited ?? "NULL"), x + CELL_PADDING, y);
+            // A new value is drawn as its saved value will be: a number right-aligned like the numbers around it.
+            if (typeof edited === "string" && this.numericAt(row, column)) {
+              context.textAlign = "right";
+              context.fillText(edited, x + columnWidth - CELL_PADDING, y);
+            } else {
+              context.textAlign = "left";
+              context.fillText(edited === undefined ? "DEFAULT" : (edited ?? "NULL"), x + CELL_PADDING, y);
+            }
             continue;
           }
         }
