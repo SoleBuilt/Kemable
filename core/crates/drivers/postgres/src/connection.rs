@@ -287,10 +287,13 @@ impl PostgresConnection {
         self.in_block.store(in_block, Ordering::Relaxed);
     }
 
-    /// Ends a transaction block a stopped cursor run left open.
+    /// Ends a transaction block a stopped cursor run left open. It waits
+    /// behind whatever that run left running on the server, so callers run it
+    /// where Stop is watched; a rollback cut short is tried again next time.
     async fn end_stale_block(&self) {
-        if self.our_block.swap(false, Ordering::Relaxed) {
+        if self.our_block.load(Ordering::Relaxed) {
             let _ = self.editor.batch_execute("ROLLBACK").await;
+            self.our_block.store(false, Ordering::Relaxed);
             self.in_block.store(false, Ordering::Relaxed);
         }
     }
@@ -984,15 +987,20 @@ impl Connection for PostgresConnection {
 
     async fn execute(&self, statement: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome> {
         options.check()?;
-        self.end_stale_block().await;
         lock(&self.notices).sink = Some(Arc::clone(&sink));
         let stop = async {
             options.stopped().await;
             self.send_cancel().await;
             tokio::time::sleep(CANCEL_GRACE).await;
         };
+        // The stale block's rollback is inside the select: when a stopped run
+        // left a statement running, Stop cancels it instead of waiting behind it.
+        let work = async {
+            self.end_stale_block().await;
+            self.run(statement, sink.as_ref()).await
+        };
         let result = tokio::select! {
-            result = self.run(statement, sink.as_ref()) => result,
+            result = work => result,
             () = stop => Err(options.stop_reason()),
         };
         lock(&self.notices).sink = None;
@@ -1007,9 +1015,9 @@ impl Connection for PostgresConnection {
 
     async fn apply_edits(&self, statements: &[String], options: CallOptions) -> Result<()> {
         options.check()?;
-        self.end_stale_block().await;
         // Simple queries: they report each command's count, and Supabase's pooler takes them.
         let work = async {
+            self.end_stale_block().await;
             self.editor
                 .batch_execute("BEGIN")
                 .await
@@ -1047,5 +1055,59 @@ impl Connection for PostgresConnection {
             task.abort();
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod stop_tests {
+    use super::*;
+
+    struct Nothing;
+
+    impl ResultSink for Nothing {
+        fn begin_set(&self, _columns: Vec<ColumnMeta>) {}
+        fn push_rows(&self, _values: &[kemable_core::value::Value]) -> bool {
+            true
+        }
+        fn end_set(&self) {}
+        fn command_done(&self, _rows_affected: Option<u64>) {}
+        fn notice(&self, _text: &str) {}
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
+    async fn stop_ends_a_call_whose_stale_block_waits_behind_a_statement_still_running() {
+        let url = std::env::var("KEMABLE_POSTGRES_URL").expect("KEMABLE_POSTGRES_URL is set");
+        let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
+        let connection = Arc::new(
+            PostgresConnection::connect(&config, CallOptions::default())
+                .await
+                .unwrap(),
+        );
+        // What a cursor run leaves when its Stop's cancel did not land: Kemable's
+        // block still open, and a statement still running on the editor session.
+        connection.our_block.store(true, Ordering::Relaxed);
+        let busy = {
+            let connection = Arc::clone(&connection);
+            tokio::spawn(async move {
+                let _ = connection.editor.batch_execute("select pg_sleep(60)").await;
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        busy.abort();
+
+        let options = CallOptions::default();
+        let stop = options.cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            stop.cancel();
+        });
+        let started = std::time::Instant::now();
+        let _ = connection.execute("select 1", Arc::new(Nothing), options).await;
+        assert!(
+            started.elapsed() < Duration::from_secs(15),
+            "Stop waited {:?} behind the rollback",
+            started.elapsed()
+        );
     }
 }
