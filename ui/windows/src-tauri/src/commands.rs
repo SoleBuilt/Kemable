@@ -32,11 +32,10 @@ use kemable_store::{MAX_COPY_CELLS, ResultStore, RowSpan, SortKey, WindowRequest
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::{Channel, Response};
-use tokio_util::sync::CancellationToken;
 
 use crate::data::{self, DataFolder};
 use crate::library::Library;
-use crate::run::{self, Run, RunEvent, Statement};
+use crate::run::{self, Run, RunMessage, Statement};
 use crate::state::{AppState, CONNECT_TIMEOUT, OpenServer};
 
 type CommandResult<T> = Result<T, DriverError>;
@@ -677,7 +676,7 @@ pub async fn run_query(
     follow_created_database: bool,
     row_limit: Option<u64>,
     record_history: bool,
-    on_event: Channel<RunEvent>,
+    on_event: Channel<RunMessage>,
 ) -> CommandResult<RunStarted> {
     let server = state.server(conn)?;
     let grammar = server.engine.sql_grammar;
@@ -708,7 +707,9 @@ pub async fn run_query(
         })
         .collect();
 
-    let cancel = CancellationToken::new();
+    // Closing the connection stops its run: on SQL Server the close waits
+    // for the editor session a running batch holds.
+    let cancel = server.closing.child_token();
     let id = state.add_run(cancel.clone());
     let run = Run {
         id,
@@ -967,7 +968,7 @@ pub async fn export_table(
     let grammar = grammar_of(&server)?;
     let statement = export_statement(grammar, &query)?;
     let session = server.session(database.as_deref()).await?;
-    let cancel = CancellationToken::new();
+    let cancel = server.closing.child_token();
     let id = state.add_run(cancel.clone());
     let export = crate::export::Export {
         id,
@@ -1084,7 +1085,7 @@ pub async fn import_csv(
     let text = tauri::async_runtime::spawn_blocking(move || crate::jobs::read_csv(&path))
         .await
         .map_err(|error| DriverError::internal(error.to_string()))??;
-    let cancel = CancellationToken::new();
+    let cancel = server.closing.child_token();
     let id = state.add_run(cancel.clone());
     let job = crate::jobs::ImportJob {
         id,
@@ -1142,7 +1143,7 @@ pub async fn generate_rows(
     let grammar = grammar_of(&server)?;
     let session = server.session(database.as_deref()).await?;
     let columns = session.fetch_columns(&table, metadata_options()).await?;
-    let cancel = CancellationToken::new();
+    let cancel = server.closing.child_token();
     let id = state.add_run(cancel.clone());
     let job = crate::jobs::GenerateJob {
         id,

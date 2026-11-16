@@ -2381,3 +2381,57 @@ async fn a_run_on_a_lost_session_is_not_sent_again_but_the_next_run_has_a_new_se
     assert!(of_type(&again, "statementFailed").is_empty(), "{again:#?}");
     assert_eq!(opened(&driver), 2);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn closing_a_connection_stops_its_run_and_every_event_names_the_run() {
+    let state = Arc::new(AppState::new(
+        DriverRegistry::new().with(Arc::new(kemable_driver_sqlite::SqliteDriver)),
+    ));
+    let (server, folder) = sqlite_server(&state, "close-run").await;
+    let (sender, mut events) = tokio::sync::mpsc::unbounded_channel();
+    let channel = Channel::new(move |body| {
+        if let InvokeResponseBody::Json(json) = body {
+            let _ = sender.send(serde_json::from_str::<Json>(&json).unwrap());
+        }
+        Ok(())
+    });
+    let script = "with recursive c(x) as (select 1 union all select x + 1 from c) select count(*) from c";
+    // As run_query starts one: its token is a child of the server's closing.
+    let cancel = server.closing.child_token();
+    let id = state.add_run(cancel.clone());
+    let run = Run {
+        id,
+        server: Arc::clone(&server),
+        database: None,
+        grammar: Some(SqlGrammar::Sqlite),
+        statements: vec![Statement {
+            text: script.into(),
+            kind: kemable_core::sql::StatementKind::Sql,
+        }],
+        follow_created_database: false,
+        row_limit: Some(1_000),
+        record: false,
+        cancel,
+        channel,
+    };
+    let running = tokio::spawn(run::execute(Arc::clone(&state), run));
+    let started = events.recv().await.unwrap();
+    assert_eq!(started["type"], "statementStarted");
+
+    tokio::time::timeout(std::time::Duration::from_secs(10), server.close())
+        .await
+        .expect("the close does not wait for the run to end by itself");
+    tokio::time::timeout(std::time::Duration::from_secs(10), running)
+        .await
+        .expect("the run stops with its connection")
+        .unwrap();
+    let mut seen = vec![started];
+    while let Ok(event) = events.try_recv() {
+        seen.push(event);
+    }
+    assert!(seen.iter().all(|event| event["run"] == id), "{seen:#?}");
+    let finished = seen.last().unwrap();
+    assert_eq!(finished["type"], "finished");
+    assert_eq!(finished["cancelled"], true);
+    let _ = std::fs::remove_dir_all(folder);
+}

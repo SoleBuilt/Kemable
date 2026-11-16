@@ -46,7 +46,7 @@ import type {
   ResultFilter,
   ResultWhere,
   RowSpan,
-  RunEvent,
+  RunMessage,
   RunStarted,
   SavedConnection,
   SavedQuery,
@@ -225,9 +225,9 @@ export const ipc = {
     followCreatedDatabase: boolean,
     rowLimit: number | null,
     recordHistory: boolean,
-    onEvent: (event: RunEvent) => void,
+    onEvent: (event: RunMessage) => void,
   ) {
-    const channel = new Channel<RunEvent>();
+    const channel = new Channel<RunMessage>();
     channel.onmessage = onEvent;
     return invoke<RunStarted>("run_query", {
       conn,
