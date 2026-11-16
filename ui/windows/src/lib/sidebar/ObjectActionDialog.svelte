@@ -22,6 +22,8 @@
 
   interface Props {
     conn: number;
+    /** The connection's title, named with the database where a change cannot be undone. */
+    connectionTitle: string;
     database: string | null;
     /** The engine's id: only PostgreSQL drops with CASCADE. */
     engine: string;
@@ -32,7 +34,7 @@
     onClose: () => void;
   }
 
-  let { conn, database, engine, object, kind, onDone, onClose }: Props = $props();
+  let { conn, connectionTitle, database, engine, object, kind, onDone, onClose }: Props = $props();
 
   const TASK_LABELS: Record<Maintenance, string> = {
     vacuumAnalyze: "Vacuum and analyze",
@@ -127,6 +129,9 @@
     kind === "rename" ? "Rename" : kind === "truncate" ? "Empty the table" : kind === "drop" ? "Drop" : kind === "maintain" ? "Run" : "Save comment",
   );
   const danger = $derived(kind === "truncate" || kind === "drop");
+  /** Where it runs: the tree node's database, which may not be the one the editor uses. */
+  const place = $derived(database ? `the database ${database} on ${connectionTitle}` : connectionTitle);
+  const qualified = $derived(object.schema ? `${object.schema}.${object.name}` : object.name);
 
   async function run() {
     if (busy || statements.length === 0 || refused) return;
@@ -174,9 +179,9 @@
       />
     </Field>
   {:else if kind === "truncate"}
-    <p class="pb-dialog-text">Every row of {object.name} is deleted. This cannot be undone.</p>
+    <p class="pb-dialog-text">Every row of {qualified} in {place} is deleted. This cannot be undone.</p>
   {:else if kind === "drop"}
-    <p class="pb-dialog-text">The {what} {object.name} and everything in it go. This cannot be undone.</p>
+    <p class="pb-dialog-text">The {what} {qualified} in {place} and everything in it go. This cannot be undone.</p>
     {#if engine === "postgres"}
       <Checkbox bind:checked={cascade}>Also drop what depends on it (CASCADE)</Checkbox>
     {/if}

@@ -119,3 +119,12 @@ Run trong History chỉ chạy ngay khi câu đã chạy trên đúng kết nố
   **Đúng:** chỉ chèn vào editor, không chạy; status bar ghi `Put in the editor, not run: it ran on Local PG`.
 - [ ] Các câu trong History từ trước bản này (chưa có khoá kết nối), bấm **Run**.
   **Đúng:** chỉ chèn vào editor, không chạy.
+
+## D7. Hộp thoại Drop và Truncate ghi rõ database và kết nối
+
+- [ ] Kết nối SQL Server `Local SQL` (hoặc PostgreSQL), trên cây chuột phải một bảng trong database `Sales` › **Drop…**.
+  **Đúng:** nội dung ghi `The table dbo.<bảng> in the database Sales on Local SQL and everything in it go. This cannot be undone.`.
+- [ ] Đổi database của trang sang database khác, rồi chuột phải cùng bảng trong `Sales` › **Truncate…**.
+  **Đúng:** ghi `Every row of dbo.<bảng> in the database Sales on Local SQL is deleted.`: database của nút cây, không phải của trang.
+- [ ] Với SQLite: chuột phải một bảng › **Drop…**.
+  **Đúng:** ghi `in <tên file>` (không có chữ "database"), vì SQLite không có database để chọn.
