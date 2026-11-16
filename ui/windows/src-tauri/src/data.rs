@@ -25,7 +25,7 @@ const CARRIED: &[&str] = &[
 const PREFS: &str = "ui.json";
 /// One file per connection's query pages.
 const PAGES: &str = "pages";
-/// The WebView's own files (cache, cookies), out of the user's profile too.
+/// The WebView's own files (cache, cookies), in this Windows user's own local folder.
 const WEBVIEW: &str = "webview";
 /// The connections whose pages are kept; the least recently written go first.
 const MAX_PAGE_FILES: usize = 40;
@@ -38,20 +38,27 @@ pub struct DataFolder {
     pub path: PathBuf,
     /// The folder is `data` beside the app, where the installer put it.
     pub beside_app: bool,
+    /// This Windows user's own `%LOCALAPPDATA%\<identifier>`, never shared with
+    /// another account, even when `path` is an install for everyone.
+    #[serde(skip)]
+    pub local: PathBuf,
 }
 
 impl DataFolder {
     /// `data` beside the running app when it is there and this user can write it,
     /// else `fallback`: a development build, or an app copied without its folder.
-    pub fn find(fallback: PathBuf) -> Self {
+    /// `local` is the user's own local folder.
+    pub fn find(fallback: PathBuf, local: PathBuf) -> Self {
         match beside_app() {
             Some(beside) if writable(&beside) => Self {
                 path: beside,
                 beside_app: true,
+                local,
             },
             _ => Self {
                 path: fallback,
                 beside_app: false,
+                local,
             },
         }
     }
@@ -60,8 +67,11 @@ impl DataFolder {
         self.path.join(name)
     }
 
+    /// The WebView's folder is each Windows user's own: two accounts cannot open one
+    /// WebView folder at once, and another account must not plant what this one's
+    /// WebView loads.
     pub fn webview(&self) -> PathBuf {
-        self.path.join(WEBVIEW)
+        self.local.join(WEBVIEW)
     }
 
     /// The preferences the UI wrote, or None before it ever did.

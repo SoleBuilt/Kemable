@@ -22,3 +22,14 @@ Cùng cách làm với `docs/testing/phase-1.md`: phần chuẩn bị (mục 0) 
   **Đúng:** hộp thoại có dòng `Live is listening: it stops.`.
 - [ ] Mở một file `.sql`, gõ thêm vài chữ (chưa Ctrl+S), **Alt+F4**.
   **Đúng:** không hỏi; cửa sổ đóng. Mở lại: trang của file vẫn còn chữ vừa gõ và vẫn đánh dấu chưa lưu.
+
+## B13. Báo lỗi khi ứng dụng không mở được
+
+Khi bước khởi động lỗi (thiếu WebView2, không tạo được thư mục dữ liệu), ứng dụng hiện một hộp thoại của Windows ghi lý do rồi mới thoát, thay vì tắt im lặng. Thư mục WebView của mỗi người dùng Windows là của riêng họ: `%LOCALAPPDATA%\<identifier>\webview`, không còn là `data\webview`.
+
+- [ ] Đóng Kemable bản dev. Đổi tên thư mục `%APPDATA%\dev.kemable.app` thành `dev.kemable.app.bak`, rồi tạo một **file** rỗng tên `dev.kemable.app` ở đúng chỗ đó. Chạy `pnpm tauri dev`.
+  **Đúng:** một hộp thoại lỗi của Windows tiêu đề **Kemable could not start**, có dòng lỗi về thư mục; bấm **OK** thì ứng dụng thoát. Xoá file rỗng, đổi tên thư mục `.bak` về như cũ.
+- [ ] Mở Kemable bình thường, xem `%LOCALAPPDATA%\dev.kemable.app\webview` (bản cài: `%LOCALAPPDATA%\kemable.app\webview`).
+  **Đúng:** thư mục có, chứa `EBWebView`; trong thư mục dữ liệu (`data\` cạnh exe, hoặc `%APPDATA%\dev.kemable.app`) không có thư mục `webview` mới được tạo.
+- [ ] Bản cài cho mọi người (Everyone) trên máy có hai tài khoản Windows: tài khoản thứ nhất mở Kemable và để đó, chuyển sang tài khoản thứ hai (Switch user), mở Kemable.
+  **Đúng:** ứng dụng mở được ở cả hai tài khoản, cùng danh sách kết nối đã lưu.
