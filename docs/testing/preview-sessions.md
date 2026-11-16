@@ -108,3 +108,12 @@ Khi một lần chạy bị dừng mà lệnh huỷ không tới server, lần c
   **Đúng:** báo **Stopped** trong khoảng một giây.
 - [ ] Chạy `select * from generate_series(1, 5000000);` (giới hạn 1,000 dòng), nhấn Esc khi còn "Running"; ngay sau đó chạy `select pg_sleep(30);` và nhấn Esc.
   **Đúng:** lần thứ hai cũng dừng trong khoảng một giây, không phải chờ.
+
+## D11. RabbitMQ: publish chờ broker xác nhận
+
+- [ ] Mở console RabbitMQ, chạy `publish khong_co_exchange x hello`.
+  **Đúng:** báo **The query failed** kèm "NOT_FOUND - no exchange 'khong_co_exchange'", không phải "Done".
+- [ ] Ngay sau đó chạy `publish amq.topic test.x hello`.
+  **Đúng:** chạy được (channel bị broker đóng đã được mở lại).
+- [ ] Chạy `publish amq.direct khong_ai_nghe hello` (không queue nào bind khoá này).
+  **Đúng:** Done, kèm một dòng ở Messages: "The broker returned the message: no queue is bound to take it."
