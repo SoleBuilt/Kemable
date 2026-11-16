@@ -95,7 +95,8 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
           aria-label="Kemable runs a query that returns two million rows and scrolls through them"
           class="block h-auto w-full rounded-[10px] border border-line-strong bg-[#0a0a0a] shadow-[0_40px_120px_-30px_#000000]"
         >
-          <source src="/kemable-demo.webm" type="video/webm" />
+          <!-- H.264 only: a VP9 webm failed in GPUs' decoders (Chrome, Edge), and a
+               source that fails while playing never falls back to the next one. -->
           <source src="/kemable-demo.mp4" type="video/mp4" />
         </video>
       </div>
