@@ -1894,3 +1894,40 @@ fn a_connection_is_named_by_its_saved_id_its_file_or_its_engine_and_title() {
         "postgres:db:5432"
     );
 }
+
+#[test]
+fn the_window_may_call_only_the_permissions_the_ui_uses() {
+    let capability: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+    let granted: Vec<&str> = capability["permissions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|permission| permission.as_str().unwrap())
+        .collect();
+    // A whole set (`core:default`, `dialog:default`) grants menus, trays and more the UI never calls.
+    assert!(
+        granted.iter().all(|permission| !permission.ends_with(":default")),
+        "{granted:?}"
+    );
+    assert!(
+        granted.iter().all(|permission| permission.contains(":allow-")),
+        "{granted:?}"
+    );
+    // What lib/ipc.ts and the title bar call: getVersion, onResized and onCloseRequested (events),
+    // the window's buttons and drag region, the zoom, and the file dialogs.
+    for needed in [
+        "core:app:allow-version",
+        "core:event:allow-listen",
+        "core:event:allow-unlisten",
+        "core:window:allow-close",
+        "core:window:allow-destroy",
+        "core:window:allow-is-maximized",
+        "core:window:allow-start-dragging",
+        "core:window:allow-internal-toggle-maximize",
+        "core:webview:allow-set-webview-zoom",
+        "dialog:allow-open",
+        "dialog:allow-save",
+    ] {
+        assert!(granted.contains(&needed), "{needed}");
+    }
+}

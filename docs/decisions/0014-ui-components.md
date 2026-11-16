@@ -42,7 +42,7 @@ The window also kept the system's title bar above the toolbar. That is two bars 
 - The toolbar is the title bar: the logo, the connection and database pickers, the search in the middle, and minimize, maximize or restore, and close drawn as Windows 11 draws them. Close turns `--window-close` red on hover.
 - Its empty parts carry `data-tauri-drag-region`. They drag the window, and a double-click maximizes it.
 - The buttons call `appWindow` in `ipc.ts`, so every call to Tauri stays there.
-- The capability adds only `allow-minimize`, `allow-toggle-maximize`, `allow-close` and `allow-start-dragging`.
+- The capability adds only `allow-minimize`, `allow-toggle-maximize`, `allow-close` and `allow-start-dragging`. Since 2026-11-15 the capability holds no permission set at all (`core:default` granted menus, trays, images and resources the UI never calls): each permission the UI uses is listed one by one, and `the_window_may_call_only_the_permissions_the_ui_uses` in `src-tauri/src/tests.rs` keeps it so.
 
 ## Rationale
 
