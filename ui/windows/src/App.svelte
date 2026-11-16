@@ -1819,8 +1819,11 @@
     editing = null;
     const key = `${target.row}:${target.column}`;
     const cells = new Map(edits.cells);
-    // Back to what it was: no longer an edit.
-    if (target.original !== undefined && value === target.original) cells.delete(key);
+    // Back to what it was: no longer an edit. The text box turns CRLF into LF, and the save puts them back.
+    const same =
+      target.original !== undefined &&
+      (value === target.original || (value !== null && target.original !== null && value === target.original.replaceAll("\r\n", "\n")));
+    if (same) cells.delete(key);
     else cells.set(key, value);
     edits = { ...edits, cells };
     const lastRow = set.totalRows + edits.added - 1;

@@ -85,6 +85,25 @@ pub fn edit_statement(grammar: SqlGrammar, table: &TableRef, edit: &RowEdit) -> 
     }
 }
 
+/// The edited text with the line ends its cell had. A text box gives `\n`
+/// for every line end, so a value read with `\r\n` would come back with
+/// them changed though nobody touched them.
+pub fn keep_line_endings(original: &str, edited: &str) -> String {
+    if !original.contains("\r\n") {
+        return edited.to_owned();
+    }
+    let mut out = String::with_capacity(edited.len() + 16);
+    let mut previous = None;
+    for ch in edited.chars() {
+        if ch == '\n' && previous != Some('\r') {
+            out.push('\r');
+        }
+        out.push(ch);
+        previous = Some(ch);
+    }
+    out
+}
+
 fn key_condition(grammar: SqlGrammar, key: &[(String, Value)]) -> Result<String, DriverError> {
     if key.is_empty() {
         return Err(DriverError::config(
@@ -322,6 +341,15 @@ mod tests {
             "UPDATE [public].[orders] SET [c] = N'' WHERE [id] = 1"
         );
         assert!(statement(SqlGrammar::Postgres, cleared(ValueKind::Text)).contains("\"c\" = ''"));
+    }
+
+    #[test]
+    fn an_edited_value_keeps_the_line_ends_its_cell_had() {
+        assert_eq!(keep_line_endings("a\r\nb", "a\nb\nc"), "a\r\nb\r\nc");
+        assert_eq!(keep_line_endings("a\r\nb", "a\r\nb\nc"), "a\r\nb\r\nc");
+        assert_eq!(keep_line_endings("a\nb", "a\nb\nc"), "a\nb\nc", "LF stays LF");
+        assert_eq!(keep_line_endings("one line", "a\nb"), "a\nb");
+        assert_eq!(keep_line_endings("a\r\nb", "ab"), "ab");
     }
 
     #[test]

@@ -1871,3 +1871,54 @@ async fn an_import_inside_the_users_transaction_on_sql_server_never_ends_it() {
     .await;
     server.close().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_edit_of_a_multi_line_cell_keeps_its_crlf_line_ends() {
+    use crate::commands::{CellEdit, EditRequest, RowUpdate, edit_statements};
+    use kemable_core::catalog::TableRef;
+    use kemable_core::sql::NewValue;
+    use kemable_driver_sqlite::SqliteDriver;
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(SqliteDriver))));
+    let (server, folder) = sqlite_server(&state, "crlf").await;
+    let setup = "create table t (id integer primary key, note text);\n\
+                 insert into t values (1, 'a' || char(13, 10) || 'b'), (2, 'c' || char(10) || 'd');";
+    assert!(
+        of_type(
+            &run_script(&state, &server, setup, SqlGrammar::Sqlite).await,
+            "statementFailed"
+        )
+        .is_empty()
+    );
+    let page = run_script(
+        &state,
+        &server,
+        "select id, note from t order by id",
+        SqlGrammar::Sqlite,
+    )
+    .await;
+    let result = of_type(&page, "setStarted")[0]["result"].as_u64().unwrap();
+    let edit = |row: u64, text: &str| RowUpdate {
+        row,
+        cells: vec![CellEdit {
+            column: 1,
+            value: NewValue::Text(text.to_owned()),
+        }],
+    };
+    // What the text box gives back: LF, after a line was added.
+    let request = EditRequest {
+        result,
+        table: TableRef {
+            schema: None,
+            name: "t".into(),
+        },
+        key: vec!["id".into()],
+        updates: vec![edit(0, "a\nb\nc"), edit(1, "c\nd\ne")],
+        deletes: Vec::new(),
+        inserts: Vec::new(),
+    };
+    let statements = edit_statements(&state, SqlGrammar::Sqlite, &request).unwrap();
+    assert!(statements[0].contains("'a\r\nb\r\nc'"), "{statements:?}");
+    assert!(statements[1].contains("'c\nd\ne'"), "LF stays LF: {statements:?}");
+    server.close().await;
+    let _ = std::fs::remove_dir_all(folder);
+}

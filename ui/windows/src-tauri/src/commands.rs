@@ -18,8 +18,8 @@ use kemable_core::sink::ResultSink;
 use kemable_core::sql::{
     BrowseQuery, Clause, CompletionItem, Maintenance, NewValue, ObjectAction, ResultFilter, ResultSource, ResultWhere,
     RowEdit, SortColumn, SqlGrammar, action_statements, completion_context, completions, count_statement,
-    edit_statement, export_statement, maintenance_tasks, page_statement, readable_name, sorted_statement, split,
-    statement_at, view_definition,
+    edit_statement, export_statement, keep_line_endings, maintenance_tasks, page_statement, readable_name,
+    sorted_statement, split, statement_at, view_definition,
 };
 use kemable_core::text_file::{self, LineEnding, TextEncoding, TextFile};
 use kemable_core::value::Value;
@@ -1736,9 +1736,17 @@ pub fn edit_statements(state: &AppState, grammar: SqlGrammar, request: &EditRequ
         edits.push(RowEdit::Delete { key: key_of(*row)? });
     }
     for update in &request.updates {
+        let mut set = cells(&update.cells)?;
+        for ((_, value), cell) in set.iter_mut().zip(&update.cells) {
+            if let NewValue::Text(text) = value
+                && let Some(Some(original)) = store.cell_text(update.row, cell.column)
+            {
+                *text = keep_line_endings(&original, text);
+            }
+        }
         edits.push(RowEdit::Update {
             key: key_of(update.row)?,
-            set: cells(&update.cells)?,
+            set,
         });
     }
     for insert in &request.inserts {

@@ -134,3 +134,15 @@ Trước đây xoá hết chữ trong một ô số hay ngày của SQL Server r
 - [ ] Làm lại với PostgreSQL (`int`, `timestamp`, `text`).
   **Đúng:** preview ghi `"n" = NULL`, `"d" = NULL`, `"t" = ''`; trước đây PostgreSQL báo lỗi kiểu.
 - [ ] Dọn: `drop table thu_rong;`
+
+---
+
+## D2. Sửa ô nhiều dòng giữ nguyên kiểu xuống dòng
+
+Trước đây ô có xuống dòng kiểu Windows (CRLF) sau khi sửa bị đổi hết thành LF. Giờ giá trị đang có CRLF thì sau khi sửa vẫn là CRLF.
+
+- [ ] Mở SQLite in-memory, chạy `create table thu_dong (id integer primary key, note text); insert into thu_dong values (1, 'a' || char(13, 10) || 'b'), (2, 'c' || char(10) || 'd');`. Mở `thu_dong`.
+- [ ] Nhấn F2 trên `note` dòng 1, Escape mà không đổi gì; rồi F2 lại, Enter mà không đổi gì.
+  **Đúng:** ô không bị đánh dấu là đã sửa (không có màu sửa, không có gì để lưu).
+- [ ] F2 trên `note` dòng 1, đặt con trỏ cuối, Shift+Enter, gõ `c`, Enter; làm tương tự với dòng 2 (gõ `e`). Lưu.
+  **Đúng:** `select id, hex(note) from thu_dong;` ra `610D0A620D0A63` cho dòng 1 (mọi dòng đều CRLF) và `630A640A65` cho dòng 2 (vẫn LF).
