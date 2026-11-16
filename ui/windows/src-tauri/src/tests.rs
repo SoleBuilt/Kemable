@@ -1843,7 +1843,9 @@ async fn a_live_tab_keeps_hearing_notify_after_a_filter_and_a_sort() {
     let sent = run_capped(
         &state,
         &server,
-        "NOTIFY orders, 'xin chào';\nselect pg_notify('orders', g::text) from generate_series(1, 5000) g;\n\
+        // A DO block, not a SELECT: under the row cap a SELECT computes only the
+        // rows it keeps and one more, so it would send 1,001 (ADR 0004, The row cap).
+        "NOTIFY orders, 'xin chào';\ndo $$ begin perform pg_notify('orders', g::text) from generate_series(1, 5000) g; end $$;\n\
          NOTIFY Orders, 'chữ hoa';\nNOTIFY khac, 'x';\nNOTIFY orders, 'a';\nNOTIFY orders, 'b';",
     )
     .await;
@@ -1994,7 +1996,7 @@ async fn import_into(
         Arc::clone(state),
         crate::jobs::ImportJob {
             id,
-            session: server.session(None).await.unwrap(),
+            session: server.session(None, &CallOptions::default()).await.unwrap(),
             grammar,
             transactional: true,
             text: csv.into(),
