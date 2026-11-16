@@ -139,3 +139,22 @@ Mở Kemable lần hai (cùng người dùng Windows, cùng bản) không mở c
   **Đúng:** cửa sổ hiện lại từ thanh taskbar, đúng kích thước cũ.
 - [ ] Trong lúc bản cài đang mở, chạy `pnpm tauri dev`.
   **Đúng:** bản dev vẫn mở được (identifier khác), hai cửa sổ cùng tồn tại.
+
+## D14. Quyền của cửa sổ chỉ gồm những gì giao diện dùng
+
+`capabilities/default.json` không còn `core:default`; chỉ liệt kê từng quyền giao diện gọi. Một quyền thiếu sẽ làm một nút hỏng âm thầm, nên thử từng thứ:
+
+- [ ] Bản dev: kéo cửa sổ bằng thanh tiêu đề; nhấp đúp thanh tiêu đề; các nút thu nhỏ, phóng to/thu lại, đóng.
+  **Đúng:** đều chạy; nhấp đúp phóng to rồi thu lại.
+- [ ] Đổi kích thước cửa sổ, phóng to rồi thu lại.
+  **Đúng:** nút phóng to đổi biểu tượng đúng trạng thái (cần `is-maximized` và sự kiện resize).
+- [ ] **Ctrl+=**, **Ctrl+-**, **Ctrl+0**.
+  **Đúng:** zoom đổi, status bar ghi mức zoom.
+- [ ] Settings › About.
+  **Đúng:** dòng đầu ghi `Kemable <phiên bản>` (cần `app:allow-version`).
+- [ ] **Ctrl+O** mở file, Export một bảng ra CSV (hộp Save).
+  **Đúng:** cả hai hộp thoại file mở.
+- [ ] Chạy một query, mở tab Live (PostgreSQL), Export: kết quả, sự kiện và tiến độ đến bình thường (Channel không cần quyền).
+- [ ] Đóng cửa sổ có sửa đổi bảng chưa lưu (A7): hộp hỏi hiện, **Close anyway** đóng được.
+- [ ] Mở DevTools (F12) › Console trong suốt các bước trên.
+  **Đúng:** không có lỗi `not allowed by ACL`.
