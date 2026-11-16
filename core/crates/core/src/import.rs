@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::{ColumnInfo, TableRef};
+use crate::connection::Transaction;
 use crate::sql::{SqlGrammar, quote_name, table_name};
 use crate::{DriverError, Result};
 
@@ -293,11 +294,17 @@ pub fn insert_statement(grammar: SqlGrammar, table: &TableRef, names: &[String],
     )
 }
 
-/// The statements that begin, keep and undo a transaction, as the engine spells them.
-pub fn transaction(grammar: SqlGrammar) -> (&'static str, &'static str, &'static str) {
-    match grammar {
+/// The statements that begin, keep and undo a transaction of a job's own, as
+/// the engine spells them.
+pub fn transaction(grammar: SqlGrammar) -> Transaction {
+    let (begin, keep, undo) = match grammar {
         SqlGrammar::SqlServer => ("BEGIN TRANSACTION", "COMMIT TRANSACTION", "ROLLBACK TRANSACTION"),
         SqlGrammar::Postgres | SqlGrammar::Sqlite => ("BEGIN", "COMMIT", "ROLLBACK"),
+    };
+    Transaction {
+        begin: vec![begin.to_owned()],
+        keep: vec![keep.to_owned()],
+        undo: vec![undo.to_owned()],
     }
 }
 

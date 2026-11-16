@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Once};
 use std::time::Duration;
 
@@ -7,7 +8,7 @@ use kemable_core::catalog::{
     ColumnInfo, ColumnMeta, DatabaseInfo, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef,
 };
 use kemable_core::config::{ConnectionConfig, Target, TlsMode};
-use kemable_core::connection::Connection;
+use kemable_core::connection::{Connection, Transaction};
 use kemable_core::engine::EngineInfo;
 use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
 use kemable_core::sql::{SqlGrammar, batch_statement_count, is_plain_query};
@@ -59,6 +60,10 @@ pub struct MssqlConnection {
     catalog: Mutex<Option<MssqlClient>>,
     version: String,
     database: String,
+    /// Names each savepoint an edit or a job sets in the user's transaction:
+    /// SQL Server keeps a savepoint until the transaction ends, so a name is
+    /// never used twice.
+    savepoints: AtomicU64,
 }
 
 impl MssqlConnection {
@@ -140,6 +145,7 @@ impl MssqlConnection {
             catalog: Mutex::new(Some(catalog)),
             version: String::new(),
             database: String::new(),
+            savepoints: AtomicU64::new(0),
         };
         let rows = connection
             .catalog_rows(
@@ -153,6 +159,42 @@ impl MssqlConnection {
             connection.database = text(row, 1)?.unwrap_or_default();
         }
         Ok(connection)
+    }
+
+    /// Whether a transaction is open on the editor session, and whether
+    /// `XACT_ABORT` is on there.
+    async fn transaction_state(&self) -> Result<(bool, bool)> {
+        let mut guard = self.editor.lock().await;
+        if guard.is_none() {
+            *guard = Some(open(&self.config, self.reach).await?);
+        }
+        let Some(client) = guard.as_mut() else {
+            return Err(DriverError::new(ErrorCode::Lost, "the editor session is closed"));
+        };
+        let map = |error| errors::map(error, None, Phase::Run);
+        let read = async {
+            client
+                .simple_query("SELECT @@TRANCOUNT, CAST(@@OPTIONS & 16384 AS int)")
+                .await
+                .map_err(map)?
+                .into_row()
+                .await
+                .map_err(map)
+        };
+        match read.await {
+            Ok(Some(row)) => Ok((int(&row, 0)? > 0, int(&row, 1)? != 0)),
+            Ok(None) => Ok((false, false)),
+            Err(error) => {
+                if error.code == ErrorCode::Lost {
+                    *guard = None;
+                }
+                Err(error)
+            }
+        }
+    }
+
+    fn savepoint(&self, what: &str) -> String {
+        format!("kemable_{what}_{}", self.savepoints.fetch_add(1, Ordering::Relaxed))
     }
 
     async fn catalog_rows(&self, sql: &str, params: &[&str], options: &CallOptions) -> Result<Vec<Row>> {
@@ -982,11 +1024,35 @@ impl Connection for MssqlConnection {
     }
 
     /// One batch: tiberius does not hand out row counts, so the batch checks
-    /// `@@ROWCOUNT` after each statement and throws, and `XACT_ABORT` with the
-    /// CATCH rolls everything back, a cancel's attention included.
+    /// `@@ROWCOUNT` after each statement and throws. Outside a transaction,
+    /// `XACT_ABORT` with the CATCH rolls everything back, a cancel's attention
+    /// included. Inside the user's, the batch works under a savepoint with
+    /// `XACT_ABORT` off, so a failure undoes only the edit and leaves the
+    /// user's transaction open; a stop rolls back to the savepoint after.
     async fn apply_edits(&self, statements: &[String], options: CallOptions) -> Result<()> {
-        let batch = edit_batch(statements);
-        match self.execute(&batch, Arc::new(Discard), options).await {
+        options.check()?;
+        let (open, xact_abort) = self.transaction_state().await?;
+        let savepoint = open.then(|| self.savepoint("edit"));
+        let batch = edit_batch(statements, savepoint.as_deref());
+        let result = self.execute(&batch, Arc::new(Discard), options.clone()).await;
+        if let Some(savepoint) = &savepoint {
+            let mut after = String::new();
+            if options.is_cancelled() || options.is_expired() {
+                // XACT_ABORT off: a savepoint the stop came before is an error
+                // of this statement alone, not the end of the user's transaction.
+                after.push_str(&format!(
+                    "SET XACT_ABORT OFF;\nIF XACT_STATE() = 1 ROLLBACK TRANSACTION {savepoint};\n"
+                ));
+            }
+            if xact_abort {
+                after.push_str("SET XACT_ABORT ON;");
+            }
+            if !after.is_empty() {
+                let quick = CallOptions::default().with_timeout(CANCEL_GRACE);
+                let _ = self.execute(&after, Arc::new(Discard), quick).await;
+            }
+        }
+        match result {
             Ok(_) => Ok(()),
             Err(error) if error.engine_code.as_deref() == Some(ROW_GONE_ERROR) => {
                 let index = error.message.trim().parse::<usize>().unwrap_or(0);
@@ -994,6 +1060,32 @@ impl Connection for MssqlConnection {
             }
             Err(error) => Err(error),
         }
+    }
+
+    /// A job inside the user's transaction runs under a savepoint with
+    /// `XACT_ABORT` off, so a failed `INSERT` ends only itself; the undo
+    /// rolls back to the savepoint while the transaction can still commit (a
+    /// doomed one is the user's to roll back), and `XACT_ABORT` goes back to
+    /// what it was.
+    async fn nested_transaction(&self, options: CallOptions) -> Result<Option<Transaction>> {
+        options.check()?;
+        let (open, xact_abort) = self.transaction_state().await?;
+        if !open {
+            return Ok(None);
+        }
+        let savepoint = self.savepoint("job");
+        let restore = if xact_abort { "\nSET XACT_ABORT ON;" } else { "" };
+        Ok(Some(Transaction {
+            begin: vec![format!("SET XACT_ABORT OFF;\nSAVE TRANSACTION {savepoint};")],
+            keep: if xact_abort {
+                vec!["SET XACT_ABORT ON;".to_owned()]
+            } else {
+                Vec::new()
+            },
+            undo: vec![format!(
+                "IF XACT_STATE() = 1 ROLLBACK TRANSACTION {savepoint};{restore}"
+            )],
+        }))
     }
 
     async fn close(&self) -> Result<()> {
@@ -1009,18 +1101,28 @@ impl Connection for MssqlConnection {
 /// The error number an edit's batch throws when a statement changes another number of rows than one.
 const ROW_GONE_ERROR: &str = "50001";
 
-/// An edit's statements as one all-or-nothing batch; the error's message is the statement's index.
-fn edit_batch(statements: &[String]) -> String {
-    let mut batch = String::from("SET XACT_ABORT ON;\nBEGIN TRY\nBEGIN TRANSACTION;\n");
+/// An edit's statements as one all-or-nothing batch; the error's message is
+/// the statement's index. With `savepoint`, the batch runs inside the user's
+/// transaction and undoes only its own work.
+pub(crate) fn edit_batch(statements: &[String], savepoint: Option<&str>) -> String {
+    let mut batch = match savepoint {
+        None => String::from("SET XACT_ABORT ON;\nBEGIN TRY\nBEGIN TRANSACTION;\n"),
+        Some(savepoint) => format!("SET XACT_ABORT OFF;\nBEGIN TRY\nSAVE TRANSACTION {savepoint};\n"),
+    };
     for (index, statement) in statements.iter().enumerate() {
         batch.push_str(statement);
         batch.push_str(&format!(
             ";\nIF @@ROWCOUNT <> 1 THROW {ROW_GONE_ERROR}, N'{index}', 1;\n"
         ));
     }
-    batch.push_str(
-        "COMMIT TRANSACTION;\nEND TRY\nBEGIN CATCH\nIF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\nTHROW;\nEND CATCH",
-    );
+    match savepoint {
+        None => batch.push_str(
+            "COMMIT TRANSACTION;\nEND TRY\nBEGIN CATCH\nIF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\nTHROW;\nEND CATCH",
+        ),
+        Some(savepoint) => batch.push_str(&format!(
+            "END TRY\nBEGIN CATCH\nIF XACT_STATE() = 1 ROLLBACK TRANSACTION {savepoint};\nTHROW;\nEND CATCH"
+        )),
+    }
     batch
 }
 

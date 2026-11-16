@@ -259,6 +259,97 @@ async fn a_batch_returns_each_of_its_result_sets_and_commands_report_done() {
     assert_eq!(sink.last().state().total_rows, 0);
 }
 
+#[test]
+fn an_edit_inside_the_users_transaction_saves_under_a_savepoint_and_never_commits() {
+    let statements = ["UPDATE t SET a = 1 WHERE id = 1".to_owned()];
+    let own = crate::connection::edit_batch(&statements, None);
+    assert!(
+        own.contains("BEGIN TRANSACTION;") && own.contains("COMMIT TRANSACTION;"),
+        "{own}"
+    );
+    let nested = crate::connection::edit_batch(&statements, Some("kemable_edit_0"));
+    assert!(nested.starts_with("SET XACT_ABORT OFF;"), "{nested}");
+    assert!(nested.contains("SAVE TRANSACTION kemable_edit_0;"), "{nested}");
+    assert!(
+        nested.contains("IF XACT_STATE() = 1 ROLLBACK TRANSACTION kemable_edit_0;"),
+        "{nested}"
+    );
+    assert!(
+        !nested.contains("COMMIT") && !nested.contains("BEGIN TRANSACTION"),
+        "{nested}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn edits_inside_the_users_transaction_use_a_savepoint_and_never_end_it() {
+    let conn = live_in("tempdb").await;
+    let table = format!("dbo.kemable_edit_block_{}", std::process::id());
+    run(&conn, &format!("drop table if exists {table}")).await;
+    run(
+        &conn,
+        &format!("create table {table} (id int primary key, a nvarchar(10)); insert into {table} values (1, N'a')"),
+    )
+    .await;
+    let one = |sql: String| {
+        let conn = Arc::clone(&conn);
+        async move { first_row(&run(&conn, &sql).await.last()) }
+    };
+    let value_of = |id: i32| format!("select coalesce((select a from {table} where id = {id}), N'none')");
+    let options = CallOptions::default;
+
+    // XACT_ABORT on, as an earlier save or the user left it, would end the
+    // user's transaction at the edit's first error.
+    run(&conn, "SET XACT_ABORT ON").await;
+    assert_eq!(conn.nested_transaction(options()).await.unwrap(), None);
+
+    run(
+        &conn,
+        &format!("BEGIN TRANSACTION; insert into {table} values (2, N'b')"),
+    )
+    .await;
+    assert!(conn.nested_transaction(options()).await.unwrap().is_some());
+
+    conn.apply_edits(&[format!("update {table} set a = N'x' where id = 1")], options())
+        .await
+        .unwrap();
+    assert_eq!(one(value_of(1)).await, ["x"]);
+    assert_eq!(one("select @@TRANCOUNT".into()).await, ["1"]);
+
+    // A row gone undoes the edit only.
+    let error = conn
+        .apply_edits(
+            &[
+                format!("update {table} set a = N'y' where id = 1"),
+                format!("update {table} set a = N'z' where id = 99"),
+            ],
+            options(),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.code, ErrorCode::RowGone);
+    assert_eq!(one(value_of(1)).await, ["x"]);
+    assert_eq!(one(value_of(2)).await, ["b"]);
+    assert_eq!(one("select @@TRANCOUNT".into()).await, ["1"]);
+
+    // A server error too, and XACT_ABORT is back as it was.
+    let error = conn
+        .apply_edits(&[format!("update {table} set id = 2 where id = 1")], options())
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.code, ErrorCode::Query);
+    assert_eq!(one(value_of(2)).await, ["b"]);
+    assert_eq!(one("select @@TRANCOUNT".into()).await, ["1"]);
+    assert_eq!(one("select @@OPTIONS & 16384".into()).await, ["16384"]);
+
+    run(&conn, "ROLLBACK TRANSACTION").await;
+    assert_eq!(one(value_of(1)).await, ["a"], "the user's rollback undoes it all");
+    assert_eq!(one(value_of(2)).await, ["none"]);
+    run(&conn, &format!("drop table {table}")).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn the_row_limit_stops_the_server_and_the_session_stays_usable() {

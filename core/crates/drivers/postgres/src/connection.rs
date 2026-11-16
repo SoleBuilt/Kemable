@@ -11,7 +11,7 @@ use kemable_core::catalog::{
     ColumnInfo, ColumnMeta, DatabaseInfo, IndexInfo, ObjectInfo, ObjectKind, SchemaInfo, TableRef,
 };
 use kemable_core::config::{ConnectionConfig, Target};
-use kemable_core::connection::Connection;
+use kemable_core::connection::{Connection, Transaction};
 use kemable_core::engine::EngineInfo;
 use kemable_core::sink::{ExecOutcome, PUSH_BATCH_ROWS, ResultSink};
 use kemable_core::sql::{SqlGrammar, is_plain_query};
@@ -106,6 +106,8 @@ pub struct PostgresConnection {
     /// Names each cursor apart, so one a stopped run left in the user's
     /// transaction never meets the next.
     cursors: AtomicU64,
+    /// Names each savepoint an edit or a job sets in the user's transaction.
+    savepoints: AtomicU64,
     /// What the last look found: the editor session is inside a transaction
     /// block. A guess that only saves a round trip; the probe decides.
     in_block: AtomicBool,
@@ -208,6 +210,7 @@ impl PostgresConnection {
             notices,
             tasks: vec![editor_task, catalog_task],
             cursors: AtomicU64::new(0),
+            savepoints: AtomicU64::new(0),
             in_block: AtomicBool::new(false),
             our_block: AtomicBool::new(false),
         };
@@ -285,6 +288,40 @@ impl PostgresConnection {
             _ => return,
         };
         self.in_block.store(in_block, Ordering::Relaxed);
+    }
+
+    /// Whether a transaction block is open on the editor session, as the
+    /// server says. A failed block refuses the probe, and is open too.
+    async fn block_open(&self) -> Result<bool> {
+        let open = match self.editor.simple_query(IN_BLOCK_PROBE).await {
+            Ok(messages) => probe_answer(&messages).unwrap_or(false),
+            Err(error) if error.code() == Some(&SqlState::IN_FAILED_SQL_TRANSACTION) => true,
+            Err(error) => return Err(errors::map(&error, None, Phase::Run)),
+        };
+        self.in_block.store(open, Ordering::Relaxed);
+        Ok(open)
+    }
+
+    /// The unit an edit or a job runs as: a block of its own, or, inside the
+    /// user's open block, a savepoint, released when the work is kept and
+    /// rolled back to when it is not, so the user's block goes on either way.
+    fn unit(&self, nested: bool, what: &str) -> Transaction {
+        if !nested {
+            return Transaction {
+                begin: vec!["BEGIN".to_owned()],
+                keep: vec!["COMMIT".to_owned()],
+                undo: vec!["ROLLBACK".to_owned()],
+            };
+        }
+        let name = format!("kemable_{what}_{}", self.savepoints.fetch_add(1, Ordering::Relaxed));
+        Transaction {
+            begin: vec![format!("SAVEPOINT {name}")],
+            keep: vec![format!("RELEASE SAVEPOINT {name}")],
+            undo: vec![
+                format!("ROLLBACK TO SAVEPOINT {name}"),
+                format!("RELEASE SAVEPOINT {name}"),
+            ],
+        }
     }
 
     /// Ends a transaction block a stopped cursor run left open.
@@ -1008,12 +1045,21 @@ impl Connection for PostgresConnection {
     async fn apply_edits(&self, statements: &[String], options: CallOptions) -> Result<()> {
         options.check()?;
         self.end_stale_block().await;
+        let unit = self.unit(options.run(self.block_open()).await?, "edit");
+        let run = |sql: &str| {
+            let sql = sql.to_owned();
+            async move {
+                self.editor
+                    .batch_execute(&sql)
+                    .await
+                    .map_err(|error| errors::map(&error, None, Phase::Run))
+            }
+        };
         // Simple queries: they report each command's count, and Supabase's pooler takes them.
         let work = async {
-            self.editor
-                .batch_execute("BEGIN")
-                .await
-                .map_err(|error| errors::map(&error, None, Phase::Run))?;
+            for begin in &unit.begin {
+                run(begin).await?;
+            }
             for (index, statement) in statements.iter().enumerate() {
                 let messages = self
                     .editor
@@ -1028,18 +1074,28 @@ impl Connection for PostgresConnection {
                     return Err(DriverError::row_gone(index, changed));
                 }
             }
-            self.editor
-                .batch_execute("COMMIT")
-                .await
-                .map_err(|error| errors::map(&error, None, Phase::Run))
+            for keep in &unit.keep {
+                run(keep).await?;
+            }
+            Ok(())
         };
         let result = options.run(work).await;
         if result.is_err() {
-            // After a failure, a cancel or a deadline the transaction may still
-            // be open on the editor session; it must not outlive the edit.
-            let _ = self.editor.batch_execute("ROLLBACK").await;
+            // After a failure, a cancel or a deadline the edit's transaction or
+            // savepoint may still be open on the editor session; it must not
+            // outlive the edit.
+            for undo in &unit.undo {
+                let _ = self.editor.batch_execute(undo).await;
+            }
         }
         result
+    }
+
+    async fn nested_transaction(&self, options: CallOptions) -> Result<Option<Transaction>> {
+        options.check()?;
+        self.end_stale_block().await;
+        let nested = options.run(self.block_open()).await?;
+        Ok(nested.then(|| self.unit(true, "job")))
     }
 
     async fn close(&self) -> Result<()> {

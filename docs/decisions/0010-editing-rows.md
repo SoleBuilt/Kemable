@@ -36,6 +36,15 @@ The preview shows the statements as they will run, with Copy SQL. Save calls `Co
 | D1 | one `batch` request, which D1 runs as one transaction; after each statement a guard `SELECT CASE WHEN changes() = 1 THEN 1 ELSE json('...') END` fails the batch (SQLite's `malformed JSON`) when the count is not one |
 | Redis | not here: the console's commands edit keys |
 
+**Inside the user's own transaction** (a `BEGIN` left open in the editor, on the same session), a save never commits or rolls back the user's work: it runs under a savepoint, kept when every statement changed its row, rolled back to on anything else, and the user's transaction stays open with the edit in it, for their own `COMMIT` or `ROLLBACK`. Outside one, a save is its own transaction, as the table says.
+
+| Engine | Inside the user's transaction |
+|---|---|
+| SQLite | refused: `BEGIN IMMEDIATE` fails inside a transaction, before anything runs |
+| PostgreSQL | the server says whether a block is open (`statement_timestamp() <> transaction_timestamp()`, the probe the row cap uses, ADR 0004; a failed block refuses it, and the save's `SAVEPOINT` fails with the server's error); `SAVEPOINT kemable_edit_<n>`, `RELEASE SAVEPOINT` when kept, `ROLLBACK TO SAVEPOINT` and `RELEASE SAVEPOINT` after a failure, a cancel or a deadline |
+| SQL Server | `@@TRANCOUNT` says; the batch sets `XACT_ABORT` off (on, any error would end the user's whole transaction), `SAVE TRANSACTION kemable_edit_<n>` (a name never used twice, since SQL Server keeps a savepoint until the transaction ends), and its `CATCH` rolls back to the savepoint while `XACT_STATE()` is 1; a transaction the error doomed is left to the user. After a stop a second batch rolls back to the savepoint, and `XACT_ABORT` is set back as it was |
+| D1 | no transaction across requests |
+
 After a save the page is read again, and counted again.
 
 ## Rationale

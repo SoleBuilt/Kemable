@@ -997,6 +997,78 @@ async fn the_row_limit_inside_the_users_transaction_neither_commits_nor_ends_it(
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
+async fn edits_inside_the_users_transaction_use_a_savepoint_and_never_end_it() {
+    in_scratch_schema("kemable_edit_block", |conn, schema| async move {
+        let table = format!("{schema}.t");
+        run(&conn, &format!("create table {table} (id int primary key, a text)")).await;
+        run(&conn, &format!("insert into {table} values (1, 'a')")).await;
+        let other = live().await;
+        let value_of = |id: i32| format!("select coalesce((select a from {table} where id = {id}), 'none')");
+        let options = CallOptions::default;
+
+        // Outside a block nothing is nested.
+        assert_eq!(conn.nested_transaction(options()).await.unwrap(), None);
+
+        run(&conn, "begin").await;
+        run(&conn, &format!("insert into {table} values (2, 'b')")).await;
+        assert!(conn.nested_transaction(options()).await.unwrap().is_some());
+
+        conn.apply_edits(&[format!("update {table} set a = 'x' where id = 1")], options())
+            .await
+            .unwrap();
+        assert_eq!(texts(&*run(&conn, &value_of(1)).await), ["x"]);
+        assert_eq!(texts(&*run(&other, &value_of(1)).await), ["a"], "not committed");
+
+        // A row gone undoes the edit only: the user's insert and the first edit stay.
+        let error = conn
+            .apply_edits(
+                &[
+                    format!("update {table} set a = 'y' where id = 1"),
+                    format!("update {table} set a = 'z' where id = 99"),
+                ],
+                options(),
+            )
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.code, ErrorCode::RowGone);
+        assert_eq!(texts(&*run(&conn, &value_of(1)).await), ["x"]);
+        assert_eq!(texts(&*run(&conn, &value_of(2)).await), ["b"]);
+
+        // A server error too, and the block still takes statements.
+        let error = conn
+            .apply_edits(&[format!("update {table} set id = 2 where id = 1")], options())
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.code, ErrorCode::Query);
+        assert_eq!(texts(&*run(&conn, &value_of(2)).await), ["b"]);
+        assert_eq!(texts(&*run(&other, &value_of(2)).await), ["none"], "not committed");
+
+        run(&conn, "rollback").await;
+        assert_eq!(
+            texts(&*run(&conn, &value_of(1)).await),
+            ["a"],
+            "the user's rollback undoes it all"
+        );
+        assert_eq!(texts(&*run(&conn, &value_of(2)).await), ["none"]);
+
+        // Inside a failed block the edit is refused and the block is left as it was.
+        run(&conn, "begin").await;
+        let failed: Arc<dyn ResultSink> = Arc::new(Collect::default());
+        assert!(conn.execute("select 1/0", failed, options()).await.is_err());
+        let refused = conn
+            .apply_edits(&[format!("update {table} set a = 'q' where id = 1")], options())
+            .await;
+        assert!(refused.is_err());
+        run(&conn, "rollback").await;
+        assert_eq!(texts(&*run(&conn, &value_of(1)).await), ["a"]);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs PostgreSQL at $KEMABLE_POSTGRES_URL"]
 async fn an_error_in_a_cursor_inside_the_users_transaction_points_into_the_statement() {
     let conn = live().await;
     run(&conn, "begin").await;

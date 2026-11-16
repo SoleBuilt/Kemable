@@ -8,6 +8,16 @@ use crate::keys::{KeyDetail, KeyPage, KeyScan};
 use crate::sink::{ExecOutcome, ResultSink};
 use crate::{CallOptions, DriverError, Result};
 
+/// The statements that begin, keep and undo one unit of work on a session,
+/// each sent on its own: a transaction of its own, or a savepoint inside the
+/// user's open transaction, which is never committed or rolled back for them.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Transaction {
+    pub begin: Vec<String>,
+    pub keep: Vec<String>,
+    pub undo: Vec<String>,
+}
+
 /// A live connection to one engine.
 ///
 /// Every call takes [`CallOptions`] and returns within its deadline. Methods
@@ -68,6 +78,16 @@ pub trait Connection: Send + Sync {
     /// count (`ErrorCode::RowGone`), rolls every statement back.
     async fn apply_edits(&self, _statements: &[String], _options: CallOptions) -> Result<()> {
         Err(DriverError::unsupported("this engine does not save edits"))
+    }
+
+    /// While a transaction the user opened is still open on the session that
+    /// runs statements, the statements that run a job (Import, Generate Rows)
+    /// inside it under a savepoint, so the job never commits or rolls back the
+    /// user's work (`docs/decisions/0018-export-import-generate.md`, Jobs).
+    /// `None` when none is open: the job begins and ends its own
+    /// (`import::transaction`).
+    async fn nested_transaction(&self, _options: CallOptions) -> Result<Option<Transaction>> {
+        Ok(None)
     }
 
     /// One step of a scan over a key-value engine's keys, with each key's
