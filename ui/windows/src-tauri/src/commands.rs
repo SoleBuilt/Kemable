@@ -1855,7 +1855,7 @@ async fn in_background<T: Send + 'static>(
 #[tauri::command]
 pub async fn read_pages(folder: State<'_, DataFolder>, key: String) -> CommandResult<Option<serde_json::Value>> {
     let folder = folder.inner().clone();
-    in_background(move || Ok(folder.pages(&key))).await
+    in_background(move || folder.pages(&key)).await
 }
 
 /// Keeps a connection's query pages; resolves once they are on disk.

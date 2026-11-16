@@ -27,7 +27,8 @@ const PREFS: &str = "ui.json";
 const PAGES: &str = "pages";
 /// The WebView's own files (cache, cookies), in this Windows user's own local folder.
 const WEBVIEW: &str = "webview";
-/// The connections whose pages are kept; the least recently written go first.
+/// The connections whose pages are kept; the least recently written go first,
+/// except pages with text not saved anywhere else, which are never dropped.
 const MAX_PAGE_FILES: usize = 40;
 /// The page key of `.sql` files opened with no connection (`NO_CONNECTION` in `pages.ts`).
 const NO_CONNECTION: &str = "none";
@@ -87,20 +88,24 @@ impl DataFolder {
         self.local.join(WEBVIEW)
     }
 
-    /// The preferences the UI wrote, or None before it ever did.
-    pub fn prefs(&self) -> Option<Json> {
-        read_json(&self.file(PREFS))
+    /// The preferences the UI wrote, or None before it ever did. A file that
+    /// cannot be understood is set aside, never written over, and the error says where.
+    pub fn prefs(&self) -> Result<Option<Json>, DriverError> {
+        read_or_set_aside(&self.file(PREFS))
     }
 
     pub fn write_prefs(&self, prefs: &Json) -> std::io::Result<()> {
         write_atomic(&self.file(PREFS), &serde_json::to_vec(prefs)?)
     }
 
-    /// The pages kept for `key`, as the UI wrote them.
-    pub fn pages(&self, key: &str) -> Option<Json> {
-        let mut file = read_json(&self.page_file(key))?;
+    /// The pages kept for `key`, as the UI wrote them. A file that cannot be
+    /// understood is set aside, never written over, and the error says where.
+    pub fn pages(&self, key: &str) -> Result<Option<Json>, DriverError> {
+        let Some(mut file) = read_or_set_aside(&self.page_file(key))? else {
+            return Ok(None);
+        };
         // Two keys could share a file name; the key inside says whose it is.
-        (file.get("key").and_then(Json::as_str) == Some(key)).then(|| file["kept"].take())
+        Ok((file.get("key").and_then(Json::as_str) == Some(key)).then(|| file["kept"].take()))
     }
 
     pub fn write_pages(&self, key: &str, kept: Json) -> std::io::Result<()> {
@@ -114,6 +119,8 @@ impl DataFolder {
         self.path.join(PAGES).join(format!("{:016x}.json", fnv1a(key)))
     }
 
+    /// Past the limit, drops the oldest connections' pages that hold no text kept
+    /// nowhere else; pages with such text stay, whatever their number.
     fn forget_old_pages(&self) {
         let Ok(entries) = fs::read_dir(self.path.join(PAGES)) else {
             return;
@@ -126,9 +133,17 @@ impl DataFolder {
         if files.len() <= MAX_PAGE_FILES {
             return;
         }
-        files.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
-        for (_, path) in files.drain(MAX_PAGE_FILES..) {
-            let _ = fs::remove_file(path);
+        files.sort_by_key(|(modified, _)| *modified);
+        let mut over = files.len() - MAX_PAGE_FILES;
+        for (_, path) in files {
+            if over == 0 {
+                break;
+            }
+            // A file that cannot be read is not judged: it stays.
+            let unsaved = read_json(&path).is_none_or(|file| holds_unsaved_text(&file["kept"]));
+            if !unsaved && fs::remove_file(&path).is_ok() {
+                over -= 1;
+            }
         }
     }
 
@@ -149,10 +164,19 @@ impl DataFolder {
     /// The script the window runs before the UI's own: the preferences and the
     /// pages of files opened with no connection, so the first paint has them.
     pub fn startup_script(&self) -> String {
+        let prefs = self.prefs();
+        let pages = self.pages(NO_CONNECTION);
+        // What was set aside is said once the window shows (ui `setAsideAtStart`).
+        let set_aside: Vec<&str> = [prefs.as_ref().err(), pages.as_ref().err()]
+            .into_iter()
+            .flatten()
+            .map(|error| error.message.as_str())
+            .collect();
         let startup = json!({
-            "prefs": self.prefs(),
-            "pagesWithout": self.pages(NO_CONNECTION),
+            "prefs": prefs.as_ref().ok().cloned().flatten(),
+            "pagesWithout": pages.as_ref().ok().cloned().flatten(),
             "folder": self,
+            "setAside": set_aside,
         });
         format!("window.__KEMABLE__ = {startup};")
     }
@@ -174,6 +198,52 @@ fn writable(folder: &Path) -> bool {
 
 fn read_json(path: &Path) -> Option<Json> {
     serde_json::from_slice(&fs::read(path).ok()?).ok()
+}
+
+/// Reads a kept file. One that is there but is not JSON is renamed beside itself
+/// (`<name>.unreadable-<ms>`), so the next write cannot replace what it held, and
+/// the error names both.
+fn read_or_set_aside(path: &Path) -> Result<Option<Json>, DriverError> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(DriverError::new(
+                ErrorCode::Unreadable,
+                format!("cannot read {}: {error}", path.display()),
+            ));
+        }
+    };
+    let error = match serde_json::from_slice(&bytes) {
+        Ok(json) => return Ok(Some(json)),
+        Err(error) => error,
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis());
+    let name = path
+        .file_name()
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+    let aside = path.with_file_name(format!("{name}.unreadable-{stamp}"));
+    let kept = match fs::rename(path, &aside) {
+        Ok(()) => format!("kept as {}", aside.display()),
+        Err(rename) => format!("could not be set aside: {rename}"),
+    };
+    Err(DriverError::new(
+        ErrorCode::Unreadable,
+        format!("cannot understand {}: {error}; {kept}", path.display()),
+    ))
+}
+
+/// Whether kept pages hold text found nowhere else: a query page with text, or a
+/// `.sql` file's page with changes not in its file.
+fn holds_unsaved_text(kept: &Json) -> bool {
+    kept["pages"].as_array().is_some_and(|pages| {
+        pages.iter().any(|page| match page.get("file") {
+            Some(file) if !file.is_null() => file["dirty"].as_bool().unwrap_or(true),
+            _ => page["text"].as_str().is_some_and(|text| !text.trim().is_empty()),
+        })
+    })
 }
 
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {

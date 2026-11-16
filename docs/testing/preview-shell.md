@@ -78,3 +78,16 @@ Bộ cài đặt `LICENSE.txt` (văn bản AGPL-3.0) cạnh `Kemable.exe`; Setti
   **Đúng:** Notepad mở `LICENSE.txt` trong thư mục cài; không mở trình duyệt.
 - [ ] Bản dev (`pnpm tauri dev`): bấm **License**.
   **Đúng:** Notepad mở `LICENSE.txt` từ thư mục build (`target\debug`).
+
+## D4. Không mất chữ chưa lưu trong các trang query
+
+File trang (`pages\<hash>.json`) hoặc `ui.json` không đọc được thì được đổi tên để giữ lại (`<tên>.unreadable-<số>`), không bị ghi đè, và ứng dụng báo. Giới hạn 40 kết nối giữ trang bỏ trước những kết nối cũ nhất **không** có chữ chưa lưu; trang có chữ chưa lưu không bao giờ bị xoá.
+
+- [ ] Đóng Kemable bản dev. Trong `%APPDATA%\dev.kemable.app\pages`, mở file `.json` mới nhất bằng Notepad, xoá vài ký tự cuối, lưu. Mở Kemable, mở lại kết nối có các trang đó.
+  **Đúng:** dải vàng **Kemable could not read what it kept, so it set the file aside and did not write over it**, nội dung ghi `cannot understand ...json: ...; kept as ...json.unreadable-<số>`; có nút **Open its folder**. Trong thư mục `pages` có file `.unreadable-…` giữ nguyên chữ cũ.
+- [ ] Gõ vài chữ vào trang query, đợi 1 giây, xem lại thư mục.
+  **Đúng:** một file `.json` mới được ghi; file `.unreadable-…` vẫn còn, không đổi.
+- [ ] Đóng Kemable, làm hỏng `ui.json` tương tự, mở lại.
+  **Đúng:** cùng dải vàng, ngay khi mở, về `ui.json`; giao diện về cài đặt mặc định; `ui.json.unreadable-…` nằm cạnh.
+- [ ] (Giới hạn 40) Trong thư mục `pages`, máy tự kiểm: `cargo test -p kemable-windows past_the_limit_pages_with_unsaved_text_are_never_dropped`.
+  **Đúng:** test qua.

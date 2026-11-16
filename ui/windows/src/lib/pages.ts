@@ -78,9 +78,12 @@ function asPages(kept: unknown): KeptPages | null {
   return { pages, active, at: typeof read.at === "number" ? read.at : 0 };
 }
 
-/** The pages kept for `conn`, or null when there are none (or what is kept is not readable). */
+/**
+ * The pages kept for `conn`, or null when there are none. A file that cannot be read
+ * rejects (`storage.unreadable`): it was set aside, and the caller says so.
+ */
 export async function readPages(conn: string): Promise<KeptPages | null> {
-  return asPages(await ipc.readPages(conn).catch(() => null));
+  return asPages(await ipc.readPages(conn));
 }
 
 /** The pages of files opened with no connection, at once, so the first paint shows them. */
