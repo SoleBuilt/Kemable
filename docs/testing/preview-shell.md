@@ -48,3 +48,22 @@ File kết nối đã lưu không đọc được thì ứng dụng nói rõ, k�
   **Đúng:** form hiện ngay lỗi đỏ cùng nội dung. Điền đủ, bấm **Connect** (có lưu): không lưu được, báo lỗi; file `connections.json` vẫn y như lúc bị sửa (không bị ghi đè).
 - [ ] Đóng Kemable, chép file sao lưu về chỗ cũ, mở lại.
   **Đúng:** không còn dải đỏ; Ctrl+K có lại các kết nối đã lưu.
+
+## B15. Mật khẩu đã lưu chỉ gửi tới nơi nó được lưu cho
+
+Mật khẩu (hoặc token) giữ trong Credential Manager gắn với engine, host, port, user và SSH server của kết nối lúc lưu (`docs/decisions/0033-bound-passwords.md`). Khi `connections.json` bị đổi các thứ đó (ví dụ bởi một người dùng Windows khác trên cùng máy), Kemable không gửi mật khẩu đã lưu mà hỏi lại. `known_hosts` của Kemable nằm trong thư mục riêng của từng người dùng Windows.
+
+- [ ] Lưu một kết nối PostgreSQL `Local PG` có **Save password**. Mở nó qua Ctrl+K.
+  **Đúng:** kết nối ngay, không hỏi mật khẩu (mật khẩu lưu từ trước bản này được gắn với kết nối như đang lưu, một lần).
+- [ ] Đóng Kemable. Mở `connections.json` (thư mục dữ liệu) bằng Notepad, đổi `"host"` của `Local PG` thành `127.0.0.1` (khác chữ `localhost` đã lưu), lưu lại. Mở Kemable, mở `Local PG`.
+  **Đúng:** hộp thoại **Password for Local PG** ghi `This connection now points to postgres@127.0.0.1:5432, not where its password was kept for...`; chưa có kết nối nào tới server (xem `select * from pg_stat_activity` từ một client khác nếu muốn chắc).
+- [ ] Gõ đúng mật khẩu, **Connect**. Ngắt kết nối, mở lại `Local PG`.
+  **Đúng:** lần đầu kết nối được; lần sau không hỏi nữa (mật khẩu được giữ cho host mới).
+- [ ] Đổi `"host"` trong file về `localhost`, mở lại.
+  **Đúng:** hỏi lại một lần (mật khẩu giờ gắn với `127.0.0.1`); gõ xong thì lần sau không hỏi.
+- [ ] Mở form sửa kết nối (menu kết nối › Edit), đổi Port thành `5433`, để trống ô Password, bấm **Save**. Đổi lại `5432`, **Save**, rồi mở kết nối.
+  **Đúng:** không hỏi mật khẩu: sửa trong form của chính mình thì mật khẩu đi theo.
+- [ ] Với một kết nối qua SSH tunnel có lưu mật khẩu SSH: sửa `"ssh"` › `"host"` trong `connections.json` sang một máy khác, mở kết nối.
+  **Đúng:** dải đỏ **This connection's SSH server changed since its SSH password was kept: edit the connection to enter it again**, có nút **Edit connection** mở form; không có kết nối SSH nào được mở.
+- [ ] Bản cài cho mọi người: kết nối qua SSH tới một server mới, bấm **Trust this key and connect**. Xem `%APPDATA%\kemable.app\known_hosts` và `data\known_hosts` cạnh exe.
+  **Đúng:** khoá nằm trong `%APPDATA%\kemable.app\known_hosts`; `data\known_hosts` không được ghi.

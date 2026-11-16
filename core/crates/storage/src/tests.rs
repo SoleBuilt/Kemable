@@ -90,7 +90,7 @@ fn a_saved_password_goes_to_the_vault_and_never_to_the_file() {
     let file = std::fs::read_to_string(library.path()).unwrap();
     assert!(!file.contains("s3cret"), "{file}");
 
-    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    let (_, config, _) = library.resolve(&saved.id, &vault).unwrap();
     assert_eq!(password_of(&config), "s3cret-đ");
 }
 
@@ -104,7 +104,7 @@ fn turning_off_save_password_removes_it_from_the_vault() {
     saved.save_password = false;
     library.save(saved.clone(), None, &vault).unwrap();
     assert!(vault.get(&password_key(&saved.id)).unwrap().is_none());
-    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    let (_, config, _) = library.resolve(&saved.id, &vault).unwrap();
     assert_eq!(password_of(&config), "");
 }
 
@@ -133,7 +133,7 @@ fn saving_again_keeps_the_place_and_the_kept_password() {
     library.save(renamed, None, &vault).unwrap();
     let names: Vec<_> = library.list().unwrap().into_iter().map(|saved| saved.name).collect();
     assert_eq!(names, ["Renamed", "Second"]);
-    let (_, config) = library.resolve(&first.id, &vault).unwrap();
+    let (_, config, _) = library.resolve(&first.id, &vault).unwrap();
     assert_eq!(password_of(&config), "one");
 }
 
@@ -284,7 +284,7 @@ fn a_connection_with_a_profile_signs_in_with_the_profiles_user_and_password() {
     let file = std::fs::read_to_string(library.profiles().path()).unwrap();
     assert!(!file.contains("đọc-only"), "{file}");
 
-    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    let (_, config, _) = library.resolve(&saved.id, &vault).unwrap();
     assert_eq!(user_of(&config), Some("app_reader"));
     assert_eq!(password_of(&config), "đọc-only");
 
@@ -300,13 +300,13 @@ fn a_connection_with_a_profile_signs_in_with_the_profiles_user_and_password() {
             &vault,
         )
         .unwrap();
-    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    let (_, config, _) = library.resolve(&saved.id, &vault).unwrap();
     assert_eq!(user_of(&config), Some("app_reader_2"));
     assert_eq!(password_of(&config), "rotated");
 
     // Saving the profile without a password keeps the kept one.
     library.profiles().save(reader, None, &vault).unwrap();
-    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    let (_, config, _) = library.resolve(&saved.id, &vault).unwrap();
     assert_eq!(password_of(&config), "rotated");
 }
 
@@ -353,7 +353,7 @@ fn deleting_a_profile_leaves_its_connections_asking_for_a_password() {
     assert_eq!(library.delete_profile(&reader.id, &vault).unwrap(), 2);
     assert!(library.profiles().list().unwrap().is_empty());
     assert!(vault.get(&profile_password_key(&reader.id)).unwrap().is_none());
-    let (saved, config) = library.resolve(&first.id, &vault).unwrap();
+    let (saved, config, _) = library.resolve(&first.id, &vault).unwrap();
     assert_eq!(saved.profile_id, None);
     assert!(!saved.save_password);
     assert_eq!(user_of(&config), Some("app_reader"));
@@ -592,7 +592,7 @@ fn an_ssh_password_goes_to_the_vault_comes_back_on_resolve_and_goes_with_the_con
     assert!(text.contains("bastion"));
     assert_eq!(vault.get(&ssh_key(&saved.id)).unwrap().unwrap().expose(), "ssh-pw");
 
-    let (_, config) = library.resolve(&saved.id, &vault).unwrap();
+    let (_, config, _) = library.resolve(&saved.id, &vault).unwrap();
     assert_eq!(config.ssh.as_ref().unwrap().secret().expose(), "ssh-pw");
 
     // Saved again with the field blank: the kept one stays.
@@ -611,4 +611,149 @@ fn an_ssh_password_goes_to_the_vault_comes_back_on_resolve_and_goes_with_the_con
     library.save(with_ssh, None, &vault).unwrap();
     library.delete(&saved.id, &vault).unwrap();
     assert!(vault.get(&ssh_key(&saved.id)).unwrap().is_none());
+}
+
+// --- A kept secret is bound to where it goes (docs/decisions/0033-bound-passwords.md) ---
+
+/// What another Windows user sharing the data folder can do: change the file.
+fn change_in_file(library: &ConnectionLibrary, id: &str, change: impl FnOnce(&mut SavedConnection)) {
+    let mut file: serde_json::Value = serde_json::from_slice(&std::fs::read(library.path()).unwrap()).unwrap();
+    let connections = file["connections"].as_array_mut().unwrap();
+    let entry = connections.iter_mut().find(|entry| entry["id"] == id).unwrap();
+    let mut saved: SavedConnection = serde_json::from_value(entry.clone()).unwrap();
+    change(&mut saved);
+    *entry = serde_json::to_value(&saved).unwrap();
+    std::fs::write(library.path(), serde_json::to_vec(&file).unwrap()).unwrap();
+}
+
+fn set_host(saved: &mut SavedConnection, to: &str) {
+    if let Target::Network { host, .. } = &mut saved.config.target {
+        *host = to.into();
+    }
+}
+
+#[test]
+fn a_kept_password_is_never_sent_once_the_host_port_or_user_changes_in_the_file() {
+    let folder = Folder::new("bound");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let vault = MemoryVault::default();
+    let saved = library.save(postgres("mine"), None, &vault).unwrap();
+
+    let changes: [fn(&mut SavedConnection); 4] = [
+        |saved| set_host(saved, "evil.example"),
+        |saved| {
+            if let Target::Network { port, .. } = &mut saved.config.target {
+                *port = Some(6543);
+            }
+        },
+        |saved| {
+            if let Target::Network { user, .. } = &mut saved.config.target {
+                *user = Some("someone".into());
+            }
+        },
+        |saved| {
+            saved.config.ssh = Some(kemable_core::config::SshTunnel {
+                host: "their-bastion".into(),
+                port: None,
+                user: "them".into(),
+                auth: kemable_core::config::SshAuth::Password {
+                    password: Secret::default(),
+                },
+            });
+        },
+    ];
+    for change in changes {
+        change_in_file(&library, &saved.id, change);
+        let (_, config, moved) = library.resolve(&saved.id, &vault).unwrap();
+        assert_eq!(password_of(&config), "", "the kept password is left out");
+        assert!(moved.password);
+        // Put back as it was saved: the kept password comes back.
+        change_in_file(&library, &saved.id, |now| *now = saved.clone());
+        let (_, config, moved) = library.resolve(&saved.id, &vault).unwrap();
+        assert_eq!(password_of(&config), "mine");
+        assert_eq!(moved, Moved::default());
+    }
+    // A host differs only in case: the same host.
+    change_in_file(&library, &saved.id, |saved| set_host(saved, "LocalHost"));
+    let (_, config, _) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(password_of(&config), "mine");
+}
+
+#[test]
+fn the_users_own_edit_moves_the_kept_password_with_it_but_not_over_a_moved_connection() {
+    let folder = Folder::new("follow");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let vault = MemoryVault::default();
+    let saved = library.save(postgres("mine"), None, &vault).unwrap();
+
+    // Edited in the form, the password field blank: the kept one follows.
+    let mut edited = saved.clone();
+    set_host(&mut edited, "db2.example");
+    library.save(edited.clone(), None, &vault).unwrap();
+    let (_, config, moved) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(password_of(&config), "mine");
+    assert!(!moved.password);
+
+    // Someone else moves it; saving the form over it, still blank, does not bring the password along.
+    change_in_file(&library, &saved.id, |saved| set_host(saved, "evil.example"));
+    let mut over = edited.clone();
+    set_host(&mut over, "evil2.example");
+    library.save(over, None, &vault).unwrap();
+    let (_, config, moved) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(password_of(&config), "");
+    assert!(moved.password);
+
+    // Typed again, it is kept for where the connection points now.
+    library.keep_password(&saved.id, &Secret::new("again"), &vault).unwrap();
+    let (_, config, moved) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(password_of(&config), "again");
+    assert!(!moved.password);
+}
+
+#[test]
+fn a_password_kept_before_binding_belongs_to_the_connection_as_saved_now_once() {
+    let folder = Folder::new("carried");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let vault = MemoryVault::default();
+    let saved = library.save(postgres("old"), None, &vault).unwrap();
+    // As an earlier version kept it: the password alone.
+    vault.delete(&password_for_key(&saved.id)).unwrap();
+
+    let (_, config, _) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(password_of(&config), "old");
+    assert!(vault.get(&password_for_key(&saved.id)).unwrap().is_some());
+    change_in_file(&library, &saved.id, |saved| set_host(saved, "evil.example"));
+    let (_, config, moved) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(password_of(&config), "");
+    assert!(moved.password);
+
+    // Deleting the connection forgets what it was kept for too.
+    library.delete(&saved.id, &vault).unwrap();
+    assert!(vault.get(&password_for_key(&saved.id)).unwrap().is_none());
+}
+
+#[test]
+fn a_kept_ssh_password_is_never_sent_to_another_ssh_server() {
+    use kemable_core::config::{SshAuth, SshTunnel};
+    let folder = Folder::new("bound-ssh");
+    let library = ConnectionLibrary::in_folder(&folder.0);
+    let vault = MemoryVault::default();
+    let mut connection = postgres("pw");
+    connection.config.ssh = Some(SshTunnel {
+        host: "bastion".into(),
+        port: None,
+        user: "me".into(),
+        auth: SshAuth::Password {
+            password: Secret::new("ssh-pw"),
+        },
+    });
+    let saved = library.save(connection, None, &vault).unwrap();
+    change_in_file(&library, &saved.id, |saved| {
+        saved.config.ssh.as_mut().unwrap().host = "their-bastion".into();
+    });
+    let (_, config, moved) = library.resolve(&saved.id, &vault).unwrap();
+    assert_eq!(config.ssh.as_ref().unwrap().secret().expose(), "");
+    assert!(moved.ssh);
+    // The database password went through that SSH server too: left out as well.
+    assert!(moved.password);
 }

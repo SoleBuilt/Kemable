@@ -324,7 +324,15 @@ pub async fn connect_saved(
     id: String,
     password: Option<String>,
 ) -> CommandResult<OpenedConnection> {
-    let (saved, mut config) = library.with(|library, vault| library.resolve(&id, vault))?;
+    let (saved, mut config, moved) = library.with(|library, vault| library.resolve(&id, vault))?;
+    // A kept secret is sent only where it was kept for (docs/decisions/0033-bound-passwords.md).
+    if moved.ssh {
+        return Err(moved_error(kemable_core::ErrorCode::SshSecretMoved, &saved.config));
+    }
+    if moved.password && password.is_none() {
+        return Err(moved_error(kemable_core::ErrorCode::SecretMoved, &saved.config));
+    }
+    let typed = password.clone().filter(|_| moved.password);
     if let Some(password) = password {
         match &mut config.target {
             Target::Network { password: target, .. } => *target = Secret::new(password),
@@ -333,6 +341,10 @@ pub async fn connect_saved(
         }
     }
     let opened = open_server(&state, config, saved.name, Some(id.clone())).await?;
+    // Typed again after the connection moved: kept for where it points now.
+    if let Some(typed) = typed {
+        library.with(|library, vault| library.keep_password(&id, &Secret::new(typed), vault))?;
+    }
     // A failure to record the time is not worth failing the connection for.
     let _ = library.with(|library, _| library.touch(&id));
     Ok(opened)
@@ -419,7 +431,10 @@ fn sign_in_as_form(
     if let Some(id) = &saved_id
         && config.ssh.as_ref().is_some_and(|ssh| ssh.secret().is_empty())
     {
-        let (_, kept) = library.with(|library, vault| library.resolve(id, vault))?;
+        let (saved, kept, moved) = library.with(|library, vault| library.resolve(id, vault))?;
+        if moved.ssh {
+            return Err(moved_error(kemable_core::ErrorCode::SshSecretMoved, &saved.config));
+        }
         if let (Some(ssh), Some(kept)) = (config.ssh.as_mut(), kept.ssh)
             && std::mem::discriminant(&ssh.auth) == std::mem::discriminant(&kept.auth)
         {
@@ -431,7 +446,10 @@ fn sign_in_as_form(
     } else if let Some(id) = saved_id
         && secret_is_blank(&config.target)
     {
-        let (_, kept) = library.with(|library, vault| library.resolve(&id, vault))?;
+        let (saved, kept, moved) = library.with(|library, vault| library.resolve(&id, vault))?;
+        if moved.password {
+            return Err(moved_error(kemable_core::ErrorCode::SecretMoved, &saved.config));
+        }
         lend_secret(&mut config.target, kept.target);
     }
     Ok(())
@@ -494,6 +512,20 @@ pub(crate) async fn try_connection(
     // A close that fails leaves nothing the user can act on.
     let _ = connection.close().await;
     Ok(tested)
+}
+
+/// The error for a kept secret left out: its message names where the connection points now.
+fn moved_error(code: kemable_core::ErrorCode, config: &ConnectionConfig) -> DriverError {
+    let through = config
+        .ssh
+        .as_ref()
+        .map(|ssh| format!(" through {}@{}:{}", ssh.user, ssh.host, ssh.port()))
+        .unwrap_or_default();
+    let user = match &config.target {
+        Target::Network { user: Some(user), .. } if !user.is_empty() => format!("{user}@"),
+        _ => String::new(),
+    };
+    DriverError::new(code, format!("{user}{}{through}", title_of(&config.target)))
 }
 
 fn secret_is_blank(target: &Target) -> bool {

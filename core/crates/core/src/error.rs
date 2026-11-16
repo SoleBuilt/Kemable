@@ -69,6 +69,14 @@ pub enum ErrorCode {
     /// written over; the message names the file.
     #[serde(rename = "storage.unreadable")]
     Unreadable,
+    /// A saved connection points elsewhere than where its kept password was
+    /// kept for: the password is not sent, and is asked for again
+    /// (`docs/decisions/0033-bound-passwords.md`).
+    #[serde(rename = "secret.moved")]
+    SecretMoved,
+    /// The same for a kept SSH password or key passphrase: its SSH server changed.
+    #[serde(rename = "ssh.secret_moved")]
+    SshSecretMoved,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -98,6 +106,8 @@ impl ErrorCode {
             Self::SshForward => "ssh.forward",
             Self::UpdateSignature => "update.signature",
             Self::Unreadable => "storage.unreadable",
+            Self::SecretMoved => "secret.moved",
+            Self::SshSecretMoved => "ssh.secret_moved",
             Self::Internal => "internal",
         }
     }

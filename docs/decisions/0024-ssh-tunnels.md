@@ -1,6 +1,6 @@
 # 0024: An SSH tunnel is a local port the app opens; drivers only dial it
 
-- **Status**: Accepted
+- **Status**: Accepted; amended by `docs/decisions/0033-bound-passwords.md` (Kemable's `known_hosts` is each Windows user's own, and a kept SSH secret is bound to its SSH server)
 - **Date**: 2026-11-14
 - **Follows**: `docs/decisions/0004-engines.md` (how each engine is reached), `docs/decisions/0015-credential-profiles.md` (secrets in Windows Credential Manager), the roadmap's Phase 3 item "SSH tunnels".
 
@@ -26,7 +26,7 @@ Three things shape it in Kemable:
 
 ### The server's key is checked, and an unknown one is asked about
 
-- The key is checked against the user's own `~/.ssh/known_hosts` (read only, so hosts trusted with `ssh` count) and against Kemable's `known_hosts` in the data folder.
+- The key is checked against the user's own `~/.ssh/known_hosts` (read only, so hosts trusted with `ssh` count) and against Kemable's `known_hosts` in the Windows user's own `%APPDATA%\<identifier>` (in the data folder until ADR 0033).
 - Unknown: the connection fails with `ssh.host_unknown` and the key's fingerprint (`ED25519 SHA256:…`) as its message. The connect form, or the strip over the window for a saved connection, shows it with **Trust this key**; trusting writes the key the server showed into Kemable's file (`trust_ssh_host`) and does again what was asked. The key never crosses to the UI, only its fingerprint.
 - Changed (the host is known with another key): `ssh.host_changed`, with no way to trust it from the app. The user fixes the known hosts file, as with `ssh`.
 
