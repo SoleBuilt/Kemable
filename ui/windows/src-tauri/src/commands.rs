@@ -594,9 +594,9 @@ fn metadata_options() -> CallOptions {
 pub async fn list_databases(state: State<'_, Arc<AppState>>, conn: u64) -> CommandResult<Vec<DatabaseInfo>> {
     state
         .server(conn)?
-        .session(None)
-        .await?
-        .list_databases(metadata_options())
+        .read(None, |session| async move {
+            session.list_databases(metadata_options()).await
+        })
         .await
 }
 
@@ -606,8 +606,12 @@ pub async fn list_schemas(
     conn: u64,
     database: Option<String>,
 ) -> CommandResult<Vec<SchemaInfo>> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
-    session.list_schemas(metadata_options()).await
+    state
+        .server(conn)?
+        .read(database.as_deref(), |session| async move {
+            session.list_schemas(metadata_options()).await
+        })
+        .await
 }
 
 #[tauri::command]
@@ -617,8 +621,13 @@ pub async fn list_objects(
     database: Option<String>,
     schema: Option<String>,
 ) -> CommandResult<Vec<ObjectInfo>> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
-    session.list_objects(schema.as_deref(), metadata_options()).await
+    let schema = schema.as_deref();
+    state
+        .server(conn)?
+        .read(database.as_deref(), |session| async move {
+            session.list_objects(schema, metadata_options()).await
+        })
+        .await
 }
 
 #[tauri::command]
@@ -628,8 +637,13 @@ pub async fn fetch_columns(
     database: Option<String>,
     table: TableRef,
 ) -> CommandResult<Vec<ColumnInfo>> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
-    session.fetch_columns(&table, metadata_options()).await
+    let table = &table;
+    state
+        .server(conn)?
+        .read(database.as_deref(), |session| async move {
+            session.fetch_columns(table, metadata_options()).await
+        })
+        .await
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -800,8 +814,13 @@ pub async fn object_ddl(
     database: Option<String>,
     object: ObjectInfo,
 ) -> CommandResult<String> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
-    session.object_ddl(&object, metadata_options()).await
+    let object = &object;
+    state
+        .server(conn)?
+        .read(database.as_deref(), |session| async move {
+            session.object_ddl(object, metadata_options()).await
+        })
+        .await
 }
 
 /// The comment on `object`, for Edit Comment.
@@ -812,8 +831,13 @@ pub async fn object_comment(
     database: Option<String>,
     object: ObjectInfo,
 ) -> CommandResult<Option<String>> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
-    session.object_comment(&object, metadata_options()).await
+    let object = &object;
+    state
+        .server(conn)?
+        .read(database.as_deref(), |session| async move {
+            session.object_comment(object, metadata_options()).await
+        })
+        .await
 }
 
 /// A view's definition as the statement that replaces it, to edit on a query page.
@@ -826,12 +850,13 @@ pub async fn view_definition_of(
 ) -> CommandResult<String> {
     let server = state.server(conn)?;
     let grammar = grammar_of(&server)?;
+    let object = &object;
     let ddl = server
-        .session(database.as_deref())
-        .await?
-        .object_ddl(&object, metadata_options())
+        .read(database.as_deref(), |session| async move {
+            session.object_ddl(object, metadata_options()).await
+        })
         .await?;
-    Ok(view_definition(grammar, &object, &ddl))
+    Ok(view_definition(grammar, object, &ddl))
 }
 
 /// The maintenance tasks the connection's engine offers, in the menu's order.
@@ -863,7 +888,8 @@ pub async fn run_statements(
     database: Option<String>,
     statements: Vec<String>,
 ) -> CommandResult<()> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
+    let server = state.server(conn)?;
+    let session = server.session(database.as_deref()).await?;
     let sink: Arc<dyn ResultSink> = Arc::new(Discard);
     let outcome = async {
         for statement in &statements {
@@ -878,6 +904,9 @@ pub async fn run_statements(
         Ok(())
     }
     .await;
+    if let Err(error) = &outcome {
+        server.recover(database.as_deref(), &session, error).await;
+    }
     state.catalog.forget(conn);
     outcome
 }
@@ -900,8 +929,13 @@ pub async fn list_indexes(
     database: Option<String>,
     table: TableRef,
 ) -> CommandResult<Vec<kemable_core::catalog::IndexInfo>> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
-    session.list_indexes(&table, metadata_options()).await
+    let table = &table;
+    state
+        .server(conn)?
+        .read(database.as_deref(), |session| async move {
+            session.list_indexes(table, metadata_options()).await
+        })
+        .await
 }
 
 /// An object's name as a person pastes it into a statement, quoted only where
@@ -985,9 +1019,9 @@ pub async fn import_plan(
     let columns = match &target {
         crate::jobs::ImportTarget::Existing { table } => {
             server
-                .session(database.as_deref())
-                .await?
-                .fetch_columns(table, metadata_options())
+                .read(database.as_deref(), |session| async move {
+                    session.fetch_columns(table, metadata_options()).await
+                })
                 .await?
         }
         crate::jobs::ImportTarget::New { .. } => Vec::new(),
@@ -1503,14 +1537,20 @@ pub async fn count_rows(
     database: Option<String>,
     sql: String,
 ) -> CommandResult<u64> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
+    let sql = &sql;
     let sink = Arc::new(CountSink::default());
-    session
-        .execute(
-            &sql,
-            Arc::clone(&sink) as Arc<dyn ResultSink>,
-            CallOptions::default().with_timeout(COUNT_TIMEOUT),
-        )
+    let counting = Arc::clone(&sink);
+    // A count only reads, so a lost session is opened again and asked once more.
+    state
+        .server(conn)?
+        .read(database.as_deref(), |session| {
+            let sink = Arc::clone(&counting) as Arc<dyn ResultSink>;
+            async move {
+                session
+                    .execute(sql, sink, CallOptions::default().with_timeout(COUNT_TIMEOUT))
+                    .await
+            }
+        })
         .await?;
     let count = *sink.count.lock().unwrap_or_else(PoisonError::into_inner);
     count.ok_or_else(|| DriverError::internal("the count returned no number"))
@@ -1606,8 +1646,13 @@ pub async fn scan_keys(
     database: Option<String>,
     scan: KeyScan,
 ) -> CommandResult<KeyPage> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
-    session.scan_keys(&scan, metadata_options()).await
+    let scan = &scan;
+    state
+        .server(conn)?
+        .read(database.as_deref(), |session| async move {
+            session.scan_keys(scan, metadata_options()).await
+        })
+        .await
 }
 
 /// A key read into a result set for the grid.
@@ -1634,19 +1679,24 @@ pub async fn read_key(
     key: String,
     row_limit: Option<u64>,
 ) -> CommandResult<KeyRead> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
+    let key = &key;
     let sink = Arc::new(KeySink {
         state: Arc::clone(&state),
         row_limit,
         store: Mutex::new(None),
         notices: Mutex::new(Vec::new()),
     });
-    let detail = session
-        .read_key(
-            &key,
-            Arc::clone(&sink) as Arc<dyn ResultSink>,
-            CallOptions::default().with_timeout(COUNT_TIMEOUT),
-        )
+    let reading = Arc::clone(&sink);
+    let detail = state
+        .server(conn)?
+        .read(database.as_deref(), |session| {
+            let sink = Arc::clone(&reading) as Arc<dyn ResultSink>;
+            async move {
+                session
+                    .read_key(key, sink, CallOptions::default().with_timeout(COUNT_TIMEOUT))
+                    .await
+            }
+        })
         .await?;
     let store = sink.store.lock().unwrap_or_else(PoisonError::into_inner).take();
     let notices = std::mem::take(&mut *sink.notices.lock().unwrap_or_else(PoisonError::into_inner));
@@ -1842,10 +1892,16 @@ pub async fn apply_edits(
     database: Option<String>,
     statements: Vec<String>,
 ) -> CommandResult<()> {
-    let session = state.server(conn)?.session(database.as_deref()).await?;
-    session
+    let server = state.server(conn)?;
+    let session = server.session(database.as_deref()).await?;
+    let saved = session
         .apply_edits(&statements, CallOptions::default().with_timeout(EDIT_TIMEOUT))
-        .await
+        .await;
+    // Never saved twice: a lost session is only dropped, and the user saves again.
+    if let Err(error) = &saved {
+        server.recover(database.as_deref(), &session, error).await;
+    }
+    saved
 }
 
 /// How long saving edits may take: each statement names one row by its key.

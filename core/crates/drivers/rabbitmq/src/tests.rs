@@ -244,3 +244,21 @@ async fn a_live_binding_hears_what_the_console_publishes() {
     assert_eq!(rows[1][2], Value::Text("kemable.test.x".into()));
     console.close().await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "needs RabbitMQ at $KEMABLE_RABBITMQ_URL"]
+async fn a_closed_connection_opens_again_for_the_next_publish() {
+    let console = RabbitmqDriver
+        .connect(&live_config(), CallOptions::default())
+        .await
+        .unwrap();
+    // As after sleep or a broker restart: the link is gone under the console.
+    console.close().await.unwrap();
+    let sink = Arc::new(Heard::default());
+    console
+        .execute("publish amq.topic kemable.test.again x", sink, CallOptions::default())
+        .await
+        .expect("the publish goes through on a new connection");
+    console.ping(CallOptions::default()).await.unwrap();
+    console.close().await.unwrap();
+}

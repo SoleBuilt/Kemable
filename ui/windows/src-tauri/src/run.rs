@@ -435,7 +435,13 @@ async fn statement_in(
     cancel: CancellationToken,
 ) -> Result<(), DriverError> {
     let session: Arc<dyn Connection> = run.server.session(database.as_deref()).await?;
-    session.execute(text, sink, CallOptions::new(cancel)).await.map(drop)
+    let ran = session.execute(text, sink, CallOptions::new(cancel)).await.map(drop);
+    // A statement is never sent twice: a lost session is only dropped, and
+    // the next run opens another.
+    if let Err(error) = &ran {
+        run.server.recover(database.as_deref(), &session, error).await;
+    }
+    ran
 }
 
 /// The database a successful statement moves the run to, if any: where the
