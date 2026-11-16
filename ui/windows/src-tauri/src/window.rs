@@ -73,6 +73,16 @@ pub fn open(app: &App, folder: &DataFolder) -> tauri::Result<()> {
     window.set_focus()
 }
 
+/// Shows the main window in front, restored if it was minimized: what a second
+/// launch of the app does instead of opening another.
+pub fn bring_forward(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(LABEL) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 fn read_place(path: &Path) -> Option<Place> {
     let file: std::collections::HashMap<String, Place> = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
     file.get(LABEL)

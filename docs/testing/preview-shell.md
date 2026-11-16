@@ -128,3 +128,14 @@ Run trong History chỉ chạy ngay khi câu đã chạy trên đúng kết nố
   **Đúng:** ghi `Every row of dbo.<bảng> in the database Sales on Local SQL is deleted.`: database của nút cây, không phải của trang.
 - [ ] Với SQLite: chuột phải một bảng › **Drop…**.
   **Đúng:** ghi `in <tên file>` (không có chữ "database"), vì SQLite không có database để chọn.
+
+## D13. Chỉ một Kemable
+
+Mở Kemable lần hai (cùng người dùng Windows, cùng bản) không mở cửa sổ thứ hai mà đưa cửa sổ đang chạy lên trước.
+
+- [ ] Mở Kemable bản cài. Mở lại từ Start menu (hoặc nhấp đúp `Kemable.exe`).
+  **Đúng:** không có cửa sổ mới; cửa sổ đang mở được đưa lên trước và nhận focus. Task Manager chỉ có một `Kemable.exe` (cùng các tiến trình WebView2 của nó).
+- [ ] Thu nhỏ cửa sổ, mở Kemable lần nữa.
+  **Đúng:** cửa sổ hiện lại từ thanh taskbar, đúng kích thước cũ.
+- [ ] Trong lúc bản cài đang mở, chạy `pnpm tauri dev`.
+  **Đúng:** bản dev vẫn mở được (identifier khác), hai cửa sổ cùng tồn tại.
