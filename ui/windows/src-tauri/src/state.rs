@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use kemable_core::config::{ConnectionConfig, Target};
 use kemable_core::connection::Connection;
@@ -11,6 +11,7 @@ use kemable_core::engine::EngineInfo;
 use kemable_core::registry::DriverRegistry;
 use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use kemable_store::ResultStore;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use crate::catalog::CatalogCache;
@@ -57,6 +58,21 @@ pub struct ResultOrigin {
     pub part: Option<String>,
 }
 
+/// A session being opened, as its callers wait for it.
+type Opened = Result<Arc<dyn Connection>>;
+
+/// One database's session in the map.
+enum Slot {
+    Open {
+        session: Arc<dyn Connection>,
+        /// When it was last handed out.
+        used: Instant,
+    },
+    /// Opened by a task of its own: a slow connect blocks no other database,
+    /// and each caller waits within its own deadline and Stop.
+    Opening(watch::Receiver<Option<Opened>>),
+}
+
 /// A connection the user opened: one server, and a session per database
 /// in use on it. PostgreSQL binds a session to one database, so each
 /// database the tree expands or a run uses gets its own, opened on first use.
@@ -70,7 +86,8 @@ pub struct OpenServer {
     config: Mutex<ConnectionConfig>,
     /// The database the first session opened on; empty for an engine without databases.
     pub home: String,
-    sessions: tokio::sync::Mutex<HashMap<String, Arc<dyn Connection>>>,
+    /// Never held across an await: a connect runs in a task of its own.
+    sessions: Arc<Mutex<HashMap<String, Slot>>>,
     /// Fires when the connection closes. What listens on a link of its own
     /// (a Live tab) takes a child of it, so it stops with its server.
     pub closing: CancellationToken,
@@ -93,7 +110,13 @@ impl OpenServer {
             driver,
             engine,
             config: Mutex::new(config),
-            sessions: tokio::sync::Mutex::new(HashMap::from([(home.clone(), first)])),
+            sessions: Arc::new(Mutex::new(HashMap::from([(
+                home.clone(),
+                Slot::Open {
+                    session: first,
+                    used: Instant::now(),
+                },
+            )]))),
             home,
             closing: CancellationToken::new(),
             tunnel: tokio::sync::Mutex::new(None),
@@ -138,14 +161,17 @@ impl OpenServer {
     /// answers that its link is gone, it is dropped and the call is tried
     /// once on a new one. Never for a statement that may have run: a run, an
     /// edit or a job only drops the session (`recover`), and the user runs it again.
-    pub async fn read<T, F, Fut>(&self, database: Option<&str>, call: F) -> Result<T>
+    /// `options` bound the wait for a session to open.
+    pub async fn read<T, F, Fut>(&self, database: Option<&str>, options: &CallOptions, call: F) -> Result<T>
     where
         F: Fn(Arc<dyn Connection>) -> Fut,
         Fut: Future<Output = Result<T>>,
     {
-        let session = self.session(database).await?;
+        let session = self.session(database, options).await?;
         match call(Arc::clone(&session)).await {
-            Err(error) if self.recover(database, &session, &error).await => call(self.session(database).await?).await,
+            Err(error) if self.recover(database, &session, &error).await => {
+                call(self.session(database, options).await?).await
+            }
             other => other,
         }
     }
@@ -166,13 +192,15 @@ impl OpenServer {
         }
         let key = self.key(database);
         let dropped = {
-            let mut sessions = self.sessions.lock().await;
+            let mut sessions = lock(&self.sessions);
             match sessions.get(&key) {
-                Some(held) if Arc::ptr_eq(held, session) => sessions.remove(&key),
+                Some(Slot::Open { session: held, .. }) if Arc::ptr_eq(held, session) => sessions.remove(&key),
                 _ => None,
             }
         };
-        close_later(dropped);
+        if let Some(Slot::Open { session, .. }) = dropped {
+            close_later(session);
+        }
         if tunnel_ended {
             // A tunnel that cannot open again now is tried again on the next call.
             let _ = self.reopen_tunnel().await;
@@ -194,37 +222,109 @@ impl OpenServer {
         lock(&self.config).dial = Some(opened.local());
         *tunnel = Some(opened);
         drop(tunnel);
-        let stale: Vec<_> = self.sessions.lock().await.drain().map(|(_, session)| session).collect();
-        for session in stale {
-            close_later(Some(session));
+        let stale: Vec<_> = lock(&self.sessions).drain().map(|(_, slot)| slot).collect();
+        for slot in stale {
+            // One still opening finds its slot gone and closes itself.
+            if let Slot::Open { session, .. } = slot {
+                close_later(session);
+            }
         }
         Ok(())
     }
 
     /// The session on `database`, opened now if it is not open yet. `None`,
     /// an empty name, or an engine without databases means the home session.
-    pub async fn session(&self, database: Option<&str>) -> Result<Arc<dyn Connection>> {
+    /// The open runs in a task of its own, shared by every caller asking for
+    /// the same database, within `CONNECT_TIMEOUT`; `options` bound only this
+    /// caller's wait, so Stop or a short deadline ends it and the open goes on
+    /// for the next call.
+    pub async fn session(&self, database: Option<&str>, options: &CallOptions) -> Result<Arc<dyn Connection>> {
+        options.check()?;
         let key = self.key(database);
-        // One lock across the open, so two callers asking for the same
-        // database at once share one session instead of racing to open two.
-        let mut sessions = self.sessions.lock().await;
-        if let Some(session) = sessions.get(&key) {
-            return Ok(Arc::clone(session));
-        }
+        let mut opening = {
+            let mut sessions = lock(&self.sessions);
+            match sessions.get_mut(&key) {
+                Some(Slot::Open { session, used }) => {
+                    *used = Instant::now();
+                    return Ok(Arc::clone(session));
+                }
+                Some(Slot::Opening(opening)) => opening.clone(),
+                None => {
+                    let opening = self.open(key.clone());
+                    sessions.insert(key, Slot::Opening(opening.clone()));
+                    opening
+                }
+            }
+        };
+        options
+            .run(async move {
+                let opened = opening
+                    .wait_for(Option::is_some)
+                    .await
+                    .map_err(|_| DriverError::internal("the session's open ended without a word"))?;
+                opened
+                    .clone()
+                    .unwrap_or_else(|| Err(DriverError::internal("the session's open ended without a word")))
+            })
+            .await
+    }
+
+    /// Opens the session for `key` in a task, which puts it in the map.
+    fn open(&self, key: String) -> watch::Receiver<Option<Opened>> {
+        let (sender, receiver) = watch::channel(None);
+        let mine = receiver.clone();
+        let driver = Arc::clone(&self.driver);
         let config = with_database(&lock(&self.config), &key);
-        let session = self
-            .driver
-            .connect(&config, CallOptions::default().with_timeout(CONNECT_TIMEOUT))
-            .await?;
-        sessions.insert(key, Arc::clone(&session));
-        Ok(session)
+        let sessions = Arc::clone(&self.sessions);
+        let closing = self.closing.clone();
+        tokio::spawn(async move {
+            let options = CallOptions::new(closing.child_token()).with_timeout(CONNECT_TIMEOUT);
+            let opened = driver.connect(&config, options).await;
+            let opened = {
+                let mut map = lock(&sessions);
+                let ours = matches!(map.get(&key), Some(Slot::Opening(slot)) if slot.same_channel(&mine));
+                match opened {
+                    Ok(session) if ours && !closing.is_cancelled() => {
+                        map.insert(
+                            key,
+                            Slot::Open {
+                                session: Arc::clone(&session),
+                                used: Instant::now(),
+                            },
+                        );
+                        Ok(session)
+                    }
+                    Ok(session) => {
+                        // The server closed, or its tunnel opened again, while this opened.
+                        if ours {
+                            map.remove(&key);
+                        }
+                        close_later(session);
+                        Err(DriverError::new(
+                            ErrorCode::Lost,
+                            "the connection closed as the session opened",
+                        ))
+                    }
+                    Err(error) => {
+                        if ours {
+                            map.remove(&key);
+                        }
+                        Err(error)
+                    }
+                }
+            };
+            let _ = sender.send(Some(opened));
+        });
+        receiver
     }
 
     pub async fn close(&self) {
         self.closing.cancel();
-        let sessions: Vec<_> = self.sessions.lock().await.drain().map(|(_, session)| session).collect();
-        for session in sessions {
-            let _ = session.close().await;
+        let sessions: Vec<_> = lock(&self.sessions).drain().map(|(_, slot)| slot).collect();
+        for slot in sessions {
+            if let Slot::Open { session, .. } = slot {
+                let _ = session.close().await;
+            }
         }
         // Last: the sessions said goodbye through it.
         self.tunnel.lock().await.take();
@@ -237,8 +337,8 @@ impl OpenServer {
         if database == self.home {
             return;
         }
-        let session = self.sessions.lock().await.remove(database);
-        if let Some(session) = session {
+        let slot = lock(&self.sessions).remove(database);
+        if let Some(Slot::Open { session, .. }) = slot {
             let _ = session.close().await;
         }
     }
@@ -246,12 +346,10 @@ impl OpenServer {
 
 /// Closes a session dropped from the map off the caller's path: a lost
 /// link's goodbye can take its time, or never come.
-fn close_later(session: Option<Arc<dyn Connection>>) {
-    if let Some(session) = session {
-        tokio::spawn(async move {
-            let _ = tokio::time::timeout(CONNECT_TIMEOUT, session.close()).await;
-        });
-    }
+fn close_later(session: Arc<dyn Connection>) {
+    tokio::spawn(async move {
+        let _ = tokio::time::timeout(CONNECT_TIMEOUT, session.close()).await;
+    });
 }
 
 /// The same server, pointed at another database.

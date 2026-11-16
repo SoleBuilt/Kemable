@@ -77,3 +77,12 @@ Khi một câu đang chạy, mở kết nối khác bị từ chối và nhắc 
   **Đúng:** mở được; trang mới không có kết quả, lỗi hay chữ "finished" nào của lần chạy cũ.
 - [ ] SQL Server: chạy `waitfor delay '00:00:30';`, nhấn Esc, mở ngay kết nối khác.
   **Đúng:** kết nối mới mở trong vài giây, không đứng ở "Running".
+
+## D8. Mở phiên của một database không làm đứng cả kết nối
+
+Phiên của một database mở trong một tác vụ riêng: các database khác vẫn dùng được trong lúc chờ, và Stop hoặc hạn giờ của lời gọi kết thúc việc chờ.
+
+- [ ] Kết nối PostgreSQL qua một mạng chậm, hoặc một Neon project đang ngủ (mất vài giây để thức). Trong cây, mở một database chưa mở lần nào; ngay lúc đó mở rộng database home và chạy `select 1;` ở tab query trên home.
+  **Đúng:** cây của home và câu `select 1` ra ngay, không phải chờ database kia mở xong.
+- [ ] Chọn database đang mở chậm ở thanh công cụ, chạy `select 1;`, nhấn **Esc** khi còn đang "Running".
+  **Đúng:** dừng ngay, báo **Stopped**; chạy lại sau vài giây thì chạy được trên phiên đã mở xong.

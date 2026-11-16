@@ -405,7 +405,8 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
             Ok(Some(target)) => {
                 // Open the session now, so a database that cannot be reached
                 // fails here, where the switch is, and not on the next statement.
-                if let Err(error) = run.server.session(Some(&target)).await {
+                let opening = CallOptions::new(run.cancel.child_token());
+                if let Err(error) = run.server.session(Some(&target), &opening).await {
                     sink.send(RunEvent::StatementFailed {
                         statement: index,
                         error,
@@ -446,8 +447,10 @@ async fn statement_in(
     sink: Arc<dyn ResultSink>,
     cancel: CancellationToken,
 ) -> Result<(), DriverError> {
-    let session: Arc<dyn Connection> = run.server.session(database.as_deref()).await?;
-    let ran = session.execute(text, sink, CallOptions::new(cancel)).await.map(drop);
+    // Stop ends the wait for a session that is still opening, too.
+    let options = CallOptions::new(cancel);
+    let session: Arc<dyn Connection> = run.server.session(database.as_deref(), &options).await?;
+    let ran = session.execute(text, sink, options).await.map(drop);
     // A statement is never sent twice: a lost session is only dropped, and
     // the next run opens another.
     if let Err(error) = &ran {

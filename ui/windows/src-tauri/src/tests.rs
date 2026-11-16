@@ -486,7 +486,7 @@ async fn completion_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, gram
             let cursor = text.find('|').unwrap_or(text.len());
             let text = text.replacen('|', "", 1);
             let context = completion_context(&text, cursor, grammar).expect("a context");
-            let session = session.session(None).await.expect("a session");
+            let session = session.session(None, &CallOptions::default()).await.expect("a session");
             let view = state.catalog.view(7, None, session, &context).await;
             completions(&context, &view, grammar)
                 .into_iter()
@@ -626,7 +626,7 @@ async fn edit_checks(state: &Arc<AppState>, server: &Arc<OpenServer>, grammar: S
         deletes,
         inserts,
     };
-    let session = server.session(None).await.unwrap();
+    let session = server.session(None, &CallOptions::default()).await.unwrap();
     let rows = |sql: String| async move {
         let events = run_script(state, server, &sql, grammar).await;
         let result = of_type(&events, "setStarted")[0]["result"].as_u64().unwrap();
@@ -1008,7 +1008,7 @@ fn job_channel() -> (Channel<crate::jobs::JobEvent>, Arc<Mutex<Vec<Json>>>) {
 
 /// The rows of a SQLite table numbered from 1 with no gaps: one past the last rowid, less one.
 async fn count(server: &Arc<OpenServer>, table: &str) -> i64 {
-    let session = server.session(None).await.unwrap();
+    let session = server.session(None, &CallOptions::default()).await.unwrap();
     let table = kemable_core::catalog::TableRef {
         schema: None,
         name: table.into(),
@@ -1034,7 +1034,7 @@ async fn import_generate_and_export_move_rows_and_a_cancel_leaves_nothing() {
         SqlGrammar::Sqlite,
     )
     .await;
-    let session = server.session(None).await.unwrap();
+    let session = server.session(None, &CallOptions::default()).await.unwrap();
     let khach = TableRef {
         schema: None,
         name: "khach".into(),
@@ -1994,7 +1994,7 @@ fn opened(driver: &Flaky) -> usize {
 async fn a_read_on_a_lost_session_opens_another_and_asks_once_more() {
     let (_, server, driver) = flaky_server().await;
     let schemas = server
-        .read(None, |session| async move {
+        .read(None, &CallOptions::default(), |session| async move {
             session.list_schemas(CallOptions::default()).await
         })
         .await
@@ -2002,7 +2002,7 @@ async fn a_read_on_a_lost_session_opens_another_and_asks_once_more() {
     assert_eq!(schemas[0].name, "main");
     assert_eq!(opened(&driver), 2, "one new session, not one per call");
     server
-        .read(None, |session| async move {
+        .read(None, &CallOptions::default(), |session| async move {
             session.list_schemas(CallOptions::default()).await
         })
         .await
@@ -2075,4 +2075,187 @@ async fn closing_a_connection_stops_its_run_and_every_event_names_the_run() {
     assert_eq!(finished["type"], "finished");
     assert_eq!(finished["cancelled"], true);
     let _ = std::fs::remove_dir_all(folder);
+}
+
+// --- Opening a session (docs/preview-audit.md, D8) ------------------------------
+
+/// An engine with databases, for sessions kept by database.
+static GATED: kemable_core::engine::EngineInfo = kemable_core::engine::EngineInfo {
+    id: "gated",
+    display_name: "Gated",
+    data_model: kemable_core::engine::DataModel::Sql,
+    targets: &[kemable_core::engine::TargetKind::Network],
+    default_port: None,
+    sql_grammar: Some(SqlGrammar::Postgres),
+    live_topics: &[],
+    has_databases: true,
+    tree_folders: kemable_core::engine::SQL_TREE_FOLDERS,
+};
+
+/// A driver whose connect to the database `slow` waits until `open` is told.
+#[derive(Default)]
+struct Gated {
+    open: tokio::sync::Notify,
+    connects: std::sync::atomic::AtomicUsize,
+}
+
+struct GatedSession {
+    database: String,
+}
+
+#[async_trait::async_trait]
+impl kemable_core::driver::Driver for Gated {
+    fn info(&self) -> &'static kemable_core::engine::EngineInfo {
+        &GATED
+    }
+
+    async fn connect(
+        &self,
+        config: &kemable_core::config::ConnectionConfig,
+        _options: CallOptions,
+    ) -> kemable_core::Result<Arc<dyn kemable_core::connection::Connection>> {
+        self.connects.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let kemable_core::config::Target::Network { database, .. } = &config.target else {
+            unreachable!("a network target");
+        };
+        let database = database.clone().unwrap_or_default();
+        if database == "slow" {
+            self.open.notified().await;
+        }
+        Ok(Arc::new(GatedSession { database }))
+    }
+}
+
+#[async_trait::async_trait]
+impl kemable_core::connection::Connection for GatedSession {
+    fn engine(&self) -> &'static kemable_core::engine::EngineInfo {
+        &GATED
+    }
+
+    fn server_version(&self) -> Option<String> {
+        None
+    }
+
+    fn current_database(&self) -> Option<String> {
+        Some(self.database.clone())
+    }
+
+    async fn ping(&self, _options: CallOptions) -> kemable_core::Result<()> {
+        Ok(())
+    }
+
+    async fn list_schemas(
+        &self,
+        _options: CallOptions,
+    ) -> kemable_core::Result<Vec<kemable_core::catalog::SchemaInfo>> {
+        Ok(Vec::new())
+    }
+
+    async fn list_objects(
+        &self,
+        _schema: Option<&str>,
+        _options: CallOptions,
+    ) -> kemable_core::Result<Vec<kemable_core::catalog::ObjectInfo>> {
+        Ok(Vec::new())
+    }
+
+    async fn fetch_columns(
+        &self,
+        _table: &kemable_core::catalog::TableRef,
+        _options: CallOptions,
+    ) -> kemable_core::Result<Vec<kemable_core::catalog::ColumnInfo>> {
+        Ok(Vec::new())
+    }
+
+    async fn execute(
+        &self,
+        _statement: &str,
+        _sink: Arc<dyn kemable_core::sink::ResultSink>,
+        _options: CallOptions,
+    ) -> kemable_core::Result<kemable_core::sink::ExecOutcome> {
+        Ok(kemable_core::sink::ExecOutcome::default())
+    }
+
+    async fn close(&self) -> kemable_core::Result<()> {
+        Ok(())
+    }
+}
+
+async fn gated_server() -> (Arc<OpenServer>, Arc<Gated>) {
+    use kemable_core::config::{ConnectionConfig, Secret, Target, TlsMode};
+    use kemable_core::driver::Driver;
+    let driver = Arc::new(Gated::default());
+    let config = ConnectionConfig {
+        engine: "gated".into(),
+        target: Target::Network {
+            host: "db".into(),
+            port: None,
+            user: None,
+            password: Secret::default(),
+            database: Some("home".into()),
+            tls: TlsMode::Disable,
+        },
+        options: Default::default(),
+        ssh: None,
+        dial: None,
+    };
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(
+        Arc::clone(&driver) as Arc<dyn kemable_core::driver::Driver>,
+        config,
+        first,
+        "test".into(),
+    ));
+    (server, driver)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_session_open_blocks_no_other_database_and_its_wait_ends_at_stop() {
+    let (server, driver) = gated_server().await;
+    let quick = std::time::Duration::from_secs(5);
+
+    // A run's wait for the slow database ends at its Stop.
+    let stopped = CallOptions::default();
+    let stop = stopped.cancel.clone();
+    let waiting = {
+        let server = Arc::clone(&server);
+        tokio::spawn(async move { server.session(Some("slow"), &stopped).await.map(drop) })
+    };
+    // The tree on another database is not held up by it.
+    let other = tokio::time::timeout(quick, server.session(Some("other"), &CallOptions::default()))
+        .await
+        .expect("another database opens while one is slow")
+        .unwrap();
+    assert_eq!(other.current_database().as_deref(), Some("other"));
+    tokio::time::timeout(quick, server.session(None, &CallOptions::default()))
+        .await
+        .expect("the home session is handed out at once")
+        .unwrap();
+    // A caller's own deadline ends its wait.
+    let late = server
+        .session(
+            Some("slow"),
+            &CallOptions::default().with_timeout(std::time::Duration::from_millis(50)),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(late.code, kemable_core::ErrorCode::Timeout);
+    stop.cancel();
+    let stopped = tokio::time::timeout(quick, waiting)
+        .await
+        .expect("Stop ends the wait")
+        .unwrap();
+    assert_eq!(stopped.err().unwrap().code, kemable_core::ErrorCode::Cancelled);
+
+    // The open went on: once it ends, the next call gets it, opened once.
+    driver.open.notify_one();
+    let slow = tokio::time::timeout(quick, server.session(Some("slow"), &CallOptions::default()))
+        .await
+        .expect("the open ended")
+        .unwrap();
+    assert_eq!(slow.current_database().as_deref(), Some("slow"));
+    // The first session, "other" and "slow": one connect each.
+    assert_eq!(driver.connects.load(std::sync::atomic::Ordering::SeqCst), 3);
+    server.close().await;
 }
