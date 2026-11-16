@@ -111,6 +111,9 @@ fn new_value(grammar: SqlGrammar, column: &ColumnMeta, value: &NewValue) -> Resu
     Ok(match value {
         NewValue::Null => "NULL".to_owned(),
         NewValue::Default => "DEFAULT".to_owned(),
+        // A cleared cell: empty text is a value only of a text column; anywhere
+        // else it would be cast (0, 1900-01-01 on SQL Server) or refused.
+        NewValue::Text(text) if text.is_empty() && column.kind != ValueKind::Text => "NULL".to_owned(),
         // The editor starts a binary cell from its hex: the edit is bytes, never the hex's text.
         NewValue::Text(text) if column.kind == ValueKind::Bytes => match parse_hex(text) {
             Some(bytes) => value_literal(grammar, &Value::Bytes(bytes)).unwrap_or_else(|| "NULL".to_owned()),
@@ -288,6 +291,37 @@ mod tests {
              [note] = N'2024-01-03 10:00' WHERE [at] = N'2024-01-02T10:00:00'"
         );
         assert!(statement(SqlGrammar::Postgres, edit).contains("\"at\" = '2024-01-03 10:00'"));
+    }
+
+    #[test]
+    fn a_cleared_cell_is_null_unless_its_column_holds_text() {
+        let cleared = |kind: ValueKind| RowEdit::Update {
+            key: vec![("id".into(), Value::Int(1))],
+            set: vec![(column("c", "", kind), NewValue::Text(String::new()))],
+        };
+        for kind in [
+            ValueKind::Int,
+            ValueKind::Decimal,
+            ValueKind::Float,
+            ValueKind::Bool,
+            ValueKind::Date,
+            ValueKind::Timestamp,
+            ValueKind::Uuid,
+            ValueKind::Json,
+            ValueKind::Bytes,
+            ValueKind::Other,
+        ] {
+            assert_eq!(
+                statement(SqlGrammar::SqlServer, cleared(kind)),
+                "UPDATE [public].[orders] SET [c] = NULL WHERE [id] = 1",
+                "{kind:?}"
+            );
+        }
+        assert_eq!(
+            statement(SqlGrammar::SqlServer, cleared(ValueKind::Text)),
+            "UPDATE [public].[orders] SET [c] = N'' WHERE [id] = 1"
+        );
+        assert!(statement(SqlGrammar::Postgres, cleared(ValueKind::Text)).contains("\"c\" = ''"));
     }
 
     #[test]
