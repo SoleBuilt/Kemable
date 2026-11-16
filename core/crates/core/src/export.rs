@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::TableRef;
-use crate::format::write_display;
+use crate::format::{hex_preview, write_display};
 use crate::sql::{SqlGrammar, quote_name, table_name, value_literal};
 use crate::value::Value;
 
@@ -107,9 +107,16 @@ impl ExportWriter {
         }
     }
 
+    /// The text a CSV field or a JSON string holds. Bytes have no display
+    /// text, so they go as `0x` and their hex, every byte of them.
     fn text(&mut self, value: &Value) -> String {
         self.cell.clear();
-        write_display(value, &mut self.cell);
+        match value {
+            Value::Bytes(bytes) => {
+                hex_preview(bytes, usize::MAX, &mut self.cell);
+            }
+            other => write_display(other, &mut self.cell),
+        }
         self.cell.clone()
     }
 
@@ -288,6 +295,52 @@ mod tests {
             "INSERT INTO [dbo].[Khách hàng] ([id], [tên, \"đầy đủ\"], [số dư], [ghi chú]) VALUES (1, N'Nguyễn \"An\"', -12.50, NULL);"
         );
         assert_eq!(lines.len(), 3, "the second row's text holds a line break");
+    }
+
+    fn write_bytes(format: ExportFormat) -> String {
+        let options = ExportOptions {
+            format,
+            delimiter: ',',
+            header: true,
+            bom: false,
+        };
+        let table = TableRef {
+            schema: None,
+            name: "t".into(),
+        };
+        let mut writer = ExportWriter::new(options, SqlGrammar::Postgres, table);
+        let mut out = Vec::new();
+        writer.start(vec!["id".into(), "data".into()], &mut out);
+        writer.rows(
+            &[
+                Value::Int(1),
+                Value::Bytes(vec![0x00, 0xff, 0x10]),
+                Value::Int(2),
+                Value::Bytes(Vec::new()),
+                Value::Int(3),
+                Value::Null,
+            ],
+            &mut out,
+        );
+        writer.finish(&mut out);
+        String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn csv_writes_bytes_as_hex_with_a_0x_prefix() {
+        assert_eq!(
+            write_bytes(ExportFormat::Csv),
+            "id,data\r\n1,0x00ff10\r\n2,0x\r\n3,\r\n"
+        );
+    }
+
+    #[test]
+    fn json_writes_bytes_as_a_hex_string_with_a_0x_prefix() {
+        let json = write_bytes(ExportFormat::Json);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed[0]["data"], "0x00ff10");
+        assert_eq!(parsed[1]["data"], "0x");
+        assert!(parsed[2]["data"].is_null());
     }
 
     #[test]
