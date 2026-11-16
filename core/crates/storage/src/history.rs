@@ -55,6 +55,10 @@ pub struct HistoryEntry {
     pub ran_at: i64,
     /// The connection's title, or its saved name.
     pub connection: String,
+    /// What names the connection across launches (`saved:<id>`, `file:<path>`,
+    /// `<engine>:<title>`); None for an entry recorded before it was kept.
+    #[serde(default)]
+    pub connection_key: Option<String>,
     pub engine: String,
     pub database: Option<String>,
     pub statement: String,
@@ -134,6 +138,19 @@ impl QueryHistory {
                  create index if not exists entries_by_connection on entries (connection, id);",
             )
             .map_err(sql_error)?;
+        // A history.db from before the key was kept gains its column once.
+        let has_key: bool = connection
+            .query_row(
+                "select count(*) > 0 from pragma_table_info('entries') where name = 'connection_key'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(sql_error)?;
+        if !has_key {
+            connection
+                .execute_batch("alter table entries add column connection_key text;")
+                .map_err(sql_error)?;
+        }
         Ok(Self {
             connection: Mutex::new(connection),
         })
@@ -154,8 +171,8 @@ impl QueryHistory {
         let connection = self.lock();
         connection
             .execute(
-                "insert into entries (ran_at, connection, engine, database, statement, duration_ms, rows, outcome, error)
-                 values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "insert into entries (ran_at, connection, engine, database, statement, duration_ms, rows, outcome, error, connection_key)
+                 values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     entry.ran_at,
                     entry.connection,
@@ -166,6 +183,7 @@ impl QueryHistory {
                     entry.rows,
                     entry.outcome.as_str(),
                     entry.error,
+                    entry.connection_key,
                 ],
             )
             .map_err(sql_error)?;
@@ -189,7 +207,7 @@ impl QueryHistory {
         let connection = self.lock();
         let mut statement = connection
             .prepare(
-                "select id, ran_at, connection, engine, database, statement, duration_ms, rows, outcome, error
+                "select id, ran_at, connection, engine, database, statement, duration_ms, rows, outcome, error, connection_key
                  from entries
                  where (?1 = '%%' or statement like ?1 escape '\\')
                    and (?2 is null or connection = ?2)
@@ -204,6 +222,7 @@ impl QueryHistory {
                     id: row.get(0)?,
                     ran_at: row.get(1)?,
                     connection: row.get(2)?,
+                    connection_key: row.get(10)?,
                     engine: row.get(3)?,
                     database: row.get(4)?,
                     statement: row.get(5)?,

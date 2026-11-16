@@ -388,6 +388,7 @@ fn entry(statement: &str, connection: &str) -> HistoryEntry {
         id: 0,
         ran_at: 1,
         connection: connection.into(),
+        connection_key: Some(format!("postgres:{connection}")),
         engine: "postgres".into(),
         database: Some("demo".into()),
         statement: statement.into(),
@@ -756,4 +757,32 @@ fn a_kept_ssh_password_is_never_sent_to_another_ssh_server() {
     assert!(moved.ssh);
     // The database password went through that SSH server too: left out as well.
     assert!(moved.password);
+}
+
+#[test]
+fn a_history_entry_keeps_the_key_of_its_connection_and_an_old_file_gains_the_column() {
+    let folder = Folder::new("history-key");
+    std::fs::create_dir_all(&folder.0).unwrap();
+    // A history.db as an earlier version made it, without the key.
+    {
+        let old = rusqlite::Connection::open(folder.0.join("history.db")).unwrap();
+        old.execute_batch(
+            "create table entries (id integer primary key, ran_at integer not null, connection text not null,
+                 engine text not null, database text, statement text not null, duration_ms integer not null,
+                 rows integer, outcome text not null, error text);
+             insert into entries (ran_at, connection, engine, statement, duration_ms, outcome)
+                 values (1, 'Local', 'postgres', 'select 0', 1, 'succeeded');",
+        )
+        .unwrap();
+    }
+    let history = QueryHistory::open(&folder.0).unwrap();
+    let mut keyed = entry("select 1", "Local");
+    keyed.connection_key = Some("saved:abc".into());
+    history.record(&keyed).unwrap();
+    let found = history.search(&HistoryQuery::default()).unwrap();
+    assert_eq!(found[0].connection_key.as_deref(), Some("saved:abc"));
+    assert_eq!(found[1].connection_key, None, "recorded before the key was kept");
+    drop(history);
+    // Opened again, the column is not added twice.
+    QueryHistory::open(&folder.0).unwrap();
 }

@@ -476,6 +476,7 @@ fn record(
         id: 0,
         ran_at,
         connection: run.server.title.clone(),
+        connection_key: (!run.server.key.is_empty()).then(|| run.server.key.clone()),
         engine: run.server.engine.id.to_owned(),
         database,
         statement: statement.to_owned(),

@@ -60,6 +60,9 @@ pub struct ResultOrigin {
 pub struct OpenServer {
     /// What the UI calls it: the saved name, or host and port.
     pub title: String,
+    /// What names it across launches, for its history entries: `saved:<id>`,
+    /// `file:<path>` or `<engine>:<title>` (`connection_key` in commands.rs).
+    pub key: String,
     pub driver: Arc<dyn Driver>,
     pub engine: &'static EngineInfo,
     config: ConnectionConfig,
@@ -84,6 +87,7 @@ impl OpenServer {
         };
         Self {
             title,
+            key: String::new(),
             driver,
             engine,
             config,
@@ -99,6 +103,13 @@ impl OpenServer {
         (self.config.engine == "postgres")
             .then(|| kemable_driver_postgres::realtime::project_url(&self.config))
             .flatten()
+    }
+
+    /// Names it across launches (`Self::key`).
+    #[must_use]
+    pub fn with_key(mut self, key: String) -> Self {
+        self.key = key;
+        self
     }
 
     /// Keeps `tunnel` open as long as this server is.
