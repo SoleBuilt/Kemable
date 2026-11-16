@@ -99,3 +99,12 @@ SQL Server và Redis bật TCP keepalive; D1 và Firebase hết chờ nếu serv
   **Đúng:** cây báo hết thời gian chờ hoặc chờ xong, không làm treo app; câu ở tab đầu vẫn chạy tới hết.
 - [ ] Redis: mở console, ngắt mạng tới server khoảng 2 phút, chạy `PING`.
   **Đúng:** lần đầu báo mất kết nối hoặc lỗi; nối mạng lại, `PING` lần sau ra `PONG`.
+
+## D10. PostgreSQL: Stop không bị chặn sau một lần dừng không trọn
+
+Khi một lần chạy bị dừng mà lệnh huỷ không tới server, lần chạy sau phải dọn transaction cũ trước. Việc dọn đó giờ nằm trong vùng mà Stop theo dõi.
+
+- [ ] Kết nối PostgreSQL, chạy `select pg_sleep(60);` rồi nhấn Esc ngay.
+  **Đúng:** báo **Stopped** trong khoảng một giây.
+- [ ] Chạy `select * from generate_series(1, 5000000);` (giới hạn 1,000 dòng), nhấn Esc khi còn "Running"; ngay sau đó chạy `select pg_sleep(30);` và nhấn Esc.
+  **Đúng:** lần thứ hai cũng dừng trong khoảng một giây, không phải chờ.
