@@ -55,3 +55,14 @@ Một phiên báo mất kết nối thì bị bỏ; việc đọc (cây, gợi �
   **Đúng:** cây và câu chạy hoạt động lại (lần chạy đầu có thể báo mất kết nối), không cần ngắt kết nối thủ công.
 - [ ] RabbitMQ: mở console, chạy `publish amq.topic test x`. Khởi động lại RabbitMQ, chạy lại lệnh đó.
   **Đúng:** lệnh thứ hai chạy được (kết nối và channel được mở lại).
+
+## B11. SQLite: gợi ý và cây không dừng câu đang chạy
+
+- [ ] Mở SQLite `:memory:`, chạy một câu dài (khoảng 10 giây):
+  ```sql
+  with recursive c(x) as (select 1 union all select x + 1 from c limit 100000000) select count(*) from c;
+  ```
+  Trong lúc nó chạy, mở tab query khác, gõ `select * from ` để hiện gợi ý, và mở rộng cây ở sidebar.
+  **Đúng:** gợi ý và cây có thể chưa ra (chờ câu kia), nhưng câu dài vẫn chạy tới hết và ra `100000000`; không báo "The server took too long".
+- [ ] Chạy lại câu dài, bấm **Stop** (Esc) ngay sau khi bấm Run.
+  **Đúng:** dừng trong khoảng một giây, báo **Stopped**.

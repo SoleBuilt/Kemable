@@ -12,7 +12,7 @@ The engines the author uses: SQL Server, PostgreSQL, SQLite, PGlite, Redis, Rabb
 
 | Engine | Data model | Reached through | Crate | Notes |
 |---|---|---|---|---|
-| SQLite | SQL | the file | `rusqlite`, bundled | Done. Interrupt on cancel |
+| SQLite | SQL | the file | `rusqlite`, bundled | Done. Interrupt on cancel. The connection has one interrupt, which stops whatever statement holds it: a call interrupts only while its own work holds the connection, again until that work ends (an interrupt before the statement starts is dropped), and a call still waiting for the connection gives up at its deadline without one, so completion or the tree never stops the user's query (amended 2026-11-15, `docs/preview-audit.md` B11) |
 | Cloudflare D1, local | SQL | the file | the SQLite driver | Wrangler keeps local D1 databases as SQLite files under `.wrangler/state/v3/d1/` |
 | PostgreSQL | SQL | TCP, TLS | `tokio-postgres`, rustls with ring and the Windows trust store | Done. Two sessions per connection, editor and catalog. Binary values decoded exactly; arrays, ranges, intervals and network types as psql writes them; `timestamptz` shown in UTC. Cancel through the cancel request on Stop and at the deadline; the row cap stops a plain query through a cursor and never cancels (The row cap, below) |
 | Neon | SQL | the PostgreSQL driver | | TLS with SNI is required: the endpoint id travels in the server name. A suspended compute wakes in seconds, so the connect timeout is generous |
