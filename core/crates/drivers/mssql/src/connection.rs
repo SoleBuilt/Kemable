@@ -26,6 +26,8 @@ type MssqlClient = Client<Compat<TcpStream>>;
 
 const DEFAULT_PORT: u16 = 1433;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(30);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 /// How long the server has to acknowledge an attention before the session
 /// is given up and opened again.
 const CANCEL_GRACE: Duration = Duration::from_secs(5);
@@ -103,6 +105,10 @@ impl MssqlConnection {
             tds.database(database);
         }
         tds.application_name(config.options.get("application_name").map_or("Kemable", String::as_str));
+        // A run has no deadline: the user's Stop ends it, and TCP keepalive
+        // notices a dead link. tiberius's own 30 s bound would end every long
+        // query and leave its session out of step.
+        tds.command_timeout(None);
         tds.authentication(match user.as_deref().filter(|user| !user.is_empty()) {
             Some(user) => AuthMethod::sql_server(user, password.expose()),
             None => windows_login()?,
@@ -258,6 +264,7 @@ async fn open_now(config: &tiberius::Config, reach: Reach) -> Result<MssqlClient
         Reach::Through(dial) => TcpStream::connect(dial).await.map_err(refused)?,
     };
     let _ = tcp.set_nodelay(true);
+    keep_alive(&tcp);
     match Client::connect(config.clone(), tcp.compat_write()).await {
         Ok(client) => Ok(client),
         Err(tiberius::error::Error::Routing { host, port }) => {
@@ -267,10 +274,22 @@ async fn open_now(config: &tiberius::Config, reach: Reach) -> Result<MssqlClient
             let tcp = TcpStream::connect(routed.get_addr())
                 .await
                 .map_err(|error| DriverError::new(ErrorCode::Connect, error.to_string()))?;
+            let _ = tcp.set_nodelay(true);
+            keep_alive(&tcp);
             Client::connect(routed, tcp.compat_write()).await.map_err(map)
         }
         Err(error) => Err(map(error)),
     }
+}
+
+/// TCP keepalive on a link, as the PostgreSQL driver asks for: a quiet link
+/// is probed after `KEEPALIVE_IDLE`, so one that died silently (sleep, a
+/// dropped VPN) fails as lost instead of leaving a call waiting for ever.
+pub(crate) fn keep_alive(tcp: &TcpStream) {
+    let keepalive = socket2::TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL);
+    let _ = socket2::SockRef::from(tcp).set_tcp_keepalive(&keepalive);
 }
 
 /// What goes before a batch that is one plain query under a row limit:
@@ -998,9 +1017,10 @@ impl Connection for MssqlConnection {
 
     async fn execute(&self, batch: &str, sink: Arc<dyn ResultSink>, options: CallOptions) -> Result<ExecOutcome> {
         options.check()?;
-        let mut guard = self.editor.lock().await;
+        // A call queued behind a running batch keeps its own Stop and deadline.
+        let mut guard = options.run(async { Ok(self.editor.lock().await) }).await?;
         if guard.is_none() {
-            *guard = Some(open(&self.config, self.reach).await?);
+            *guard = Some(options.run(open(&self.config, self.reach)).await?);
         }
         let prefix = row_count_prefix(batch, sink.as_ref());
         let sent = match &prefix {

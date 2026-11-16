@@ -26,6 +26,9 @@ pub(crate) struct Firebase {
     rtdb: String,
 }
 
+/// The longest a reply may stay silent before its request fails.
+const READ_TIMEOUT: Duration = Duration::from_secs(120);
+
 fn tls_config() -> Result<rustls::ClientConfig> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let tls_error = |error: rustls::Error| DriverError::new(ErrorCode::Tls, error.to_string());
@@ -168,6 +171,10 @@ impl Firebase {
         let http = reqwest::Client::builder()
             .tls_backend_preconfigured(tls_config()?)
             .connect_timeout(Duration::from_secs(15))
+            // A link that dies with a request in flight fails instead of
+            // leaving the call waiting; Realtime streams send a keep-alive
+            // well inside it.
+            .read_timeout(READ_TIMEOUT)
             .user_agent(concat!("Kemable/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|error| DriverError::new(ErrorCode::Tls, error.to_string()))?;

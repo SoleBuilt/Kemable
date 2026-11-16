@@ -1738,3 +1738,70 @@ fn every_kind_the_catalog_lists_has_a_folder_in_the_tree() {
         );
     }
 }
+
+#[test]
+fn a_timed_out_socket_is_a_lost_session_once_connected() {
+    use crate::errors::{Phase, map};
+    let timed_out = || tiberius::error::Error::Io {
+        kind: std::io::ErrorKind::TimedOut,
+        message: "WSAETIMEDOUT".into(),
+    };
+    assert_eq!(map(timed_out(), None, Phase::Run).code, ErrorCode::Lost);
+    assert_eq!(map(timed_out(), None, Phase::Connect).code, ErrorCode::Timeout);
+}
+
+#[tokio::test]
+async fn a_link_asks_for_tcp_keepalive() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let tcp = tokio::net::TcpStream::connect(listener.local_addr().unwrap())
+        .await
+        .unwrap();
+    assert!(!socket2::SockRef::from(&tcp).keepalive().unwrap());
+    crate::connection::keep_alive(&tcp);
+    assert!(socket2::SockRef::from(&tcp).keepalive().unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn a_call_queued_behind_a_running_batch_keeps_its_own_deadline() {
+    let connection = live_in("master").await;
+    let busy = {
+        let connection = Arc::clone(&connection);
+        tokio::spawn(async move {
+            connection
+                .execute(
+                    "waitfor delay '00:00:05'",
+                    Arc::new(Collect::default()),
+                    CallOptions::default(),
+                )
+                .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let started = std::time::Instant::now();
+    let error = connection
+        .execute(
+            "select 1",
+            Arc::new(Collect::default()),
+            CallOptions::default().with_timeout(Duration::from_millis(200)),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+    busy.await.unwrap().unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn a_batch_longer_than_thirty_seconds_is_not_cut_by_the_client() {
+    let connection = live_in("master").await;
+    connection
+        .execute(
+            "waitfor delay '00:00:35'",
+            Arc::new(Collect::default()),
+            CallOptions::default(),
+        )
+        .await
+        .expect("a run has no deadline of its own");
+}
