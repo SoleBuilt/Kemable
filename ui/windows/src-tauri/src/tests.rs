@@ -2143,3 +2143,82 @@ async fn an_edit_of_a_multi_line_cell_keeps_its_crlf_line_ends() {
     server.close().await;
     let _ = std::fs::remove_dir_all(folder);
 }
+
+/// Runs `script` on `server` with `row_limit`, and returns its events.
+async fn run_with_limit(
+    state: &Arc<AppState>,
+    server: &Arc<OpenServer>,
+    script: &str,
+    grammar: SqlGrammar,
+    row_limit: Option<u64>,
+) -> Vec<Json> {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let collected = Arc::clone(&events);
+    let channel = Channel::new(move |body| {
+        if let InvokeResponseBody::Json(json) = body {
+            collected
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str::<Json>(&json).unwrap());
+        }
+        Ok(())
+    });
+    let statements = split(script, grammar)
+        .iter()
+        .map(|span| Statement {
+            text: span.text(script).to_owned(),
+            kind: span.kind,
+        })
+        .collect();
+    let run = Run {
+        id: state.add_run(CancellationToken::new()),
+        server: Arc::clone(server),
+        database: None,
+        grammar: Some(grammar),
+        statements,
+        follow_created_database: true,
+        row_limit,
+        record: false,
+        cancel: CancellationToken::new(),
+        channel,
+    };
+    run::execute(Arc::clone(state), run).await;
+    events.lock().unwrap().clone()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_result_with_no_row_limit_stops_at_the_memory_budget_and_says_how_much_it_holds() {
+    let mut state = AppState::new(DriverRegistry::new().with(Arc::new(kemable_driver_sqlite::SqliteDriver)));
+    assert!(state.result_bytes.is_some(), "the machine's memory is read");
+    state.result_bytes = Some(1_000_000);
+    let state = Arc::new(state);
+    let (server, folder) = sqlite_server(&state, "memory-budget").await;
+    let events = run_with_limit(
+        &state,
+        &server,
+        "with recursive c(x) as (select 1 union all select x + 1 from c limit 1000000) select x, 'row ' || x from c",
+        SqlGrammar::Sqlite,
+        None,
+    )
+    .await;
+    let finished = of_type(&events, "setFinished")[0];
+    assert_eq!(finished["limited"], true);
+    let held = finished["stoppedAtBytes"].as_u64().expect("it says how much it holds");
+    assert!((1_000_000..1_100_000).contains(&held), "{held}");
+    assert!(finished["total"].as_u64().unwrap() < 1_000_000);
+
+    // A row cap reached first is the row cap's, not memory's.
+    let capped = run_with_limit(
+        &state,
+        &server,
+        "select 1 union all select 2",
+        SqlGrammar::Sqlite,
+        Some(1),
+    )
+    .await;
+    let finished = of_type(&capped, "setFinished")[0];
+    assert_eq!(finished["limited"], true);
+    assert!(finished["stoppedAtBytes"].is_null());
+    server.close().await;
+    let _ = std::fs::remove_dir_all(folder);
+}

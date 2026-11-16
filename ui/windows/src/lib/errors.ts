@@ -28,6 +28,7 @@ const TITLES: Record<string, string> = {
   "secret.moved": "This connection points elsewhere than where its password was kept for: enter the password again",
   "secret.vault": "Windows Credential Manager could not keep or read the password",
   "ssh.secret_moved": "This connection's SSH server changed since its SSH password was kept: edit the connection to enter it again",
+  "result.too_big": "The answer is too big to hold in memory: read it with a limit",
   internal: "Something went wrong inside Kemable",
 };
 

@@ -59,6 +59,9 @@ pub enum RunEvent {
         result: u64,
         total: u64,
         limited: bool,
+        /// The set stopped at the memory budget holding about this many
+        /// bytes, not at the row limit.
+        stopped_at_bytes: Option<u64>,
     },
     CommandDone {
         statement: usize,
@@ -156,6 +159,7 @@ impl RunSink {
             result: set.id,
             total: state.total_rows,
             limited: state.limited,
+            stopped_at_bytes: state.memory_limited.then_some(state.bytes),
         });
     }
 }
@@ -163,7 +167,7 @@ impl RunSink {
 impl ResultSink for RunSink {
     fn begin_set(&self, columns: Vec<ColumnMeta>) {
         self.close_open_set();
-        let store = Arc::new(ResultStore::new(columns.clone(), self.row_limit));
+        let store = Arc::new(self.state.new_store(columns.clone(), self.row_limit));
         let made = self.sets_here.fetch_add(1, Ordering::Relaxed);
         let range = self
             .parts
@@ -208,6 +212,10 @@ impl ResultSink for RunSink {
 
     fn row_limit(&self) -> Option<u64> {
         self.row_limit
+    }
+
+    fn byte_limit(&self) -> Option<u64> {
+        self.state.result_bytes
     }
 
     fn end_set(&self) {

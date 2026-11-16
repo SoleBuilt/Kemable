@@ -31,6 +31,9 @@ pub struct AppState {
     pub catalog: CatalogCache,
     /// The SSH servers trusted, in the data folder's `known_hosts`, set at startup.
     pub host_keys: std::sync::OnceLock<Arc<kemable_tunnel::HostKeys>>,
+    /// The most bytes one result set holds (`crate::memory`), as the row
+    /// limit is the most rows; `None` keeps any size.
+    pub result_bytes: Option<u64>,
 }
 
 /// A result set and where it came from.
@@ -206,7 +209,13 @@ impl AppState {
             runs: Mutex::default(),
             catalog: CatalogCache::default(),
             host_keys: std::sync::OnceLock::new(),
+            result_bytes: crate::memory::result_budget(),
         }
+    }
+
+    /// A result set of `columns` that stops at `row_limit` rows or at the memory budget.
+    pub fn new_store(&self, columns: Vec<kemable_core::catalog::ColumnMeta>, row_limit: Option<u64>) -> ResultStore {
+        ResultStore::new(columns, row_limit).with_byte_limit(self.result_bytes)
     }
 
     /// The known SSH hosts; before startup sets them (tests), a file in the temp folder.

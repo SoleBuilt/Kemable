@@ -81,6 +81,10 @@ pub enum ErrorCode {
     /// keep, read or forget a password; the message is its own text.
     #[serde(rename = "secret.vault")]
     Vault,
+    /// An answer the driver must hold whole before it shows a row of it is
+    /// bigger than a result set may hold in memory (`ResultSink::byte_limit`).
+    #[serde(rename = "result.too_big")]
+    TooBig,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -113,6 +117,7 @@ impl ErrorCode {
             Self::SecretMoved => "secret.moved",
             Self::SshSecretMoved => "ssh.secret_moved",
             Self::Vault => "secret.vault",
+            Self::TooBig => "result.too_big",
             Self::Internal => "internal",
         }
     }

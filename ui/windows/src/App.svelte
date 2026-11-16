@@ -150,6 +150,8 @@
     totalRows: number;
     finished: boolean;
     limited: boolean;
+    /** It stopped at the memory budget, not the row cap, holding about this many bytes. */
+    stoppedAtBytes: number | null;
     /** The sort the header shows. */
     sort: SortKey[];
     /** Who sorted it: the server (the statement ran again) or the core. */
@@ -1438,6 +1440,7 @@
             totalRows: 0,
             finished: false,
             limited: false,
+            stoppedAtBytes: null,
             sort: sorted?.keys ?? [],
             sortedBy: sorted ? "server" : null,
             original: sorted?.original ?? null,
@@ -1452,10 +1455,10 @@
         break;
       case "setFinished":
         if (sets.find((set) => set.result === event.result)?.filter) {
-          updateSet(event.result, { finished: true, limited: event.limited });
+          updateSet(event.result, { finished: true, limited: event.limited, stoppedAtBytes: event.stoppedAtBytes });
           refreshCounts(event.result);
         } else {
-          updateSet(event.result, { totalRows: event.total, finished: true, limited: event.limited });
+          updateSet(event.result, { totalRows: event.total, finished: true, limited: event.limited, stoppedAtBytes: event.stoppedAtBytes });
         }
         break;
       case "partsDropped":
@@ -1784,6 +1787,7 @@
             totalRows: read.totalRows,
             finished: true,
             limited: read.limited,
+            stoppedAtBytes: read.stoppedAtBytes,
             sort: [],
             sortedBy: null,
             original: null,
@@ -2911,7 +2915,11 @@
           {:else}
             <span>{numberFormat.format(activeSet.totalRows)} rows{activeSet.finished ? "" : " so far"}</span>
           {/if}
-          {#if activeSet.limited}
+          {#if activeSet.stoppedAtBytes !== null}
+            <!-- Fetch all would stop at the same memory budget, so it is not offered. -->
+            <Badge tone="warning" dot>Stopped at {numberFormat.format(Math.round(activeSet.stoppedAtBytes / 1_048_576))} MB</Badge>
+            {#if activeSet.filter}<span>the filter covers only the rows loaded</span>{/if}
+          {:else if activeSet.limited}
             <Badge tone="warning" dot>Stopped at {numberFormat.format(activeSet.filter?.held ?? activeSet.totalRows)} rows</Badge>
             {#if activeSet.filter}<span>the filter covers only the rows loaded</span>{/if}
             <Button variant="link" disabled={running} onclick={fetchAll}>Fetch all</Button>

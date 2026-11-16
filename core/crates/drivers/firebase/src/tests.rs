@@ -242,6 +242,8 @@ struct Rows {
     columns: Mutex<Vec<ColumnMeta>>,
     cells: Mutex<Vec<Value>>,
     limit: usize,
+    /// The sink's memory budget, `ResultSink::byte_limit`.
+    bytes: Option<u64>,
 }
 
 impl ResultSink for Rows {
@@ -254,6 +256,10 @@ impl ResultSink for Rows {
         cells.extend_from_slice(values);
         let width = self.columns.lock().unwrap().len().max(1);
         self.limit == 0 || cells.len() / width < self.limit
+    }
+
+    fn byte_limit(&self) -> Option<u64> {
+        self.bytes
     }
 
     fn end_set(&self) {}
@@ -459,6 +465,33 @@ async fn a_document_a_query_and_the_realtime_database_read_and_errors_keep_googl
                 .any(|folder| folder.kinds.contains(&object.kind))
         );
     }
+}
+
+#[tokio::test]
+async fn a_realtime_read_with_no_limit_stops_past_the_memory_budget() {
+    let (base, _) = serve().await;
+    let connection = FirebaseDriver.connect(&config(&base, KEY), options()).await.unwrap();
+    // /chats is about 80 bytes of JSON; a budget of 40 bytes keeps 10 of text.
+    let small = Arc::new(Rows {
+        bytes: Some(40),
+        ..Rows::default()
+    });
+    let error = connection
+        .execute("rtdb /chats", small.clone(), options())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::TooBig);
+    assert_eq!(small.count(), 0, "no row of a value read in part");
+
+    let roomy = Arc::new(Rows {
+        bytes: Some(1_000_000),
+        ..Rows::default()
+    });
+    connection
+        .execute("rtdb /chats", roomy.clone(), options())
+        .await
+        .unwrap();
+    assert_eq!(roomy.count(), 2);
 }
 
 #[tokio::test]

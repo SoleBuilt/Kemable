@@ -21,12 +21,19 @@ pub const CHUNK_ROWS: usize = 65_536;
 /// offset always fits a `u32`.
 const MAX_CHUNK_BYTES: usize = 1 << 31;
 
+/// What a cell costs beside its text: its kind, raw value and offset (the
+/// null bit is rounded into them).
+const CELL_BYTES: u64 = 1 + 8 + 4;
+
 /// One result set. Drivers append through the app's sink while grids read
 /// windows; both go through one lock, and a window reads rows and the row
 /// count under the same read guard, so it is one snapshot.
 pub struct ResultStore {
     columns: Vec<ColumnMeta>,
     row_limit: Option<u64>,
+    /// The most bytes the set holds (`with_byte_limit`), so a result with no
+    /// row cap cannot take the machine's memory.
+    byte_limit: Option<u64>,
     inner: RwLock<Inner>,
     /// Held while a filter or a sort builds its row order, so two of them
     /// never build from each other's half.
@@ -42,8 +49,12 @@ pub struct StoreState {
     /// A filter is on (`ResultStore::filter`).
     pub filtered: bool,
     pub finished: bool,
-    /// The set stopped at the row limit with rows still unread.
+    /// The set stopped at the row limit, or at the byte limit, with rows still unread.
     pub limited: bool,
+    /// About how many bytes the rows held take.
+    pub bytes: u64,
+    /// The set stopped at its byte limit, not at its row limit.
+    pub memory_limited: bool,
 }
 
 /// A cell's full value, for copy and the detail view. A window carries
@@ -91,6 +102,10 @@ pub(crate) struct Inner {
     pub(crate) total_rows: u64,
     pub(crate) finished: bool,
     pub(crate) limited: bool,
+    /// About how many bytes the rows held take: their cells' text and bytes,
+    /// and each cell's kind, raw value, offset and null bit.
+    pub(crate) bytes: u64,
+    pub(crate) memory_limited: bool,
     /// The rows shown, in order: display row `i` is stored row `order[i]`.
     /// Without a filter, rows that arrived after the sort follow in arrival
     /// order; with one, it lists every row shown, the late ones that match
@@ -229,9 +244,22 @@ impl ResultStore {
         Self {
             columns,
             row_limit,
+            byte_limit: None,
             inner: RwLock::new(Inner::default()),
             arranging: Mutex::new(()),
         }
+    }
+
+    /// Stops the set once its rows take about `limit` bytes, as the row
+    /// limit stops it at a count; `None` keeps every row.
+    #[must_use]
+    pub fn with_byte_limit(mut self, limit: Option<u64>) -> Self {
+        self.byte_limit = limit;
+        self
+    }
+
+    pub fn byte_limit(&self) -> Option<u64> {
+        self.byte_limit
     }
 
     pub fn columns(&self) -> &[ColumnMeta] {
@@ -249,7 +277,8 @@ impl ResultStore {
     }
 
     /// Appends whole rows, row after row. Returns `false` when a row past the
-    /// limit was offered or the set is finished, and the driver stops reading.
+    /// row limit or the byte limit was offered or the set is finished, and the
+    /// driver stops reading.
     pub fn push_rows(&self, values: &[Value]) -> bool {
         let width = self.columns.len();
         if width == 0 {
@@ -269,9 +298,17 @@ impl ResultStore {
                 inner.limited = true;
                 return false;
             }
+            if self.byte_limit.is_some_and(|limit| inner.bytes >= limit) {
+                inner.limited = true;
+                inner.memory_limited = true;
+                return false;
+            }
             let chunk = inner.open_chunk(width);
+            let mut added = CELL_BYTES * width as u64;
             for (column, value) in chunk.columns.iter_mut().zip(row) {
+                let before = column.data.len();
                 column.push(value, &mut scratch);
+                added += (column.data.len() - before) as u64;
             }
             let local = chunk.rows;
             chunk.rows += 1;
@@ -280,6 +317,7 @@ impl ResultStore {
                 .is_some_and(|filter| filter.matches(chunk, local, &mut tests));
             let stored = inner.total_rows;
             inner.total_rows += 1;
+            inner.bytes += added;
             if kept && let Some(order) = inner.order.as_mut() {
                 order.push(stored);
             }
@@ -299,6 +337,8 @@ impl ResultStore {
             filtered: inner.filter.is_some(),
             finished: inner.finished,
             limited: inner.limited,
+            bytes: inner.bytes,
+            memory_limited: inner.memory_limited,
         }
     }
 

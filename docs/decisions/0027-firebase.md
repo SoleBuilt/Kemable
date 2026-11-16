@@ -21,7 +21,7 @@ Two things shape it:
 - **The tree**: two schemas, Firestore (its top-level collections, folder Collections) and Realtime Database (the root's children, folder Children). A double-click reads one on a query page, through the console.
 - **The console**, one command a line:
   - `get <collection>` reads its documents page after page (300 a request) until the row cap; `get <collection>/<document>` reads one; `where <field> <op> <value> [and …]`, `order by <field> [desc]` and `limit <n>` make it a query (`runQuery`). A value is JSON (`12`, `true`, `"text"`, `'["a","b"]'`) or a word read as a string.
-  - `rtdb <path> [limit <n>]` reads the Realtime Database: one row per child, its fields as columns when the children are objects, else its value.
+  - `rtdb <path> [limit <n>]` reads the Realtime Database: one row per child, its fields as columns when the children are objects, else its value. With no limit the value is one JSON reply held whole: its text is read up to a quarter of the result's memory budget (ADR 0002) and a bigger one fails with `result.too_big`, so the user reads it with a limit.
 - **A document as a row**: `id`, one column per field the first page has (by name, as Firestore sends them), `other_fields` (JSON of the fields only later documents have, so nothing is lost), `update_time`. Types map exactly: integers as integers (past a float's 2^53 too), doubles, timestamps in UTC with their microseconds, bytes, references as their path, maps and arrays as JSON with their typed values unwrapped.
 - **Errors** keep Google's words and status (`NOT_FOUND`, `FAILED_PRECONDITION` with its link to create an index); a refused key or token is `driver.auth`.
 
