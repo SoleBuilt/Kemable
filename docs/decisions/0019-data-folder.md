@@ -28,6 +28,8 @@ What the app remembered was in three places: the saved connections, profiles, qu
 - **The WebView's folder is each Windows user's own** (changed 2026-11-15, `DataFolder::webview`): `%LOCALAPPDATA%\<identifier>\webview`, never `data\webview`. Two accounts cannot share one WebView folder while both run (suspected of closing the second account's app at launch); and in a folder every user may change, one account could plant what another's WebView loads. The UI keeps nothing in the WebView's storage (above), so nothing moves.
 - **When the app cannot start** (WebView2 missing or blocked by policy, a data folder it cannot make), a Windows message box says why before it ends (`cannot_start` in `src-tauri/src/lib.rs`): a release build has no console, and Tauri ends a failed setup with a panic.
 
+- **One instance** (added 2026-11-15): `tauri-plugin-single-instance` ends a second launch of the same app for the same Windows user and brings the running window forward, since two windows would write the same `ui.json` and `pages/*.json`, the last write winning. The installed app and a development build have different identifiers, so they still run side by side.
+
 ## Alternatives considered
 
 - **One `session.json` with everything.** Every keystroke would rewrite every connection's pages, and the launch would read them all.

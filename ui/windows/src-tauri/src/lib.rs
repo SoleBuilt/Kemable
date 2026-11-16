@@ -48,6 +48,11 @@ fn registry() -> DriverRegistry {
 pub fn run() {
     let state = Arc::new(AppState::new(registry()));
     let result = tauri::Builder::default()
+        // First, so a second launch ends before it opens anything: two windows would write
+        // the same ui.json and pages, the last one winning. The running window comes forward.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            window::bring_forward(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
         // Asked by the UI only: once at launch and from Settings (docs/decisions/0028-updates.md).
         .plugin(tauri_plugin_updater::Builder::new().build())

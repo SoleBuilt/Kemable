@@ -7932,6 +7932,7 @@ Used by:
 - p12-keystore 0.2.1
 - tauri-plugin-dialog 2.8.4
 - tauri-plugin-fs 2.7.1
+- tauri-plugin-single-instance 2.5.5
 - tauri-plugin-updater 2.14.1
 - tiberius-macros 0.1.0
 - webview2-com-macros 0.8.1

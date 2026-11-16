@@ -72,6 +72,8 @@ uuid = { version = "1", features = ["v4"] }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+# One Kemable per Windows user and identifier: a second launch focuses the first.
+tauri-plugin-single-instance = "2"
 # A message box when the app cannot start, before any window exists; tauri-plugin-dialog already builds it.
 rfd = { version = "0.17", default-features = false, features = ["common-controls-v6"] }
 # Update in place from GitHub Releases, checked once at launch (docs/decisions/0028-updates.md).
