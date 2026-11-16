@@ -12,9 +12,10 @@ Static pages built with Astro, React and Tailwind, served by Cloudflare Pages: t
 ## Map
 
 - `src/pages/`: `index.astro` (the home page), `terms.astro`, `privacy.astro`. A file here is a page at its name: `terms.astro` is `/terms` (`build.format: "file"`, so Pages serves it with no redirect).
-- `src/layouts/Base.astro`: the head, the bar at the top and the footer. `src/links.ts`: the addresses more than one page uses.
+- `src/layouts/Base.astro`: the head (the link preview `og.png`, the page's schema.org data), the bar at the top and the footer. `src/links.ts`: the addresses more than one page uses.
+- `src/seo.ts`: what search engines and AI assistants read about Kemable: the summary, the engines, the home page's Questions and its schema.org data (`SoftwareApplication`, `FAQPage`). `src/pages/llms.txt.ts` (`/llms.txt`, the site in Markdown for AI assistants), `robots.txt.ts` (every crawler welcome) and `sitemap.xml.ts` (a new page is listed there) are built from it. An answer states what the app does today; a change to the app that makes one untrue changes it.
 - `src/components/`: `ThemeToggle.tsx` (the one React island: dark or light, kept in the browser's storage), `DraftNotice.astro` (the note at the top of the Terms and the Privacy Policy until a lawyer has read them).
-- `public/`: copied as is: the app's icon (`app-icon.svg`, the favicon and the logo), the screenshots and the demo video, `_headers` (Cloudflare Pages' headers: long caching for `/_astro/*`).
+- `public/`: copied as is: the app's icon (`app-icon.svg`, the favicon and the logo; `apple-touch-icon.png`, 180 px), `og.png` (the 1200 by 630 link preview: the icon, the headline and the demo's poster), the screenshots and the demo video (H.264 only: a VP9 webm failed in GPU decoders), `_headers` (Cloudflare Pages' headers: long caching for `/_astro/*`).
 - `astro.config.mjs`: the site's address (`site`), which is the Pages address until a domain is bought.
 - `pnpm-workspace.yaml`: packages at least two weeks old (`minimumReleaseAge`), and no `sharp`.
 

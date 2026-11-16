@@ -1,8 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import { DOWNLOAD, REPOSITORY } from "../links";
-
-const engines = ["SQLite", "PostgreSQL", "Neon", "Supabase", "SQL Server", "Redis", "Cloudflare D1", "RabbitMQ", "Firebase"];
+import { ENGINES as engines, FAQ, structuredData } from "../seo";
 
 const measured = [
   { value: "2 ms", label: "to the first page of a 300,000-row join" },
@@ -52,7 +51,11 @@ const primary =
 const secondary = "inline-flex h-12 items-center rounded-[10px] border border-line-strong px-[22px] font-medium text-fg hover:text-fg";
 ---
 
-<Base title="Kemable: a fast, light database client" description="The database client that streams millions of rows without a stutter. Free and open source, for Windows.">
+<Base
+  title="Kemable: a fast, free database client for Windows"
+  description="Stream millions of rows without a stutter. A free, open-source database client for Windows: SQLite, PostgreSQL, SQL Server, Redis, Cloudflare D1 and more."
+  structured={structuredData(Astro.site ?? new URL(Astro.url.origin))}
+>
   <section class="relative px-6 pt-28 text-center">
     <div
       aria-hidden="true"
@@ -169,6 +172,25 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
           </div>
         ))
       }
+    </div>
+  </section>
+
+  <section id="questions" class="px-6 pt-[140px]">
+    <div class="mx-auto flex max-w-[860px] flex-col gap-8">
+      <h2 class="m-0 text-center text-[44px] font-semibold leading-[1.05] tracking-[-0.035em]">Questions</h2>
+      <div class="border-t border-line">
+        {
+          FAQ.map(({ question, answer }) => (
+            <details class="group border-b border-line">
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-lg font-medium [&::-webkit-details-marker]:hidden">
+                <h3 class="m-0 text-lg font-medium">{question}</h3>
+                <span aria-hidden="true" class="text-2xl leading-none text-fg3 transition-transform group-open:rotate-45">+</span>
+              </summary>
+              <p class="m-0 pb-6 text-[17px] leading-relaxed text-fg2">{answer}</p>
+            </details>
+          ))
+        }
+      </div>
     </div>
   </section>
 

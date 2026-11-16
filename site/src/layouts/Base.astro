@@ -7,10 +7,15 @@ import "../styles/global.css";
 interface Props {
   title: string;
   description: string;
+  /** schema.org data for the page (`src/seo.ts`), read by search engines and AI assistants. */
+  structured?: object;
 }
 
-const { title, description } = Astro.props;
+const { title, description, structured } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
+// PNG, not WebP: some link previews read only PNG or JPEG. 1200 by 630 is the size they crop to.
+const image = new URL("/og.png", Astro.site);
+const imageAlt = "Kemable, a fast, light database client, with its grid of two million rows";
 ---
 
 <!doctype html>
@@ -22,13 +27,25 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/svg+xml" href="/app-icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="sitemap" href="/sitemap.xml" />
     <meta name="theme-color" content="#050505" />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Kemable" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={new URL("/demo-poster.webp", Astro.site)} />
+    <meta property="og:image" content={image} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={imageAlt} />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={image} />
+    <meta name="twitter:image:alt" content={imageAlt} />
+    {structured && <script type="application/ld+json" set:html={JSON.stringify(structured).replaceAll("<", "\\u003c")} />}
     <!-- Before the first paint, so a light choice never flashes dark. -->
     <script is:inline>
       try {
