@@ -169,3 +169,16 @@ Các nút **Open** (thư mục dữ liệu), **License**, **Source code › Open
   **Đúng:** dải đóng. Bấm lại một nút mở thành công: không có dải.
 - [ ] (Khó tạo trên máy thường) Khi Credential Manager từ chối (ví dụ chính sách nhóm chặn), lưu một kết nối có Save password.
   **Đúng:** lỗi ghi **Windows Credential Manager could not keep or read the password**, chi tiết bắt đầu `Windows Credential Manager: `.
+
+## D18. Cột số dòng đủ rộng
+
+Cột số dòng rộng theo số dòng của kết quả: đủ cho số dòng cuối, đo bằng chữ số rộng nhất của font Geist, đo lại khi font tải xong, và chừa chỗ cho dấu `− ` của dòng đánh dấu xoá.
+
+- [ ] SQLite in-memory, chạy `with recursive c(x) as (select 1 union all select x + 1 from c limit 2000000) select x, x * 2, 'row ' || x from c` với **No limit**. Nhấn **Ctrl+End**.
+  **Đúng:** số `2000000` nằm gọn trong cột số dòng, cách vạch cột đầu một khoảng như ở dòng 1; không chạm hay đè lên cột đầu.
+- [ ] Cuộn bằng chuột, thanh cuộn và bàn phím trong lúc dòng còn đang về.
+  **Đúng:** cột số dòng nở ra khi qua 9.999, 99.999, 999.999 dòng; cuộn vẫn mượt.
+- [ ] Mở một bảng có trên 100.000 dòng (Fetch all), chọn vài dòng cuối, nhấn **Del**.
+  **Đúng:** dòng ghi `− <số>`, cả dấu và số nằm trong cột, không bị cắt bên trái.
+- [ ] Zoom 150% (**Ctrl+=** hai lần), lặp lại bước đầu.
+  **Đúng:** số vẫn vừa cột.
