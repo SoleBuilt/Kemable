@@ -21,7 +21,7 @@ pub use completion::{
     CatalogView, Clause, CompletionContext, CompletionItem, ItemKind, Lookups, TableReference, completion_context,
     completions,
 };
-pub use database_change::{DatabaseChange, database_change};
+pub use database_change::{DatabaseChange, database_change, may_use_database};
 pub use edit::{NewValue, RowEdit, edit_statement, keep_line_endings};
 pub use literal::{
     Affinity, exact_sqlite_number, sql_server_datetime, sqlite_affinity, typed as typed_literal, value_literal,

@@ -119,6 +119,9 @@ struct RunSink {
     sets_here: AtomicUsize,
     /// The ids of the sets the current statement made, to forget their parts.
     ids_here: Mutex<Vec<u64>>,
+    /// The database the current statement moved its session to (SQL Server's
+    /// `USE`, anywhere in a batch); the driver has put the session back.
+    moved_to: Mutex<Option<String>>,
 }
 
 impl RunSink {
@@ -234,6 +237,10 @@ impl ResultSink for RunSink {
             text: text.to_owned(),
         });
     }
+
+    fn database_changed(&self, database: &str) {
+        *self.moved_to.lock().unwrap_or_else(PoisonError::into_inner) = Some(database.to_owned());
+    }
 }
 
 /// The statements a run sends, from the ones chosen in the script. A SQL Server
@@ -298,6 +305,7 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
         parts: Mutex::new(None),
         sets_here: AtomicUsize::new(0),
         ids_here: Mutex::new(Vec::new()),
+        moved_to: Mutex::new(None),
     });
     let mut database = run.database.clone();
     let mut failed = false;
@@ -326,6 +334,7 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
         *sink.parts.lock().unwrap_or_else(PoisonError::into_inner) = parts;
         sink.sets_here.store(0, Ordering::Relaxed);
         sink.ids_here.lock().unwrap_or_else(PoisonError::into_inner).clear();
+        sink.moved_to.lock().unwrap_or_else(PoisonError::into_inner).take();
         let statement_started = Instant::now();
         let ran_in = database.clone();
         let outcome = match statement.kind {
@@ -343,7 +352,10 @@ pub async fn execute(state: Arc<AppState>, run: Run) {
                 let shared: Arc<dyn ResultSink> = sink.clone();
                 statement_in(&run, text, &database, shared, run.cancel.child_token())
                     .await
-                    .map(|()| follow(&run, text, &mut database))
+                    .map(|()| {
+                        let moved = sink.moved_to.lock().unwrap_or_else(PoisonError::into_inner).take();
+                        follow(&run, text, moved, &mut database)
+                    })
             }
         };
         let made = sink.sets_here.load(Ordering::Relaxed);
@@ -418,15 +430,18 @@ async fn statement_in(
     session.execute(text, sink, CallOptions::new(cancel)).await.map(drop)
 }
 
-/// The database a successful statement moves the run to, if any.
-fn follow(run: &Run, text: &str, database: &mut Option<String>) -> Option<String> {
+/// The database a successful statement moves the run to, if any: where the
+/// driver says a `USE` left the session, or a database it created.
+fn follow(run: &Run, text: &str, moved: Option<String>, database: &mut Option<String>) -> Option<String> {
     if !run.server.engine.has_databases {
         return None;
     }
-    let target = match database_change(text, run.grammar?)? {
-        DatabaseChange::Created(name) if run.follow_created_database => name,
-        DatabaseChange::Used(name) => name,
-        _ => return None,
+    let target = match moved {
+        Some(name) => name,
+        None => match database_change(text, run.grammar?)? {
+            DatabaseChange::Created(name) if run.follow_created_database => name,
+            _ => return None,
+        },
     };
     *database = Some(target.clone());
     Some(target)

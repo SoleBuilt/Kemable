@@ -155,6 +155,43 @@ async fn a_sql_server_script_follows_create_database_and_use() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn a_use_inside_a_sql_server_batch_leaves_the_first_database_where_it_was() {
+    let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
+    let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
+    let state = Arc::new(AppState::new(DriverRegistry::new().with(Arc::new(MssqlDriver))));
+    let driver = state.registry.get("mssql").cloned().expect("the driver is registered");
+    let first = driver
+        .connect(&config, CallOptions::default())
+        .await
+        .expect("the server accepts the connection");
+    let server = Arc::new(OpenServer::new(driver, config, first, "test".into()));
+    let home = server.home.clone();
+    assert_ne!(home, "tempdb", "the test needs a login whose database is not tempdb");
+
+    // The USE is not the batch's first word: only the server can tell it moved.
+    let events = run_script(
+        &state,
+        &server,
+        "select 1;\nuse tempdb;\nselect db_name()",
+        SqlGrammar::SqlServer,
+    )
+    .await;
+    assert!(of_type(&events, "statementFailed").is_empty(), "{events:#?}");
+    let switches: Vec<_> = of_type(&events, "databaseChanged")
+        .iter()
+        .map(|event| event["database"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(switches, ["tempdb".to_owned()]);
+    assert_eq!(first_rows(&state, &events)[1], [Some("tempdb".to_owned())]);
+
+    // The home session, which the tree and table tabs use, is still in its own database.
+    let after = run_script(&state, &server, "select db_name()", SqlGrammar::SqlServer).await;
+    assert_eq!(first_rows(&state, &after), [vec![Some(home.clone())]]);
+    server.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
 async fn a_sql_server_batch_that_creates_a_database_runs_the_rest_in_it() {
     let url = std::env::var("KEMABLE_MSSQL_URL").expect("KEMABLE_MSSQL_URL is set");
     let config = kemable_core::connection_url::parse(&url).expect("a valid URL");
