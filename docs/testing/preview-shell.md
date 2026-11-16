@@ -182,3 +182,16 @@ Cột số dòng rộng theo số dòng của kết quả: đủ cho số dòng 
   **Đúng:** dòng ghi `− <số>`, cả dấu và số nằm trong cột, không bị cắt bên trái.
 - [ ] Zoom 150% (**Ctrl+=** hai lần), lặp lại bước đầu.
   **Đúng:** số vẫn vừa cột.
+
+## D19. Cột rộng ra khi gặp giá trị dài hơn lúc cuộn
+
+Độ rộng cột lấy từ 64 dòng đầu, rồi rộng thêm (tới 360 px, và không bao giờ đổi cột người dùng đã tự kéo) khi một khối dòng về sau có giá trị dài hơn. Để cuộn vẫn nhanh, chỉ đo những ô dài hơn (tính theo byte) ô dài nhất đã đo trong cột đó; phần lớn khối không đo gì.
+
+- [ ] Chạy câu của mục D18. Cột thứ ba (`'row ' || x`) lúc đầu vừa `row 1`…`row 64`. Cuộn xuống dòng 1.000, rồi 100.000, rồi 2.000.000.
+  **Đúng:** cột rộng dần ra để `row 100000`, `row 2000000` hiện đủ, không bị cắt; khi đã đủ rộng thì không đổi nữa.
+- [ ] Kéo cạnh tiêu đề cột thứ ba cho hẹp lại, rồi cuộn tiếp tới vùng có giá trị dài hơn.
+  **Đúng:** cột giữ độ rộng đã kéo.
+- [ ] Một cột chứa văn bản rất dài (ví dụ `select x, case when x = 5000 then printf('%.500c', 'a') else 'b' end from c` với `limit 10000`): cuộn tới dòng 5.000.
+  **Đúng:** cột rộng tới 360 px là dừng; giá trị bị cắt ở 360 px như trước.
+- [ ] Đo: F12 › Performance, ghi 5 giây cuộn liên tục (bánh xe và kéo thanh cuộn) trên câu của D18.
+  **Đúng:** khung hình dưới 8 ms như `.claude/rules/data-grid.md` yêu cầu; không có tác vụ dài khi khối dòng về.

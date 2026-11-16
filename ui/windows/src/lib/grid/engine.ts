@@ -215,6 +215,8 @@ export class GridEngine {
   private lefts: number[] = [0];
   private readonly userSized = new Set<number>();
   private autoSized = false;
+  /** Per column, the most UTF-8 bytes of a text measured for its width: only a longer one is measured. */
+  private measuredBytes: number[] = [];
   private gutterWidth = 40;
   private viewWidth = 0;
   private viewHeight = 0;
@@ -263,6 +265,7 @@ export class GridEngine {
     this.pending.clear();
     this.userSized.clear();
     this.autoSized = false;
+    this.measuredBytes = [];
     this.selection = null;
     this.totalRows = 0;
     this.context.font = HEADER_FONT;
@@ -461,6 +464,7 @@ export class GridEngine {
           this.blocks.delete(oldest);
         }
         if (!this.autoSized && block === 0) this.autoSize(window);
+        else if (this.autoSized) this.widen(window);
         this.scheduleDraw();
       })
       .catch(() => {
@@ -479,13 +483,51 @@ export class GridEngine {
       let width = context.measureText(column.name).width + CELL_PADDING * 2 + 8;
       context.font = FONT;
       const rows = Math.min(window.rowCount, 64);
+      let bytes = 0;
       for (let row = 0; row < rows; row++) {
         const absolute = window.firstRow + row;
         if (window.isNull(absolute, index)) continue;
+        bytes = Math.max(bytes, window.byteLength(absolute, index));
         width = Math.max(width, context.measureText(window.text(absolute, index)).width + CELL_PADDING * 2);
       }
+      this.measuredBytes[index] = bytes;
       this.widths[index] = clamp(Math.ceil(width), MIN_WIDTH, MAX_AUTO_WIDTH);
     });
+    this.computeLefts();
+    this.updateSpacer();
+  }
+
+  /**
+   * Widens a column, up to MAX_AUTO_WIDTH, for a wider value in a block that came in
+   * later: "row 600" is not cut because "row 1" set the width. Kept off the draw loop
+   * and cheap: a cell is measured only when its text is longer in bytes than the
+   * longest measured in its column so far, so most blocks measure nothing.
+   */
+  private widen(window: ResultWindow): void {
+    if (!this.source) return;
+    const context = this.context;
+    context.font = FONT;
+    let changed = false;
+    const columns = Math.min(this.widths.length, window.firstColumn + window.columnCount);
+    for (let column = window.firstColumn; column < columns; column++) {
+      const width = this.widths[column] ?? 0;
+      if (this.userSized.has(column) || width >= MAX_AUTO_WIDTH) continue;
+      let bytes = this.measuredBytes[column] ?? 0;
+      let widest = width;
+      for (let row = window.firstRow; row < window.firstRow + window.rowCount; row++) {
+        const length = window.byteLength(row, column);
+        if (length <= bytes || window.isNull(row, column)) continue;
+        bytes = length;
+        widest = Math.max(widest, context.measureText(window.text(row, column)).width + CELL_PADDING * 2);
+      }
+      this.measuredBytes[column] = bytes;
+      const next = clamp(Math.ceil(widest), MIN_WIDTH, MAX_AUTO_WIDTH);
+      if (next > width) {
+        this.widths[column] = next;
+        changed = true;
+      }
+    }
+    if (!changed) return;
     this.computeLefts();
     this.updateSpacer();
   }
