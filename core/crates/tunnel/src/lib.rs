@@ -136,6 +136,11 @@ impl client::Handler for Checker {
 pub struct Tunnel {
     local: SocketAddr,
     stop: CancellationToken,
+    /// What opened it, to open it again after the SSH session ended.
+    ssh: SshTunnel,
+    to_host: String,
+    to_port: u16,
+    keys: Arc<HostKeys>,
 }
 
 impl Tunnel {
@@ -147,6 +152,13 @@ impl Tunnel {
     /// Whether the SSH session or the listener has ended.
     pub fn is_closed(&self) -> bool {
         self.stop.is_cancelled()
+    }
+
+    /// A new tunnel through the same SSH server to the same host and port,
+    /// on a new local port: after sleep or a dropped VPN the SSH session
+    /// ends, and every link through it with it.
+    pub async fn reopen(&self, options: &CallOptions) -> Result<Tunnel, DriverError> {
+        open(&self.ssh, &self.to_host, self.to_port, Arc::clone(&self.keys), options).await
     }
 }
 
@@ -191,6 +203,7 @@ pub async fn open(
         }
         SshAuth::Password { .. } => None,
     };
+    let reopen_keys = Arc::clone(&keys);
     let found = Arc::new(Mutex::new(None));
     let checker = Checker {
         host: ssh.host.clone(),
@@ -241,7 +254,14 @@ pub async fn open(
         to_port,
         stop.clone(),
     ));
-    Ok(Tunnel { local, stop })
+    Ok(Tunnel {
+        local,
+        stop,
+        ssh: ssh.clone(),
+        to_host: to_host.to_owned(),
+        to_port,
+        keys: reopen_keys,
+    })
 }
 
 async fn sign_in(

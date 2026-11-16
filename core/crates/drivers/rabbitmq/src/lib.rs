@@ -164,8 +164,31 @@ async fn open(config: &ConnectionConfig, options: &CallOptions) -> Result<lapin:
 }
 
 pub struct RabbitmqConnection {
+    /// What opened it, to open it again once the broker or the network closed it.
+    config: ConnectionConfig,
+    link: tokio::sync::Mutex<Link>,
+}
+
+/// One AMQP connection and the channel the console publishes on.
+struct Link {
     connection: lapin::Connection,
     channel: Channel,
+}
+
+/// A channel to publish on.
+async fn publishing_channel(
+    connection: &lapin::Connection,
+    options: &CallOptions,
+    connecting: bool,
+) -> Result<Channel> {
+    options
+        .run(async {
+            connection
+                .create_channel()
+                .await
+                .map_err(|error| map(&error, connecting))
+        })
+        .await
 }
 
 #[async_trait]
@@ -176,10 +199,11 @@ impl Driver for RabbitmqDriver {
 
     async fn connect(&self, config: &ConnectionConfig, options: CallOptions) -> Result<Arc<dyn Connection>> {
         let connection = open(config, &options).await?;
-        let channel = options
-            .run(async { connection.create_channel().await.map_err(|error| map(&error, true)) })
-            .await?;
-        Ok(Arc::new(RabbitmqConnection { connection, channel }))
+        let channel = publishing_channel(&connection, &options, true).await?;
+        Ok(Arc::new(RabbitmqConnection {
+            config: config.clone(),
+            link: tokio::sync::Mutex::new(Link { connection, channel }),
+        }))
     }
 
     async fn listen(
@@ -385,6 +409,21 @@ async fn consume(
 }
 
 impl RabbitmqConnection {
+    /// The channel to publish on. A connection the network or the broker
+    /// closed (after sleep, a restart) is opened again, and a channel the
+    /// broker closed (a refused publish) is made again on its connection.
+    async fn channel(&self, options: &CallOptions) -> Result<Channel> {
+        let mut link = self.link.lock().await;
+        if !link.connection.status().connected() {
+            let connection = open(&self.config, options).await?;
+            let channel = publishing_channel(&connection, options, true).await?;
+            *link = Link { connection, channel };
+        } else if !link.channel.status().connected() {
+            link.channel = publishing_channel(&link.connection, options, false).await?;
+        }
+        Ok(link.channel.clone())
+    }
+
     /// `publish <exchange> <routing key> <body>`: the body is the rest of the
     /// words, joined by spaces, or one quoted word; `""` is the default exchange.
     async fn publish(&self, words: &[Vec<u8>], options: &CallOptions) -> Result<()> {
@@ -394,9 +433,10 @@ impl RabbitmqConnection {
         let exchange = String::from_utf8_lossy(exchange);
         let key = String::from_utf8_lossy(key);
         let body = body.join(&b' ');
+        let channel = self.channel(options).await?;
         let confirm = options
             .run(async {
-                self.channel
+                channel
                     .basic_publish(
                         exchange.as_ref().into(),
                         key.as_ref().into(),
@@ -425,12 +465,8 @@ impl Connection for RabbitmqConnection {
         None
     }
 
-    async fn ping(&self, _options: CallOptions) -> Result<()> {
-        if self.connection.status().connected() {
-            Ok(())
-        } else {
-            Err(DriverError::new(ErrorCode::Lost, "the connection is closed"))
-        }
+    async fn ping(&self, options: CallOptions) -> Result<()> {
+        self.channel(&options).await.map(drop)
     }
 
     async fn list_schemas(&self, _options: CallOptions) -> Result<Vec<SchemaInfo>> {
@@ -466,7 +502,11 @@ impl Connection for RabbitmqConnection {
     }
 
     async fn close(&self) -> Result<()> {
-        self.connection
+        let link = self.link.lock().await;
+        if !link.connection.status().connected() {
+            return Ok(());
+        }
+        link.connection
             .close(200, "Kemable closed the connection".into())
             .await
             .map_err(|error| map(&error, false))

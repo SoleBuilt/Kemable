@@ -277,3 +277,38 @@ async fn a_key_file_signs_in_and_a_missing_one_is_a_config_error() {
     let error = open(&missing, "127.0.0.1", 5432, keys, &options()).await.err().unwrap();
     assert_eq!(error.code, ErrorCode::ConfigInvalid);
 }
+
+#[tokio::test]
+async fn a_tunnel_opens_again_on_a_new_port_to_the_same_database() {
+    let (ssh_port, _) = ssh_server(false).await;
+    let echo = echo_server().await;
+    let file = known_hosts_file("reopen");
+    let keys = Arc::new(HostKeys::with_user_file(file.clone(), None));
+    let _ = open(
+        &tunnel_to(ssh_port, "secret"),
+        "127.0.0.1",
+        echo,
+        Arc::clone(&keys),
+        &options(),
+    )
+    .await;
+    keys.trust("127.0.0.1", ssh_port).unwrap();
+    let first = open(
+        &tunnel_to(ssh_port, "secret"),
+        "127.0.0.1",
+        echo,
+        Arc::clone(&keys),
+        &options(),
+    )
+    .await
+    .unwrap();
+
+    let again = first.reopen(&options()).await.unwrap();
+    assert_ne!(again.local(), first.local());
+    drop(first);
+    let mut link = TcpStream::connect(again.local()).await.unwrap();
+    link.write_all(b"select 3").await.unwrap();
+    let mut answer = [0u8; 8];
+    link.read_exact(&mut answer).await.unwrap();
+    assert_eq!(&answer, b"select 3");
+}

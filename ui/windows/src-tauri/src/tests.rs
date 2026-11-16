@@ -1863,3 +1863,162 @@ async fn a_result_with_no_row_limit_stops_at_the_memory_budget_and_says_how_much
     server.close().await;
     let _ = std::fs::remove_dir_all(folder);
 }
+
+// --- A lost link (docs/preview-audit.md, B10) ----------------------------------
+
+/// A driver whose first session's link is gone: every call on it answers
+/// `driver.lost`, as a session does after sleep or a server restart.
+#[derive(Default)]
+struct Flaky {
+    opened: std::sync::atomic::AtomicUsize,
+}
+
+struct FlakySession {
+    lost: bool,
+}
+
+#[async_trait::async_trait]
+impl kemable_core::driver::Driver for Flaky {
+    fn info(&self) -> &'static kemable_core::engine::EngineInfo {
+        &kemable_driver_sqlite::INFO
+    }
+
+    async fn connect(
+        &self,
+        _config: &kemable_core::config::ConnectionConfig,
+        _options: CallOptions,
+    ) -> kemable_core::Result<Arc<dyn kemable_core::connection::Connection>> {
+        let opened = self.opened.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(Arc::new(FlakySession { lost: opened == 0 }))
+    }
+}
+
+impl FlakySession {
+    fn check(&self) -> kemable_core::Result<()> {
+        if self.lost {
+            Err(kemable_core::DriverError::new(kemable_core::ErrorCode::Lost, "gone"))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl kemable_core::connection::Connection for FlakySession {
+    fn engine(&self) -> &'static kemable_core::engine::EngineInfo {
+        &kemable_driver_sqlite::INFO
+    }
+
+    fn server_version(&self) -> Option<String> {
+        None
+    }
+
+    async fn ping(&self, _options: CallOptions) -> kemable_core::Result<()> {
+        self.check()
+    }
+
+    async fn list_schemas(
+        &self,
+        _options: CallOptions,
+    ) -> kemable_core::Result<Vec<kemable_core::catalog::SchemaInfo>> {
+        self.check()?;
+        Ok(vec![kemable_core::catalog::SchemaInfo {
+            name: "main".into(),
+            is_default: true,
+        }])
+    }
+
+    async fn list_objects(
+        &self,
+        _schema: Option<&str>,
+        _options: CallOptions,
+    ) -> kemable_core::Result<Vec<kemable_core::catalog::ObjectInfo>> {
+        self.check().map(|()| Vec::new())
+    }
+
+    async fn fetch_columns(
+        &self,
+        _table: &kemable_core::catalog::TableRef,
+        _options: CallOptions,
+    ) -> kemable_core::Result<Vec<kemable_core::catalog::ColumnInfo>> {
+        self.check().map(|()| Vec::new())
+    }
+
+    async fn execute(
+        &self,
+        _statement: &str,
+        sink: Arc<dyn kemable_core::sink::ResultSink>,
+        _options: CallOptions,
+    ) -> kemable_core::Result<kemable_core::sink::ExecOutcome> {
+        self.check()?;
+        sink.command_done(None);
+        Ok(kemable_core::sink::ExecOutcome::default())
+    }
+
+    async fn close(&self) -> kemable_core::Result<()> {
+        Ok(())
+    }
+}
+
+/// A server on `Flaky` whose first session is lost, and the driver to count its opens.
+async fn flaky_server() -> (Arc<AppState>, Arc<OpenServer>, Arc<Flaky>) {
+    use kemable_core::config::{ConnectionConfig, Target};
+    use kemable_core::driver::Driver;
+    let state = Arc::new(AppState::new(DriverRegistry::new()));
+    let driver = Arc::new(Flaky::default());
+    let config = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: ":memory:".into(),
+            read_only: false,
+        },
+        options: Default::default(),
+        ssh: None,
+        dial: None,
+    };
+    let first = driver.connect(&config, CallOptions::default()).await.unwrap();
+    let server = Arc::new(OpenServer::new(
+        Arc::clone(&driver) as Arc<dyn kemable_core::driver::Driver>,
+        config,
+        first,
+        "test".into(),
+    ));
+    (state, server, driver)
+}
+
+fn opened(driver: &Flaky) -> usize {
+    driver.opened.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_read_on_a_lost_session_opens_another_and_asks_once_more() {
+    let (_, server, driver) = flaky_server().await;
+    let schemas = server
+        .read(None, |session| async move {
+            session.list_schemas(CallOptions::default()).await
+        })
+        .await
+        .expect("the read goes through on a new session");
+    assert_eq!(schemas[0].name, "main");
+    assert_eq!(opened(&driver), 2, "one new session, not one per call");
+    server
+        .read(None, |session| async move {
+            session.list_schemas(CallOptions::default()).await
+        })
+        .await
+        .unwrap();
+    assert_eq!(opened(&driver), 2, "the new session is kept");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_on_a_lost_session_is_not_sent_again_but_the_next_run_has_a_new_session() {
+    let (state, server, driver) = flaky_server().await;
+    let first = run_script(&state, &server, "insert into t values (1)", SqlGrammar::Sqlite).await;
+    let failed = of_type(&first, "statementFailed");
+    assert_eq!(failed[0]["error"]["code"], "driver.lost");
+    assert_eq!(opened(&driver), 1, "a statement that may have run is never sent twice");
+
+    let again = run_script(&state, &server, "insert into t values (1)", SqlGrammar::Sqlite).await;
+    assert!(of_type(&again, "statementFailed").is_empty(), "{again:#?}");
+    assert_eq!(opened(&driver), 2);
+}

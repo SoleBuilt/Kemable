@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -8,7 +9,7 @@ use kemable_core::connection::Connection;
 use kemable_core::driver::Driver;
 use kemable_core::engine::EngineInfo;
 use kemable_core::registry::DriverRegistry;
-use kemable_core::{CallOptions, DriverError, Result};
+use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
 use kemable_store::ResultStore;
 use tokio_util::sync::CancellationToken;
 
@@ -65,7 +66,8 @@ pub struct OpenServer {
     pub title: String,
     pub driver: Arc<dyn Driver>,
     pub engine: &'static EngineInfo,
-    config: ConnectionConfig,
+    /// Its `dial` moves when an SSH tunnel is opened again.
+    config: Mutex<ConnectionConfig>,
     /// The database the first session opened on; empty for an engine without databases.
     pub home: String,
     sessions: tokio::sync::Mutex<HashMap<String, Arc<dyn Connection>>>,
@@ -73,8 +75,9 @@ pub struct OpenServer {
     /// (a Live tab) takes a child of it, so it stops with its server.
     pub closing: CancellationToken,
     /// The SSH tunnel every session and listener of this server goes through;
-    /// it closes with the server (`docs/decisions/0024-ssh-tunnels.md`).
-    tunnel: std::sync::Mutex<Option<kemable_tunnel::Tunnel>>,
+    /// it closes with the server, and opens again when its SSH session ended
+    /// (`docs/decisions/0024-ssh-tunnels.md`).
+    tunnel: tokio::sync::Mutex<Option<kemable_tunnel::Tunnel>>,
 }
 
 impl OpenServer {
@@ -89,25 +92,26 @@ impl OpenServer {
             title,
             driver,
             engine,
-            config,
+            config: Mutex::new(config),
             sessions: tokio::sync::Mutex::new(HashMap::from([(home.clone(), first)])),
             home,
             closing: CancellationToken::new(),
-            tunnel: std::sync::Mutex::new(None),
+            tunnel: tokio::sync::Mutex::new(None),
         }
     }
 
     /// A Supabase project's URL, when this server is one.
     pub fn realtime_url(&self) -> Option<String> {
-        (self.config.engine == "postgres")
-            .then(|| kemable_driver_postgres::realtime::project_url(&self.config))
+        let config = lock(&self.config);
+        (config.engine == "postgres")
+            .then(|| kemable_driver_postgres::realtime::project_url(&config))
             .flatten()
     }
 
     /// Keeps `tunnel` open as long as this server is.
     #[must_use]
-    pub fn with_tunnel(self, tunnel: Option<kemable_tunnel::Tunnel>) -> Self {
-        *lock(&self.tunnel) = tunnel;
+    pub fn with_tunnel(mut self, tunnel: Option<kemable_tunnel::Tunnel>) -> Self {
+        self.tunnel = tokio::sync::Mutex::new(tunnel);
         self
     }
 
@@ -115,26 +119,99 @@ impl OpenServer {
     /// beside the sessions. `None`, an empty name, or an engine without
     /// databases means where the connection opened.
     pub fn config_for(&self, database: Option<&str>) -> ConnectionConfig {
+        let config = lock(&self.config);
         match database {
-            Some(name) if self.engine.has_databases && !name.is_empty() => with_database(&self.config, name),
-            _ => self.config.clone(),
+            Some(name) if self.engine.has_databases && !name.is_empty() => with_database(&config, name),
+            _ => config.clone(),
         }
+    }
+
+    /// The key a session is kept under: the database, or `home`.
+    fn key(&self, database: Option<&str>) -> String {
+        match database {
+            Some(name) if self.engine.has_databases && !name.is_empty() => name.to_owned(),
+            _ => self.home.clone(),
+        }
+    }
+
+    /// Runs `call`, a read, on the session for `database`. When the session
+    /// answers that its link is gone, it is dropped and the call is tried
+    /// once on a new one. Never for a statement that may have run: a run, an
+    /// edit or a job only drops the session (`recover`), and the user runs it again.
+    pub async fn read<T, F, Fut>(&self, database: Option<&str>, call: F) -> Result<T>
+    where
+        F: Fn(Arc<dyn Connection>) -> Fut,
+        Fut: Future<Output = Result<T>>,
+    {
+        let session = self.session(database).await?;
+        match call(Arc::clone(&session)).await {
+            Err(error) if self.recover(database, &session, &error).await => call(self.session(database).await?).await,
+            other => other,
+        }
+    }
+
+    /// After `session` failed with `error`: when its link is gone
+    /// (`driver.lost`, or the SSH tunnel under it ended) it is dropped, so the
+    /// next call opens another, and an ended tunnel is opened again first.
+    /// Says whether it dropped it.
+    pub async fn recover(&self, database: Option<&str>, session: &Arc<dyn Connection>, error: &DriverError) -> bool {
+        let tunnel_ended = self
+            .tunnel
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(kemable_tunnel::Tunnel::is_closed);
+        if error.code != ErrorCode::Lost && !tunnel_ended {
+            return false;
+        }
+        let key = self.key(database);
+        let dropped = {
+            let mut sessions = self.sessions.lock().await;
+            match sessions.get(&key) {
+                Some(held) if Arc::ptr_eq(held, session) => sessions.remove(&key),
+                _ => None,
+            }
+        };
+        close_later(dropped);
+        if tunnel_ended {
+            // A tunnel that cannot open again now is tried again on the next call.
+            let _ = self.reopen_tunnel().await;
+        }
+        true
+    }
+
+    /// Opens the SSH tunnel again on a new local port, and drops every
+    /// session: they dialed the old one.
+    async fn reopen_tunnel(&self) -> Result<()> {
+        let mut tunnel = self.tunnel.lock().await;
+        let Some(ended) = tunnel.as_ref().filter(|tunnel| tunnel.is_closed()) else {
+            // Another call opened it again meanwhile.
+            return Ok(());
+        };
+        let opened = ended
+            .reopen(&CallOptions::new(self.closing.child_token()).with_timeout(CONNECT_TIMEOUT))
+            .await?;
+        lock(&self.config).dial = Some(opened.local());
+        *tunnel = Some(opened);
+        drop(tunnel);
+        let stale: Vec<_> = self.sessions.lock().await.drain().map(|(_, session)| session).collect();
+        for session in stale {
+            close_later(Some(session));
+        }
+        Ok(())
     }
 
     /// The session on `database`, opened now if it is not open yet. `None`,
     /// an empty name, or an engine without databases means the home session.
     pub async fn session(&self, database: Option<&str>) -> Result<Arc<dyn Connection>> {
-        let key = match database {
-            Some(name) if self.engine.has_databases && !name.is_empty() => name.to_owned(),
-            _ => self.home.clone(),
-        };
+        let key = self.key(database);
         // One lock across the open, so two callers asking for the same
         // database at once share one session instead of racing to open two.
         let mut sessions = self.sessions.lock().await;
         if let Some(session) = sessions.get(&key) {
             return Ok(Arc::clone(session));
         }
-        let config = with_database(&self.config, &key);
+        let config = with_database(&lock(&self.config), &key);
         let session = self
             .driver
             .connect(&config, CallOptions::default().with_timeout(CONNECT_TIMEOUT))
@@ -150,7 +227,7 @@ impl OpenServer {
             let _ = session.close().await;
         }
         // Last: the sessions said goodbye through it.
-        lock(&self.tunnel).take();
+        self.tunnel.lock().await.take();
     }
 
     /// Closes the app's own session on `database`, so a `DROP DATABASE` is
@@ -164,6 +241,16 @@ impl OpenServer {
         if let Some(session) = session {
             let _ = session.close().await;
         }
+    }
+}
+
+/// Closes a session dropped from the map off the caller's path: a lost
+/// link's goodbye can take its time, or never come.
+fn close_later(session: Option<Arc<dyn Connection>>) {
+    if let Some(session) = session {
+        tokio::spawn(async move {
+            let _ = tokio::time::timeout(CONNECT_TIMEOUT, session.close()).await;
+        });
     }
 }
 
