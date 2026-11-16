@@ -206,6 +206,8 @@
     /** What the last run sent from the editor, to frame the statement of the result shown. */
     ranRequest: RunRequest | null;
     ranRanges: ByteRange[];
+    /** The database the page runs in: each page its own, so picking one moves only the page shown. */
+    database: string | null;
   }
 
   interface Page {
@@ -234,7 +236,8 @@
     outside: "changed" | "gone" | null;
   }
 
-  function emptyState(): PageState {
+  /** A new page's state; it runs in the database of the page shown, unless told another. */
+  function emptyState(inDatabase: string | null = database): PageState {
     return {
       sets: [],
       messages: [],
@@ -252,11 +255,13 @@
       ran: false,
       ranRequest: null,
       ranRanges: [],
+      database: inDatabase,
     };
   }
 
   let nextPageId = 2;
-  let pages: Page[] = $state.raw([{ id: 1, kind: "query", number: 1, editor: null, state: emptyState(), file: null }]);
+  // `database` is declared below: the first page names none.
+  let pages: Page[] = $state.raw([{ id: 1, kind: "query", number: 1, editor: null, state: emptyState(null), file: null }]);
   let activePage = $state(1);
   /** Query pages are open with no connection: written first, run once one opens (ADR 0016). */
   let drafting = $state(false);
@@ -446,6 +451,7 @@
       ran,
       ranRequest,
       ranRanges,
+      database,
     };
   }
 
@@ -466,6 +472,7 @@
     ran = state.ran;
     ranRequest = state.ranRequest;
     ranRanges = state.ranRanges;
+    database = state.database;
     editing = null;
     preview = null;
   }
@@ -1583,7 +1590,7 @@
       pageSql: "",
       countSql: "",
     };
-    const page: Page = { id: nextPageId++, kind: "table", number: 0, editor: null, state: { ...emptyState(), tableTab: next }, file: null };
+    const page: Page = { id: nextPageId++, kind: "table", number: 0, editor: null, state: { ...emptyState(dbName), tableTab: next }, file: null };
     pages = [...keepCurrent(), page];
     activePage = page.id;
     unstash(page.state);

@@ -91,3 +91,18 @@ File trang (`pages\<hash>.json`) hoặc `ui.json` không đọc được thì đ
   **Đúng:** cùng dải vàng, ngay khi mở, về `ui.json`; giao diện về cài đặt mặc định; `ui.json.unreadable-…` nằm cạnh.
 - [ ] (Giới hạn 40) Trong thư mục `pages`, máy tự kiểm: `cargo test -p kemable-windows past_the_limit_pages_with_unsaved_text_are_never_dropped`.
   **Đúng:** test qua.
+
+## D5. Mỗi trang một database
+
+Database chọn ở thanh công cụ thuộc về trang đang xem, không còn là của cả cửa sổ.
+
+- [ ] Kết nối PostgreSQL có ít nhất hai database (ví dụ `postgres` và `demo`). Ở **Query 1**, chọn `demo` trong ô database trên thanh công cụ.
+  **Đúng:** ô ghi `demo`; status bar ghi `in demo`.
+- [ ] Nhấn **Ctrl+T** mở **Query 2**.
+  **Đúng:** Query 2 bắt đầu ở `demo` (database của trang vừa mở nó). Chọn `postgres` ở Query 2.
+- [ ] Quay lại Query 1.
+  **Đúng:** ô database ghi lại `demo`; chạy `select current_database();` ra `demo`. Sang Query 2 chạy lại câu đó ra `postgres`.
+- [ ] Ở Query 1 (đang `demo`), mở một bảng của database `postgres` từ cây.
+  **Đúng:** trang bảng hiện `postgres` trong ô database; quay về Query 1 vẫn là `demo`.
+- [ ] Ở một trang chạy `\c postgres` (PostgreSQL) rồi sang trang khác.
+  **Đúng:** chỉ trang đã chạy đổi database; trang kia giữ database của nó.
