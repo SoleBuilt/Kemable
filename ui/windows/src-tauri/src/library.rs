@@ -17,7 +17,7 @@ const SERVICE: &str = "Kemable";
 pub struct CredentialVault;
 
 fn vault_error(error: keyring::Error) -> DriverError {
-    DriverError::new(ErrorCode::Io, format!("Windows Credential Manager: {error}"))
+    DriverError::new(ErrorCode::Vault, format!("Windows Credential Manager: {error}"))
 }
 
 impl SecretVault for CredentialVault {
@@ -83,6 +83,17 @@ impl Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_credential_manager_failure_has_its_own_code() {
+        let error = vault_error(keyring::Error::TooLong("target".into(), 32_767));
+        assert_eq!(error.code, ErrorCode::Vault);
+        assert!(
+            error.message.starts_with("Windows Credential Manager: "),
+            "{}",
+            error.message
+        );
+    }
 
     #[test]
     #[ignore = "writes to and removes from Windows Credential Manager"]

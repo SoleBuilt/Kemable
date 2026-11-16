@@ -26,6 +26,7 @@ const TITLES: Record<string, string> = {
   "update.signature": "The update is not signed by Kemable",
   "storage.unreadable": "A file Kemable keeps cannot be read; it is left as it is",
   "secret.moved": "This connection points elsewhere than where its password was kept for: enter the password again",
+  "secret.vault": "Windows Credential Manager could not keep or read the password",
   "ssh.secret_moved": "This connection's SSH server changed since its SSH password was kept: edit the connection to enter it again",
   internal: "Something went wrong inside Kemable",
 };

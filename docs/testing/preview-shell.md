@@ -158,3 +158,14 @@ Mở Kemable lần hai (cùng người dùng Windows, cùng bản) không mở c
 - [ ] Đóng cửa sổ có sửa đổi bảng chưa lưu (A7): hộp hỏi hiện, **Close anyway** đóng được.
 - [ ] Mở DevTools (F12) › Console trong suốt các bước trên.
   **Đúng:** không có lỗi `not allowed by ACL`.
+
+## D15. Lỗi khi mở thư mục, About và Credential Manager được báo
+
+Các nút **Open** (thư mục dữ liệu), **License**, **Source code › Open**, **Third-party notices › Open** trong Settings báo lỗi khi không mở được, thay vì im lặng. Lỗi của Windows Credential Manager có mã riêng (`secret.vault`), không còn bị ghi là lỗi file hay mạng.
+
+- [ ] Bản dev: đổi tên `target\debug\THIRD-PARTY-NOTICES.md` thành tên khác, mở Settings › About › Third-party notices › **Open**.
+  **Đúng:** dải đỏ dưới phần About: **Not opened: A file or network error stopped the call**, dòng dưới ghi đường dẫn file `... is not there`. Đổi tên lại như cũ.
+- [ ] Bấm dấu X trên dải đỏ.
+  **Đúng:** dải đóng. Bấm lại một nút mở thành công: không có dải.
+- [ ] (Khó tạo trên máy thường) Khi Credential Manager từ chối (ví dụ chính sách nhóm chặn), lưu một kết nối có Save password.
+  **Đúng:** lỗi ghi **Windows Credential Manager could not keep or read the password**, chi tiết bắt đầu `Windows Credential Manager: `.
