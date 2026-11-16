@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::catalog::{ColumnInfo, TableRef};
 use crate::connection::Transaction;
-use crate::sql::{SqlGrammar, quote_name, table_name};
+use crate::sql::{SqlGrammar, quote_name, sql_server_datetime, table_name};
 use crate::{DriverError, Result};
 
 /// Rows in one `INSERT`: SQL Server takes at most 1,000 in a VALUES list.
@@ -251,6 +251,14 @@ fn numeric_type(type_name: &str) -> bool {
     .any(|word| lower == *word || lower.starts_with(&format!("{word}(")) || lower.starts_with(&format!("{word} ")))
 }
 
+/// Whether a column of `type_name` holds a date or a time of day with one.
+fn date_type(type_name: &str) -> bool {
+    let lower = type_name.to_ascii_lowercase();
+    ["date", "datetime", "datetime2", "smalldatetime", "datetimeoffset"]
+        .iter()
+        .any(|word| lower == *word || lower.starts_with(&format!("{word}(")))
+}
+
 /// A CSV field as a literal for a column of `type_name`: bare for a number
 /// in a numeric column, quoted otherwise (the server reads dates, booleans
 /// and text from quotes), NULL for an empty field when `empty_is_null`.
@@ -271,6 +279,11 @@ pub fn field_literal(grammar: SqlGrammar, type_name: &str, value: &str, empty_is
     if number && numeric_type(type_name) {
         return trimmed.to_owned();
     }
+    // A datetime reads `YYYY-MM-DD hh:mm` day first under a British login: write the form every language reads alike.
+    let value = match grammar {
+        SqlGrammar::SqlServer if date_type(type_name) => sql_server_datetime(value).unwrap_or_else(|| value.to_owned()),
+        _ => value.to_owned(),
+    };
     let mut out = String::with_capacity(value.len() + 3);
     if grammar == SqlGrammar::SqlServer {
         out.push('N');

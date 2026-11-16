@@ -259,6 +259,68 @@ async fn a_batch_returns_each_of_its_result_sets_and_commands_report_done() {
     assert_eq!(sink.last().state().total_rows, 0);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs SQL Server at $KEMABLE_MSSQL_URL"]
+async fn dates_and_times_the_core_writes_read_alike_under_a_british_login() {
+    use kemable_core::import::field_literal;
+    use kemable_core::sql::{NewValue, RowEdit, SqlGrammar, edit_statement};
+    let conn = live_in("tempdb").await;
+    // British reads a datetime's YYYY-MM-DD as year, day, month.
+    run(&conn, "SET LANGUAGE British").await;
+    run(
+        &conn,
+        "create table #kemable_dates (id int primary key, d datetime, s smalldatetime, d2 datetime2, dt date, dto datetimeoffset)",
+    )
+    .await;
+    let months = "select concat(month(d), '/', day(d), ' ', month(s), '/', day(s), ' ', month(d2), '/', day(d2), ' ', \
+                  month(dt), '/', day(dt), ' ', month(dto), '/', day(dto)) from #kemable_dates";
+
+    // Import writes each field for its column.
+    let fields = [
+        ("int", "1"),
+        ("datetime", "2024-01-02 10:00:05"),
+        ("smalldatetime", "2024-01-02 10:00"),
+        ("datetime2", "2024-01-02 10:00:05.1234567"),
+        ("date", "2024-01-02"),
+        ("datetimeoffset", "2024-01-02 10:00:05 +07:00"),
+    ];
+    let literals: Vec<String> = fields
+        .iter()
+        .map(|(type_name, value)| field_literal(SqlGrammar::SqlServer, type_name, value, true))
+        .collect();
+    run(
+        &conn,
+        &format!("insert into #kemable_dates values ({})", literals.join(", ")),
+    )
+    .await;
+    assert_eq!(first_row(&run(&conn, months).await.last()), ["1/2 1/2 1/2 1/2 1/2"]);
+
+    // An edit names its row by a datetime key read from the page, and sets a typed date.
+    let page = run(&conn, "select d, d2 from #kemable_dates").await.last();
+    let key = page.cell(0, 0).expect("a key").into_value();
+    let edit = RowEdit::Update {
+        key: vec![("d".into(), key)],
+        set: vec![(page.columns()[1].clone(), NewValue::Text("2024-03-04 05:06".into()))],
+    };
+    let table = TableRef {
+        schema: None,
+        name: "#kemable_dates".into(),
+    };
+    let statement = edit_statement(SqlGrammar::SqlServer, &table, &edit).unwrap();
+    conn.apply_edits(std::slice::from_ref(&statement), CallOptions::default())
+        .await
+        .unwrap_or_else(|error| panic!("{statement}: {error}"));
+    assert_eq!(
+        first_row(
+            &run(&conn, "select concat(month(d2), '/', day(d2)) from #kemable_dates")
+                .await
+                .last()
+        ),
+        ["3/4"]
+    );
+    run(&conn, "drop table #kemable_dates").await;
+}
+
 #[test]
 fn an_edit_inside_the_users_transaction_saves_under_a_savepoint_and_never_commits() {
     let statements = ["UPDATE t SET a = 1 WHERE id = 1".to_owned()];

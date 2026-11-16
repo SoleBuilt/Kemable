@@ -61,6 +61,71 @@ pub fn parse_hex(text: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
+/// A date, or a date and time, written `YYYY-MM-DD[ hh:mm[:ss[.f]]][offset]`
+/// (as the core shows them, or as a person types them), in the form SQL
+/// Server reads the same under every language and `DATEFORMAT`: `YYYYMMDD`
+/// for a date alone, `YYYY-MM-DDThh:mm:ss[.f][offset]` with a time. The form
+/// with a space is read day first by a `datetime` under British, French or
+/// German. `None` for any other text.
+pub fn sql_server_datetime(text: &str) -> Option<String> {
+    let text = text.trim();
+    let bytes = text.as_bytes();
+    let digits =
+        |range: std::ops::Range<usize>| bytes.get(range).is_some_and(|part| part.iter().all(u8::is_ascii_digit));
+    if !(digits(0..4) && bytes.get(4) == Some(&b'-') && digits(5..7) && bytes.get(7) == Some(&b'-') && digits(8..10)) {
+        return None;
+    }
+    // The first ten bytes are ASCII, so every index below is a char boundary.
+    let (year, month, day) = (&text[0..4], &text[5..7], &text[8..10]);
+    let rest = &text[10..];
+    if rest.is_empty() {
+        return Some(format!("{year}{month}{day}"));
+    }
+    let rest = rest.strip_prefix([' ', 'T'])?;
+    let rest_bytes = rest.as_bytes();
+    let at = |index: usize| rest_bytes.get(index).copied();
+    let two = |index: usize| {
+        at(index).is_some_and(|b| b.is_ascii_digit()) && at(index + 1).is_some_and(|b| b.is_ascii_digit())
+    };
+    if !(two(0) && at(2) == Some(b':') && two(3)) {
+        return None;
+    }
+    let mut end = 5;
+    let mut seconds = "00";
+    if at(5) == Some(b':') {
+        if !two(6) {
+            return None;
+        }
+        seconds = &rest[6..8];
+        end = 8;
+    }
+    let mut fraction = "";
+    if end == 8 && at(8) == Some(b'.') {
+        let count = rest_bytes[9..].iter().take_while(|b| b.is_ascii_digit()).count();
+        if count == 0 {
+            return None;
+        }
+        fraction = &rest[8..9 + count];
+        end = 9 + count;
+    }
+    let offset = rest[end..].trim_start();
+    let offset_ok = offset.is_empty()
+        || offset == "Z"
+        || (offset.len() == 6
+            && offset.starts_with(['+', '-'])
+            && offset.as_bytes()[1..3].iter().all(u8::is_ascii_digit)
+            && offset.as_bytes()[3] == b':'
+            && offset.as_bytes()[4..6].iter().all(u8::is_ascii_digit));
+    if !offset_ok {
+        return None;
+    }
+    Some(format!(
+        "{year}-{month}-{day}T{}:{}:{seconds}{fraction}{offset}",
+        &rest[0..2],
+        &rest[3..5]
+    ))
+}
+
 pub fn is_number(value: &str) -> bool {
     let digits = value.strip_prefix('-').unwrap_or(value);
     let mut parts = digits.splitn(2, '.');
@@ -87,6 +152,10 @@ pub fn value_literal(grammar: SqlGrammar, value: &Value) -> Option<String> {
         Value::Float(number) if number.is_finite() => display(value),
         Value::Float32(number) if number.is_finite() => display(value),
         Value::Decimal(text) if is_decimal(text) => text.clone(),
+        Value::Date(_) | Value::Timestamp(_) | Value::TimestampTz { .. } if grammar == SqlGrammar::SqlServer => {
+            let text = display(value);
+            quoted(grammar, &sql_server_datetime(&text).unwrap_or(text))
+        }
         Value::Bytes(bytes) => {
             let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
             match grammar {
@@ -136,7 +205,7 @@ mod tests {
                 "N'12121212-1212-1212-1212-121212121212'",
                 "'12121212-1212-1212-1212-121212121212'",
             ),
-            (Value::Date(0), "'1970-01-01'", "N'1970-01-01'", "'1970-01-01'"),
+            (Value::Date(0), "'1970-01-01'", "N'19700101'", "'1970-01-01'"),
         ];
         for (value, postgres, mssql, sqlite) in cases {
             assert_eq!(
@@ -168,6 +237,58 @@ mod tests {
         assert_eq!(parse_hex("0x0"), None, "half a byte");
         assert_eq!(parse_hex("0xzz"), None);
         assert_eq!(parse_hex("0xé1"), None);
+    }
+
+    #[test]
+    fn sql_server_dates_and_times_are_written_so_every_language_reads_them_alike() {
+        let stamp = |text: &str| sql_server_datetime(text);
+        assert_eq!(stamp("2024-01-02").as_deref(), Some("20240102"));
+        assert_eq!(stamp("2024-01-02 10:00").as_deref(), Some("2024-01-02T10:00:00"));
+        assert_eq!(stamp(" 2024-01-02T10:00:05 ").as_deref(), Some("2024-01-02T10:00:05"));
+        assert_eq!(
+            stamp("2024-01-02 10:00:05.1234567").as_deref(),
+            Some("2024-01-02T10:00:05.1234567")
+        );
+        assert_eq!(
+            stamp("2024-01-02 10:00:05+07:00").as_deref(),
+            Some("2024-01-02T10:00:05+07:00")
+        );
+        assert_eq!(
+            stamp("2024-01-02 10:00:05 -05:30").as_deref(),
+            Some("2024-01-02T10:00:05-05:30")
+        );
+        assert_eq!(stamp("2024-01-02 10:00:05Z").as_deref(), Some("2024-01-02T10:00:05Z"));
+        for other in [
+            "02/01/2024",
+            "2024-1-2",
+            "2024-01-02 10",
+            "2024-01-02 10:00:05.",
+            "2024-01-02x",
+            "hôm nay",
+            "",
+        ] {
+            assert_eq!(stamp(other), None, "{other}");
+        }
+        let micros = (19_724 * 86_400 + 36_000) * 1_000_000 + 123_000;
+        assert_eq!(
+            value_literal(SqlGrammar::SqlServer, &Value::Timestamp(micros)).as_deref(),
+            Some("N'2024-01-02T10:00:00.123'")
+        );
+        assert_eq!(
+            value_literal(
+                SqlGrammar::SqlServer,
+                &Value::TimestampTz {
+                    micros,
+                    offset_seconds: 7 * 3600
+                }
+            )
+            .as_deref(),
+            Some("N'2024-01-02T17:00:00.123+07:00'")
+        );
+        assert_eq!(
+            value_literal(SqlGrammar::Postgres, &Value::Timestamp(micros)).as_deref(),
+            Some("'2024-01-02 10:00:00.123'")
+        );
     }
 
     #[test]
