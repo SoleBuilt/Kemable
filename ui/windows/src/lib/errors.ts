@@ -24,6 +24,7 @@ const TITLES: Record<string, string> = {
   "ssh.host_changed": "This SSH server's key has changed",
   "ssh.forward": "The SSH server would not reach the database",
   "update.signature": "The update is not signed by Kemable",
+  "storage.unreadable": "A file Kemable keeps cannot be read; it is left as it is",
   internal: "Something went wrong inside Kemable",
 };
 

@@ -159,8 +159,16 @@ fn a_file_that_cannot_be_read_is_never_written_over() {
     std::fs::create_dir_all(&folder.0).unwrap();
     std::fs::write(library.path(), b"{ not json").unwrap();
 
+    // Listing says why and where, rather than showing an empty library.
+    let error = library.list().unwrap_err();
+    assert_eq!(error.code, ErrorCode::Unreadable);
+    assert!(
+        error.message.contains(&library.path().display().to_string()),
+        "{}",
+        error.message
+    );
     let error = library.save(postgres("pw"), None, &MemoryVault::default()).unwrap_err();
-    assert_eq!(error.code, ErrorCode::Io);
+    assert_eq!(error.code, ErrorCode::Unreadable);
     assert_eq!(std::fs::read(library.path()).unwrap(), b"{ not json");
 }
 

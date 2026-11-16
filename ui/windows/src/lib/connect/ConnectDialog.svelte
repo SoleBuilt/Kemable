@@ -398,7 +398,11 @@
     (http ? accountInput : urlInput)?.focus();
     ipc.listSaved().then(
       (list) => (library = list.filter((entry) => isNetworkEngine(entry.config.engine))),
-      () => (library = []),
+      (caught: unknown) => {
+        // Saving would fail the same way: say so now, with the file it names.
+        library = [];
+        error = asCoreError(caught);
+      },
     );
   });
 

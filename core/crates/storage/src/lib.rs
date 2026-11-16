@@ -96,6 +96,11 @@ fn io_error(what: &str, path: &Path, error: impl std::fmt::Display) -> DriverErr
     DriverError::new(ErrorCode::Io, format!("{what} {}: {error}", path.display()))
 }
 
+/// The file is there but cannot be read: it is left alone, and no change is written over it.
+fn unreadable(what: &str, path: &Path, error: impl std::fmt::Display) -> DriverError {
+    DriverError::new(ErrorCode::Unreadable, format!("{what} {}: {error}", path.display()))
+}
+
 /// The secret a config carries: a network password or an HTTP token.
 fn secret_of(config: &ConnectionConfig) -> Option<&Secret> {
     match &config.target {
@@ -146,10 +151,10 @@ impl ConnectionLibrary {
                     connections: Vec::new(),
                 });
             }
-            Err(error) => return Err(io_error("cannot read", &self.path, error)),
+            Err(error) => return Err(unreadable("cannot read", &self.path, error)),
         };
         let mut file: LibraryFile =
-            serde_json::from_slice(&bytes).map_err(|error| io_error("cannot understand", &self.path, error))?;
+            serde_json::from_slice(&bytes).map_err(|error| unreadable("cannot understand", &self.path, error))?;
         // A secret in the file (written by hand, say) is never used or kept.
         for connection in &mut file.connections {
             set_secret(&mut connection.config, Secret::default());
