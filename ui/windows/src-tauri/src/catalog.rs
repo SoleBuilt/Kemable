@@ -34,7 +34,7 @@ struct Cached {
     columns: Mutex<HashMap<TableRef, Arc<Vec<ColumnInfo>>>>,
 }
 
-fn options() -> CallOptions {
+pub(crate) fn options() -> CallOptions {
     CallOptions::default().with_timeout(LOOKUP_TIMEOUT)
 }
 

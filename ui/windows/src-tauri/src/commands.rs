@@ -593,7 +593,7 @@ fn metadata_options() -> CallOptions {
 pub async fn list_databases(state: State<'_, Arc<AppState>>, conn: u64) -> CommandResult<Vec<DatabaseInfo>> {
     state
         .server(conn)?
-        .read(None, |session| async move {
+        .read(None, &metadata_options(), |session| async move {
             session.list_databases(metadata_options()).await
         })
         .await
@@ -607,7 +607,7 @@ pub async fn list_schemas(
 ) -> CommandResult<Vec<SchemaInfo>> {
     state
         .server(conn)?
-        .read(database.as_deref(), |session| async move {
+        .read(database.as_deref(), &metadata_options(), |session| async move {
             session.list_schemas(metadata_options()).await
         })
         .await
@@ -623,7 +623,7 @@ pub async fn list_objects(
     let schema = schema.as_deref();
     state
         .server(conn)?
-        .read(database.as_deref(), |session| async move {
+        .read(database.as_deref(), &metadata_options(), |session| async move {
             session.list_objects(schema, metadata_options()).await
         })
         .await
@@ -639,7 +639,7 @@ pub async fn fetch_columns(
     let table = &table;
     state
         .server(conn)?
-        .read(database.as_deref(), |session| async move {
+        .read(database.as_deref(), &metadata_options(), |session| async move {
             session.fetch_columns(table, metadata_options()).await
         })
         .await
@@ -818,7 +818,7 @@ pub async fn object_ddl(
     let object = &object;
     state
         .server(conn)?
-        .read(database.as_deref(), |session| async move {
+        .read(database.as_deref(), &metadata_options(), |session| async move {
             session.object_ddl(object, metadata_options()).await
         })
         .await
@@ -835,7 +835,7 @@ pub async fn object_comment(
     let object = &object;
     state
         .server(conn)?
-        .read(database.as_deref(), |session| async move {
+        .read(database.as_deref(), &metadata_options(), |session| async move {
             session.object_comment(object, metadata_options()).await
         })
         .await
@@ -853,7 +853,7 @@ pub async fn view_definition_of(
     let grammar = grammar_of(&server)?;
     let object = &object;
     let ddl = server
-        .read(database.as_deref(), |session| async move {
+        .read(database.as_deref(), &metadata_options(), |session| async move {
             session.object_ddl(object, metadata_options()).await
         })
         .await?;
@@ -890,7 +890,7 @@ pub async fn run_statements(
     statements: Vec<String>,
 ) -> CommandResult<()> {
     let server = state.server(conn)?;
-    let session = server.session(database.as_deref()).await?;
+    let session = server.session(database.as_deref(), &metadata_options()).await?;
     let sink: Arc<dyn ResultSink> = Arc::new(Discard);
     let outcome = async {
         for statement in &statements {
@@ -933,7 +933,7 @@ pub async fn list_indexes(
     let table = &table;
     state
         .server(conn)?
-        .read(database.as_deref(), |session| async move {
+        .read(database.as_deref(), &metadata_options(), |session| async move {
             session.list_indexes(table, metadata_options()).await
         })
         .await
@@ -967,7 +967,7 @@ pub async fn export_table(
     let server = state.server(conn)?;
     let grammar = grammar_of(&server)?;
     let statement = export_statement(grammar, &query)?;
-    let session = server.session(database.as_deref()).await?;
+    let session = server.session(database.as_deref(), &metadata_options()).await?;
     let cancel = server.closing.child_token();
     let id = state.add_run(cancel.clone());
     let export = crate::export::Export {
@@ -1020,7 +1020,7 @@ pub async fn import_plan(
     let columns = match &target {
         crate::jobs::ImportTarget::Existing { table } => {
             server
-                .read(database.as_deref(), |session| async move {
+                .read(database.as_deref(), &metadata_options(), |session| async move {
                     session.fetch_columns(table, metadata_options()).await
                 })
                 .await?
@@ -1077,7 +1077,7 @@ pub async fn import_csv(
 ) -> CommandResult<u64> {
     let server = state.server(conn)?;
     let grammar = grammar_of(&server)?;
-    let session = server.session(database.as_deref()).await?;
+    let session = server.session(database.as_deref(), &metadata_options()).await?;
     let columns = match &target {
         crate::jobs::ImportTarget::Existing { table } => session.fetch_columns(table, metadata_options()).await?,
         crate::jobs::ImportTarget::New { .. } => Vec::new(),
@@ -1117,7 +1117,7 @@ pub async fn generate_plan(
 ) -> CommandResult<crate::jobs::GeneratePlan> {
     let server = state.server(conn)?;
     let grammar = grammar_of(&server)?;
-    let session = server.session(database.as_deref()).await?;
+    let session = server.session(database.as_deref(), &metadata_options()).await?;
     let columns = session.fetch_columns(&table, metadata_options()).await?;
     let start = match kemable_core::generate::counted_key(&columns) {
         Some(key) => crate::jobs::key_start(&session, grammar, &table, &key.name).await?,
@@ -1141,7 +1141,7 @@ pub async fn generate_rows(
 ) -> CommandResult<u64> {
     let server = state.server(conn)?;
     let grammar = grammar_of(&server)?;
-    let session = server.session(database.as_deref()).await?;
+    let session = server.session(database.as_deref(), &metadata_options()).await?;
     let columns = session.fetch_columns(&table, metadata_options()).await?;
     let cancel = server.closing.child_token();
     let id = state.add_run(cancel.clone());
@@ -1544,7 +1544,7 @@ pub async fn count_rows(
     // A count only reads, so a lost session is opened again and asked once more.
     state
         .server(conn)?
-        .read(database.as_deref(), |session| {
+        .read(database.as_deref(), &metadata_options(), |session| {
             let sink = Arc::clone(&counting) as Arc<dyn ResultSink>;
             async move {
                 session
@@ -1623,7 +1623,8 @@ pub async fn complete(
             items: Vec::new(),
         }));
     }
-    let session = server.session(database.as_deref()).await?;
+    // Completion waits for a session no longer than for its own lookups.
+    let session = server.session(database.as_deref(), &crate::catalog::options()).await?;
     let view = state.catalog.view(conn, database, session, &context).await;
     Ok(Some(CompletionReply {
         from,
@@ -1650,7 +1651,7 @@ pub async fn scan_keys(
     let scan = &scan;
     state
         .server(conn)?
-        .read(database.as_deref(), |session| async move {
+        .read(database.as_deref(), &metadata_options(), |session| async move {
             session.scan_keys(scan, metadata_options()).await
         })
         .await
@@ -1690,7 +1691,7 @@ pub async fn read_key(
     let reading = Arc::clone(&sink);
     let detail = state
         .server(conn)?
-        .read(database.as_deref(), |session| {
+        .read(database.as_deref(), &metadata_options(), |session| {
             let sink = Arc::clone(&reading) as Arc<dyn ResultSink>;
             async move {
                 session
@@ -1894,7 +1895,7 @@ pub async fn apply_edits(
     statements: Vec<String>,
 ) -> CommandResult<()> {
     let server = state.server(conn)?;
-    let session = server.session(database.as_deref()).await?;
+    let session = server.session(database.as_deref(), &metadata_options()).await?;
     let saved = session
         .apply_edits(&statements, CallOptions::default().with_timeout(EDIT_TIMEOUT))
         .await;
