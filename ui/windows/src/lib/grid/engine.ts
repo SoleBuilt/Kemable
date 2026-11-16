@@ -23,6 +23,8 @@ const MAX_BLOCKS = 96;
 const CELL_PADDING = 8;
 const MIN_WIDTH = 48;
 const MAX_AUTO_WIDTH = 360;
+/** Before the number of a row marked for delete. */
+const DELETED_MARK = "− ";
 const RESIZE_HANDLE = 4;
 // Chromium stops growing an element near 2^25 px; past this the scroll
 // position is scaled onto the rows.
@@ -242,6 +244,7 @@ export class GridEngine {
     this.colorScheme.addEventListener("change", this.onThemeChange);
     this.themeAttribute.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-style"] });
     scroller.addEventListener("scroll", this.scheduleDraw, { passive: true });
+    document.fonts.addEventListener("loadingdone", this.onFontsLoaded);
   }
 
   destroy(): void {
@@ -249,6 +252,7 @@ export class GridEngine {
     this.colorScheme.removeEventListener("change", this.onThemeChange);
     this.themeAttribute.disconnect();
     this.scroller.removeEventListener("scroll", this.scheduleDraw);
+    document.fonts.removeEventListener("loadingdone", this.onFontsLoaded);
     this.generation++;
   }
 
@@ -301,6 +305,13 @@ export class GridEngine {
     });
   };
 
+  // A width measured before Geist loaded is the fallback font's: measure again once it is in.
+  private readonly onFontsLoaded = (): void => {
+    this.updateGutter();
+    this.updateSpacer();
+    this.scheduleDraw();
+  };
+
   private readonly onThemeChange = (): void => {
     this.theme = readTheme();
     this.scheduleDraw();
@@ -339,10 +350,17 @@ export class GridEngine {
     return Math.min(this.rowsPixels, MAX_SCROLL_PIXELS);
   }
 
+  /**
+   * The row numbers' column fits the result's last row number: its digits at the widest
+   * digit's width (Geist's are not all one width), and the mark of a row to delete.
+   */
   private updateGutter(): void {
     this.context.font = FONT;
     const digits = String(Math.max(this.totalRows, 1)).length;
-    this.gutterWidth = Math.max(40, Math.ceil(this.context.measureText("9".repeat(digits)).width) + CELL_PADDING * 2);
+    let digit = 0;
+    for (const char of "0123456789") digit = Math.max(digit, this.context.measureText(char).width);
+    const mark = this.edits ? this.context.measureText(DELETED_MARK).width : 0;
+    this.gutterWidth = Math.max(40, Math.ceil(digit * digits + mark) + CELL_PADDING * 2);
   }
 
   private updateSpacer(): void {
@@ -627,7 +645,8 @@ export class GridEngine {
       context.restore();
     }
 
-    // Row numbers, marked where the selection spans the row.
+    // Row numbers, marked where the selection spans the row, in the font the gutter was sized for.
+    context.font = FONT;
     context.fillStyle = theme.header;
     context.fillRect(0, HEADER_HEIGHT, this.gutterWidth, height);
     context.textAlign = "right";
@@ -640,7 +659,7 @@ export class GridEngine {
       }
       if (y + ROW_HEIGHT / 2 < HEADER_HEIGHT) continue;
       context.fillStyle = marked ? theme.text : theme.muted;
-      const label = this.edits && row >= this.edits.baseRows ? "+" : this.edits?.deleted(row) ? `− ${row + 1}` : String(row + 1);
+      const label = this.edits && row >= this.edits.baseRows ? "+" : this.edits?.deleted(row) ? `${DELETED_MARK}${row + 1}` : String(row + 1);
       context.fillText(label, this.gutterWidth - CELL_PADDING, y + ROW_HEIGHT / 2);
     }
 
@@ -969,7 +988,12 @@ export class GridEngine {
 
   /** The unsaved edits to draw; null when there are none. */
   setEdits(edits: EditOverlay | null): void {
+    const marks = (edits !== null) !== (this.edits !== null);
     this.edits = edits;
+    if (marks) {
+      this.updateGutter();
+      this.updateSpacer();
+    }
     this.scheduleDraw();
   }
 
