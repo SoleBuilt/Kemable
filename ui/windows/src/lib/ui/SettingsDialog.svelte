@@ -285,9 +285,9 @@
   <h3 class="pb-section-title">About</h3>
   <Setting
     title={version ? `Kemable ${version}` : "Kemable"}
-    hint="Free software under the GNU Affero General Public License, version 3 only. Copyright (C) 2026 Huỳnh Trung Đức."
+    hint="Free software under the GNU Affero General Public License, version 3 only, whose text is installed with the app. Copyright (C) 2026 Huỳnh Trung Đức."
   >
-    <Button variant="secondary" size="sm" onclick={() => void ipc.openAbout("license")}>License</Button>
+    <Button variant="secondary" size="sm" icon="file" onclick={() => void ipc.openAbout("license")}>License</Button>
   </Setting>
   <Setting title="Source code" hint="The code this app is built from, on GitHub: yours to read, build, change and share under the license.">
     <Button variant="secondary" size="sm" onclick={() => void ipc.openAbout("source")}>Open</Button>

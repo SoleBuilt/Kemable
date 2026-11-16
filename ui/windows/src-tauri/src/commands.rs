@@ -1916,34 +1916,45 @@ pub async fn open_terms(which: String) -> CommandResult<()> {
 /// Where Kemable's source is: whoever has the app can read, build and share
 /// the code it is built from (AGPL-3.0, section 6).
 const SOURCE_CODE: &str = "https://github.com/SoleBuilt/Kemable";
-const LICENSE: &str = "https://github.com/SoleBuilt/Kemable/blob/main/LICENSE";
+/// The AGPL's text, installed beside the app (`bundle.resources` in tauri.conf.json,
+/// from the repository's `LICENSE`), so it reads offline and before the source is public.
+pub(crate) const LICENSE_FILE: &str = "LICENSE.txt";
 /// The libraries and fonts inside the app with their licenses, installed beside
 /// it (`bundle.resources` in tauri.conf.json, written by scripts/licenses.mjs).
-const NOTICES: &str = "THIRD-PARTY-NOTICES.md";
+pub(crate) const NOTICES: &str = "THIRD-PARTY-NOTICES.md";
 
-/// Opens the source (`which`: "source") or the license ("license") in the
-/// browser, or the third-party notices ("notices") in Notepad, which every
+/// Opens the source (`which`: "source") in the browser, or the license
+/// ("license") or the third-party notices ("notices") in Notepad, which every
 /// Windows has and which reads Markdown as the plain text it is.
 #[tauri::command]
 pub async fn open_about(app: tauri::AppHandle, which: String) -> CommandResult<()> {
-    use tauri::Manager;
     match which.as_str() {
         "source" => open_in_browser(SOURCE_CODE),
-        "license" => open_in_browser(LICENSE),
-        "notices" => {
-            let notices = app
-                .path()
-                .resource_dir()
-                .map_err(|error| data::io_error("cannot find the notices", error))?
-                .join(NOTICES);
-            std::process::Command::new("notepad")
-                .arg(notices)
-                .spawn()
-                .map(|_| ())
-                .map_err(|error| data::io_error("cannot open the notices", error))
-        }
+        "license" => open_installed(&app, LICENSE_FILE),
+        "notices" => open_installed(&app, NOTICES),
         _ => Err(no_page(&which)),
     }
+}
+
+/// Opens a file installed beside the app in Notepad.
+fn open_installed(app: &tauri::AppHandle, name: &str) -> CommandResult<()> {
+    use tauri::Manager;
+    let path = app
+        .path()
+        .resource_dir()
+        .map_err(|error| data::io_error("cannot find the app's folder", error))?
+        .join(name);
+    if !path.is_file() {
+        return Err(DriverError::new(
+            kemable_core::ErrorCode::Io,
+            format!("{} is not there", path.display()),
+        ));
+    }
+    std::process::Command::new("notepad")
+        .arg(&path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| data::io_error(&format!("cannot open {}", path.display()), error))
 }
 
 fn no_page(which: &str) -> DriverError {

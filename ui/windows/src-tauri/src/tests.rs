@@ -1770,3 +1770,19 @@ async fn a_live_tab_keeps_hearing_notify_after_a_filter_and_a_sort() {
     reach(&mut events, 5008).await;
     server.close().await;
 }
+
+#[test]
+fn the_installer_carries_the_license_and_the_notices_about_opens() {
+    let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    let resources = config["bundle"]["resources"].as_object().unwrap();
+    let installed: Vec<&str> = resources.values().filter_map(serde_json::Value::as_str).collect();
+    assert!(installed.contains(&crate::commands::LICENSE_FILE), "{installed:?}");
+    assert!(installed.contains(&crate::commands::NOTICES), "{installed:?}");
+    // The source of each is there, and the license is the AGPL's text.
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for (from, to) in resources {
+        assert!(folder.join(from).is_file(), "{from} for {to}");
+    }
+    let license = std::fs::read_to_string(folder.join("../../../LICENSE")).unwrap();
+    assert!(license.contains("GNU AFFERO GENERAL PUBLIC LICENSE"));
+}
