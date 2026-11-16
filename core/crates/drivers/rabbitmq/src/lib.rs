@@ -29,9 +29,11 @@ use kemable_core::live::{LiveTopic, LiveTopicKind};
 use kemable_core::sink::{ExecOutcome, ResultSink};
 use kemable_core::value::{Value, ValueKind};
 use kemable_core::{CallOptions, DriverError, ErrorCode, Result};
+use lapin::Confirmation;
 use lapin::message::Delivery;
 use lapin::options::{
-    BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, BasicQosOptions, QueueBindOptions, QueueDeclareOptions,
+    BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, BasicQosOptions, ConfirmSelectOptions, QueueBindOptions,
+    QueueDeclareOptions,
 };
 use lapin::types::FieldTable;
 use lapin::{BasicProperties, Channel, ConnectionProperties};
@@ -175,7 +177,9 @@ struct Link {
     channel: Channel,
 }
 
-/// A channel to publish on.
+/// A channel to publish on, in confirm mode: the broker says whether it took
+/// each message, so a publish to an exchange that is not there fails instead
+/// of reporting done.
 async fn publishing_channel(
     connection: &lapin::Connection,
     options: &CallOptions,
@@ -183,10 +187,15 @@ async fn publishing_channel(
 ) -> Result<Channel> {
     options
         .run(async {
-            connection
+            let channel = connection
                 .create_channel()
                 .await
-                .map_err(|error| map(&error, connecting))
+                .map_err(|error| map(&error, connecting))?;
+            channel
+                .confirm_select(ConfirmSelectOptions::default())
+                .await
+                .map_err(|error| map(&error, connecting))?;
+            Ok(channel)
         })
         .await
 }
@@ -426,7 +435,9 @@ impl RabbitmqConnection {
 
     /// `publish <exchange> <routing key> <body>`: the body is the rest of the
     /// words, joined by spaces, or one quoted word; `""` is the default exchange.
-    async fn publish(&self, words: &[Vec<u8>], options: &CallOptions) -> Result<()> {
+    /// Resolves once the broker confirmed it, to whether a queue took it: a
+    /// message no binding routes is returned (it is published `mandatory`).
+    async fn publish(&self, words: &[Vec<u8>], options: &CallOptions) -> Result<bool> {
         let [_, exchange, key, body @ ..] = words else {
             return Err(DriverError::config("publish <exchange> <routing key> <body>"));
         };
@@ -440,7 +451,10 @@ impl RabbitmqConnection {
                     .basic_publish(
                         exchange.as_ref().into(),
                         key.as_ref().into(),
-                        BasicPublishOptions::default(),
+                        BasicPublishOptions {
+                            mandatory: true,
+                            ..BasicPublishOptions::default()
+                        },
                         &body,
                         BasicProperties::default().with_content_type("text/plain".into()),
                     )
@@ -448,9 +462,19 @@ impl RabbitmqConnection {
                     .map_err(|error| map(&error, false))
             })
             .await?;
-        options
-            .run(async { confirm.await.map(|_| ()).map_err(|error| map(&error, false)) })
-            .await
+        // An exchange that is not there closes the channel (404): the confirm
+        // fails with the broker's words, and the next publish opens a channel again.
+        let confirmation = options
+            .run(async { confirm.await.map_err(|error| map(&error, false)) })
+            .await?;
+        match confirmation {
+            Confirmation::Ack(None) | Confirmation::NotRequested => Ok(true),
+            Confirmation::Ack(Some(_)) => Ok(false),
+            Confirmation::Nack(_) => Err(DriverError::new(
+                ErrorCode::Query,
+                "the broker refused the message (basic.nack)",
+            )),
+        }
     }
 }
 
@@ -491,7 +515,9 @@ impl Connection for RabbitmqConnection {
         };
         match command.as_str() {
             "publish" => {
-                self.publish(&words, &options).await?;
+                if !self.publish(&words, &options).await? {
+                    sink.notice("The broker returned the message: no queue is bound to take it.");
+                }
                 sink.command_done(None);
                 Ok(ExecOutcome::default())
             }

@@ -262,3 +262,31 @@ async fn a_closed_connection_opens_again_for_the_next_publish() {
     console.ping(CallOptions::default()).await.unwrap();
     console.close().await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "needs RabbitMQ at $KEMABLE_RABBITMQ_URL"]
+async fn a_publish_to_a_missing_exchange_fails_and_the_next_one_goes_through() {
+    let console = RabbitmqDriver
+        .connect(&live_config(), CallOptions::default())
+        .await
+        .unwrap();
+    let missing = console
+        .execute(
+            "publish kemable_no_such_exchange x hello",
+            Arc::new(Heard::default()),
+            CallOptions::default(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code, ErrorCode::Query);
+    assert_eq!(missing.engine_code.as_deref(), Some("404"));
+    console
+        .execute(
+            "publish amq.topic kemable.test.after x",
+            Arc::new(Heard::default()),
+            CallOptions::default(),
+        )
+        .await
+        .expect("the closed channel is opened again");
+    console.close().await.unwrap();
+}
