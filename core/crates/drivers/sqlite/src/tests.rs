@@ -259,6 +259,67 @@ async fn edits_are_saved_together_or_not_at_all() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn an_edit_stores_what_was_typed_by_the_columns_affinity() {
+    use kemable_core::catalog::TableRef;
+    use kemable_core::sql::{NewValue, RowEdit, SqlGrammar, edit_statement};
+    let conn = memory().await;
+    run(
+        &conn,
+        "create table t (id integer primary key, code text, n integer, r real, x)",
+    )
+    .await
+    .1
+    .unwrap();
+    // The page's columns, as a table tab reads them.
+    let (sink, result) = run(&conn, "select code, n, r, x from t").await;
+    result.unwrap();
+    let columns = sink.store.lock().unwrap().clone().unwrap().columns().to_vec();
+    let typed = |values: [&str; 4]| RowEdit::Insert {
+        values: columns
+            .iter()
+            .cloned()
+            .zip(values.map(|value| NewValue::Text(value.to_owned())))
+            .collect(),
+    };
+    let table = TableRef {
+        schema: None,
+        name: "t".into(),
+    };
+    let statements = [
+        edit_statement(
+            SqlGrammar::Sqlite,
+            &table,
+            &typed(["1.10", "42", "1.10", "12345678901234567890"]),
+        )
+        .unwrap(),
+        edit_statement(SqlGrammar::Sqlite, &table, &typed(["007", "10.00", "2.5", "3"])).unwrap(),
+    ];
+    conn.apply_edits(&statements, CallOptions::default()).await.unwrap();
+    let text = |values: &[&str]| values.iter().map(|value| Some((*value).to_owned())).collect::<Vec<_>>();
+    assert_eq!(
+        texts(
+            &conn,
+            "select code, typeof(code), n, typeof(n), r, typeof(r), x, typeof(x) from t order by id"
+        )
+        .await,
+        [
+            text(&[
+                "1.10",
+                "text",
+                "42",
+                "integer",
+                "1.1",
+                "real",
+                "12345678901234567890",
+                "text"
+            ]),
+            // A quoted number in a numeric column is a number, as SQLite converts it there.
+            text(&["007", "text", "10", "integer", "2.5", "real", "3", "integer"]),
+        ]
+    );
+}
+
 #[tokio::test]
 async fn a_tables_ddl_is_its_create_statement_with_its_indexes_and_triggers() {
     use kemable_core::catalog::{ObjectInfo, ObjectKind};

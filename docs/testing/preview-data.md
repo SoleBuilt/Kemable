@@ -103,3 +103,21 @@ Trước đây Kemable viết ngày giờ dạng `'2024-01-02 10:00:00'`; với 
 - [ ] Import một file CSV `id,d,d2,dt` / `2,2024-01-02 10:00,2024-01-02 10:00,2024-01-02` vào `thu_ngay` (trong phiên British).
   **Đúng:** dòng `id = 2` có `month(d) = 1`, `day(d) = 2`.
 - [ ] Dọn: `drop table thu_ngay;`
+
+---
+
+## A6. SQLite: số gõ vào cột chữ giữ nguyên
+
+Trước đây gõ `1.10` vào cột TEXT của SQLite thì lưu thành `1.1`, `10.00` thành `10.0`, một mã 20 chữ số thành `1.23456789012346e+19`. Giờ giá trị đi theo kiểu khai báo của cột.
+
+- [ ] Mở một database SQLite (in-memory cũng được), chạy:
+  ```sql
+  create table thu_so (id integer primary key, ma text, n integer, r real, x);
+  insert into thu_so (id) values (1);
+  ```
+  Mở `thu_so`, gõ `ma` = `1.10`, `n` = `42`, `r` = `2.5`, `x` = `12345678901234567890`, lưu.
+  **Đúng:** preview ghi `"ma" = '1.10'`, `"n" = 42`, `"r" = 2.5`, `"x" = '12345678901234567890'`. Sau khi lưu, `select ma, typeof(ma), n, typeof(n), r, typeof(r), x, typeof(x) from thu_so;` ra `1.10 text`, `42 integer`, `2.5 real`, `12345678901234567890 text`. (Cột khai báo INTEGER thì SQLite tự đổi một số quá 64 bit thành số thực, Kemable không giữ được dạng chữ ở đó.)
+- [ ] Sửa `n` thành `10.00`, lưu.
+  **Đúng:** `n` là `10`, `typeof(n)` là `integer` (cột số đổi chữ thành số khi không mất gì).
+- [ ] Import một CSV `id,ma,x` / `2,1.10,12345678901234567890` vào `thu_so`.
+  **Đúng:** dòng `id = 2` có `ma = 1.10` và `x = 12345678901234567890`, cả hai là text.

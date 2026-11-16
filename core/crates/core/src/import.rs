@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::catalog::{ColumnInfo, TableRef};
 use crate::connection::Transaction;
-use crate::sql::{SqlGrammar, quote_name, sql_server_datetime, table_name};
+use crate::sql::{SqlGrammar, exact_sqlite_number, quote_name, sql_server_datetime, table_name};
 use crate::{DriverError, Result};
 
 /// Rows in one `INSERT`: SQL Server takes at most 1,000 in a VALUES list.
@@ -276,7 +276,9 @@ pub fn field_literal(grammar: SqlGrammar, type_name: &str, value: &str, empty_is
         && trimmed.bytes().filter(|byte| *byte == b'.').count() <= 1
         && !trimmed.ends_with('.')
         && !trimmed.starts_with('.');
-    if number && numeric_type(type_name) {
+    // SQLite turns a bare number it cannot hold exactly into a float; quoted, its column converts it only without loss.
+    let exact = grammar != SqlGrammar::Sqlite || exact_sqlite_number(trimmed);
+    if number && exact && numeric_type(type_name) {
         return trimmed.to_owned();
     }
     // A datetime reads `YYYY-MM-DD hh:mm` day first under a British login: write the form every language reads alike.
@@ -411,6 +413,13 @@ mod tests {
             "'2026-11-12'"
         );
         assert_eq!(field_literal(SqlGrammar::Sqlite, "INTEGER", "1e5", true), "'1e5'");
+        assert_eq!(
+            field_literal(SqlGrammar::Sqlite, "INTEGER", "12345678901234567890", true),
+            "'12345678901234567890'"
+        );
+        assert_eq!(field_literal(SqlGrammar::Sqlite, "REAL", "1.10", true), "'1.10'");
+        assert_eq!(field_literal(SqlGrammar::Sqlite, "REAL", "1.5", true), "1.5");
+        assert_eq!(field_literal(SqlGrammar::Sqlite, "TEXT", "1.10", true), "'1.10'");
     }
 
     #[test]
