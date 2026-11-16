@@ -13,7 +13,7 @@ The first window had one editor and one row of result tabs. A table opened from 
 
 ### The toolbar says where you are
 
-- **Left:** the connection, as a combobox. Its menu shows the connection and offers Edit this connection… and Disconnect. Next to it is the database picker, for an engine with databases.
+- **Left:** the connection, as a combobox. Its menu shows the connection and offers Edit this connection… and Disconnect. Next to it is the database picker, for an engine with databases. The database picked belongs to the page shown (2026-11-15): another page keeps its own, a new query page starts in the database of the page it was opened from, and a table page in its table's.
 - **Middle:** Search, which opens the command palette (Ctrl+K). The palette holds the ways to start: New query tab, New connection…, Open file…, in-memory, every saved connection, and Settings.
 - **The Welcome screen** (nothing open) has no sidebar and shows only Search in the toolbar. Its empty state offers New connection…, Open file… and an in-memory database.
 
