@@ -58,6 +58,7 @@
   import TitleBar from "./lib/shell/TitleBar.svelte";
   import TermsDialog, { TERMS_VERSION } from "./lib/shell/TermsDialog.svelte";
   import UpdateDialog from "./lib/shell/UpdateDialog.svelte";
+  import CloseDialog from "./lib/shell/CloseDialog.svelte";
   import { offerAtLaunch, putOff, skip } from "./lib/updates";
   import Welcome from "./lib/shell/Welcome.svelte";
   import Badge from "./lib/ui/Badge.svelte";
@@ -667,11 +668,26 @@
     void tick().then(() => restorePages(NO_CONNECTION));
   }
 
-  // However the window closes (its button, Alt+F4, the taskbar), the last keystrokes are
-  // kept and everything not on disk yet is written before it goes.
+  /** What closing the window would stop or lose, while the window asks before it closes. */
+  let closeAsk = $state.raw<string[] | null>(null);
+  /** Set by Close anyway, so the close that follows does not ask again. */
+  let closeAnyway = false;
+
+  // However the window closes (its button, Alt+F4, the taskbar), it first asks when that
+  // would stop a run or a Live tab, or lose table edits; then the last keystrokes are kept
+  // and everything not on disk yet is written before it goes. A `.sql` page's unsaved
+  // text is kept as dirty, so it is not asked about.
   void appWindow.onCloseRequested(async () => {
+    if (!closeAnyway) {
+      const items = pendingWork(false);
+      if (items.length > 0) {
+        closeAsk = items;
+        return false;
+      }
+    }
     keepPages();
     await flushStore();
+    return true;
   });
 
   // --- Update in place (docs/decisions/0028-updates.md) ------------------------
@@ -690,13 +706,16 @@
       .catch(() => {});
   }
 
-  /** What closing the app to update would stop or leave unsaved, said before it closes. */
-  function updateBlockers(): string[] {
+  /**
+   * What closing the app would stop or leave unsaved, said before it closes: for an update
+   * (with `files`, a `.sql` page's changes not in its file) and for the window's close.
+   */
+  function pendingWork(files: boolean): string[] {
     const items: string[] = [];
     if (running) items.push("A query is running: it stops.");
     for (const page of pages) {
       const title = pageTitle(page);
-      if (page.file && pageDirty(page)) items.push(`${title} has changes not saved to its file.`);
+      if (files && page.file && pageDirty(page)) items.push(`${title} has changes not saved to its file.`);
       const pending = page.id === activePage ? edits : page.state.edits;
       if (pending.cells.size > 0 || pending.deleted.size > 0 || pending.added > 0) {
         items.push(`${title} has table edits not saved: they are lost.`);
@@ -2968,7 +2987,7 @@
   {@const update = updateOffer}
   <UpdateDialog
     {update}
-    blockers={updateBlockers}
+    blockers={() => pendingWork(true)}
     beforeInstall={beforeUpdate}
     onLater={() => {
       putOff(update.version);
@@ -2979,6 +2998,18 @@
       updateOffer = null;
     }}
     onQuit={() => void appWindow.close()}
+  />
+{/if}
+
+{#if closeAsk}
+  <CloseDialog
+    items={closeAsk}
+    onBack={() => (closeAsk = null)}
+    onClose={() => {
+      closeAsk = null;
+      closeAnyway = true;
+      void appWindow.close();
+    }}
   />
 {/if}
 

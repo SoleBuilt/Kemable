@@ -77,6 +77,7 @@ Since June 2023 certificate authorities keep a new code-signing key on a hardwar
 - A lost private key means installed apps can never take another update; they would need a new installer by hand. Changing the key means a release, signed with the old key, that carries the new public key.
 - Until a code-signing certificate is in the secrets (Authenticode, above), Windows SmartScreen warns on the first install of the downloaded installer, and `README.md` says how to go past it; that sentence goes once the installer is signed. The updater's signature is a separate thing: it proves to the app that an installer came from CI.
 - On a PC where Kemable was installed for Everyone, an account that is not an administrator cannot install the update: the installer would need admin rights it cannot get. An administrator updates it.
+- The window's own close (its button, Alt+F4, the taskbar) reads the same list and asks before it stops a run or a Live tab or loses table edits (`lib/shell/CloseDialog.svelte`, added 2026-11-15); a `.sql` page's changes are left out there, since closing keeps them as unsaved.
 - The manual checks are in `docs/testing/phase-3.md`, section 11. A real update can only be tried once a published release with a signed installer and a higher version exists.
 
 ## Alternatives considered
