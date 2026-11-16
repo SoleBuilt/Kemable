@@ -126,6 +126,60 @@ pub fn sql_server_datetime(text: &str) -> Option<String> {
     ))
 }
 
+/// The type affinity SQLite gives a column of `type_name`, by its rules in
+/// their order (https://sqlite.org/datatype3.html, 3.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Affinity {
+    Integer,
+    Text,
+    Blob,
+    Real,
+    Numeric,
+}
+
+pub fn sqlite_affinity(type_name: &str) -> Affinity {
+    let upper = type_name.to_ascii_uppercase();
+    if upper.contains("INT") {
+        Affinity::Integer
+    } else if upper.contains("CHAR") || upper.contains("CLOB") || upper.contains("TEXT") {
+        Affinity::Text
+    } else if upper.contains("BLOB") || upper.trim().is_empty() {
+        Affinity::Blob
+    } else if upper.contains("REAL") || upper.contains("FLOA") || upper.contains("DOUB") {
+        Affinity::Real
+    } else {
+        Affinity::Numeric
+    }
+}
+
+/// A typed value as a SQLite literal for a column of `type_name`. SQLite
+/// keeps a bare number as a number whatever the column, so a number goes
+/// bare only where the column is not text and SQLite holds it exactly as
+/// typed: `1.10` into TEXT stays `1.10`, and a 20-digit code into a column
+/// with no type is not turned into a float. A quoted number still becomes a
+/// number in a numeric column, by SQLite's own conversion there.
+pub fn sqlite_typed(type_name: &str, value: &str) -> String {
+    if sqlite_affinity(type_name) != Affinity::Text && exact_sqlite_number(value) {
+        value.to_owned()
+    } else {
+        quoted(SqlGrammar::Sqlite, value)
+    }
+}
+
+/// Whether SQLite keeps `value` as the same number: an integer in 64 bits,
+/// or a decimal whose double reads back as the same text.
+pub fn exact_sqlite_number(value: &str) -> bool {
+    if !is_number(value) {
+        return false;
+    }
+    if !value.contains('.') {
+        return value.parse::<i64>().is_ok();
+    }
+    value
+        .parse::<f64>()
+        .is_ok_and(|number| number.is_finite() && number.to_string() == value)
+}
+
 pub fn is_number(value: &str) -> bool {
     let digits = value.strip_prefix('-').unwrap_or(value);
     let mut parts = digits.splitn(2, '.');
@@ -289,6 +343,39 @@ mod tests {
             value_literal(SqlGrammar::Postgres, &Value::Timestamp(micros)).as_deref(),
             Some("'2024-01-02 10:00:00.123'")
         );
+    }
+
+    #[test]
+    fn sqlite_literals_follow_the_columns_affinity_and_keep_numbers_exact() {
+        let cases = [
+            // TEXT affinity: always quoted.
+            ("TEXT", "1.10", "'1.10'"),
+            ("VARCHAR(20)", "12", "'12'"),
+            ("CLOB", "-5", "'-5'"),
+            // INTEGER: a 64-bit integer bare, anything past it quoted.
+            ("INTEGER", "10", "10"),
+            ("BIGINT", "-9223372036854775808", "-9223372036854775808"),
+            ("INT", "12345678901234567890", "'12345678901234567890'"),
+            ("INTEGER", "0012", "'0012'"),
+            // REAL and NUMERIC: bare only when the double reads back the same.
+            ("REAL", "1.5", "1.5"),
+            ("DOUBLE", "1.10", "'1.10'"),
+            ("DECIMAL(10,2)", "10.00", "'10.00'"),
+            ("NUMERIC", "0.1", "0.1"),
+            // BLOB or no type: as typed, a number exact or quoted.
+            ("BLOB", "12", "12"),
+            ("", "1.10", "'1.10'"),
+            ("", "abc", "'abc'"),
+        ];
+        for (type_name, value, literal) in cases {
+            assert_eq!(sqlite_typed(type_name, value), literal, "{type_name} {value}");
+        }
+        assert_eq!(
+            sqlite_affinity("FLOATING POINT"),
+            Affinity::Integer,
+            "INT wins, as SQLite's first rule says"
+        );
+        assert_eq!(sqlite_affinity("DATETIME"), Affinity::Numeric);
     }
 
     #[test]

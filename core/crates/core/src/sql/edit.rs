@@ -7,7 +7,7 @@
 //! column's type, as a filter's value is (`literal::typed`), but for a
 //! binary column, where it is the hex of the bytes.
 
-use super::literal::{parse_hex, quoted, sql_server_datetime, typed, value_literal};
+use super::literal::{parse_hex, quoted, sql_server_datetime, sqlite_typed, typed, value_literal};
 use super::{SqlGrammar, quote_name as ident, table_name};
 use crate::catalog::{ColumnMeta, TableRef};
 use crate::error::DriverError;
@@ -115,7 +115,7 @@ fn new_value(grammar: SqlGrammar, column: &ColumnMeta, value: &NewValue) -> Resu
         NewValue::Text(text) if column.kind == ValueKind::Bytes => match parse_hex(text) {
             Some(bytes) => value_literal(grammar, &Value::Bytes(bytes)).unwrap_or_else(|| "NULL".to_owned()),
             // SQLite keeps any value in any column, so text that is not hex stays text.
-            None if grammar == SqlGrammar::Sqlite => typed(grammar, text),
+            None if grammar == SqlGrammar::Sqlite => sqlite_typed(&column.type_name, text),
             None => {
                 return Err(DriverError::config(format!(
                     "{} holds bytes: write them as hex, such as 0x00ff",
@@ -133,6 +133,8 @@ fn new_value(grammar: SqlGrammar, column: &ColumnMeta, value: &NewValue) -> Resu
         {
             quoted(grammar, &sql_server_datetime(text).unwrap_or_else(|| text.clone()))
         }
+        // SQLite stores a bare number as a number in any column: the column's affinity decides.
+        NewValue::Text(text) if grammar == SqlGrammar::Sqlite => sqlite_typed(&column.type_name, text),
         NewValue::Text(text) => typed(grammar, text),
     })
 }
