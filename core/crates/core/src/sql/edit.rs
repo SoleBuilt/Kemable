@@ -7,7 +7,7 @@
 //! column's type, as a filter's value is (`literal::typed`), but for a
 //! binary column, where it is the hex of the bytes.
 
-use super::literal::{parse_hex, typed, value_literal};
+use super::literal::{parse_hex, quoted, sql_server_datetime, typed, value_literal};
 use super::{SqlGrammar, quote_name as ident, table_name};
 use crate::catalog::{ColumnMeta, TableRef};
 use crate::error::DriverError;
@@ -123,6 +123,16 @@ fn new_value(grammar: SqlGrammar, column: &ColumnMeta, value: &NewValue) -> Resu
                 )));
             }
         },
+        // A typed date or time goes in the form every language reads alike.
+        NewValue::Text(text)
+            if grammar == SqlGrammar::SqlServer
+                && matches!(
+                    column.kind,
+                    ValueKind::Date | ValueKind::Timestamp | ValueKind::TimestampTz
+                ) =>
+        {
+            quoted(grammar, &sql_server_datetime(text).unwrap_or_else(|| text.clone()))
+        }
         NewValue::Text(text) => typed(grammar, text),
     })
 }
@@ -252,6 +262,30 @@ mod tests {
             )],
         };
         assert!(statement(SqlGrammar::SqlServer, insert).ends_with("VALUES (0x0102)"));
+    }
+
+    #[test]
+    fn a_sql_server_date_or_time_is_written_so_every_language_reads_it_alike() {
+        let edit = RowEdit::Update {
+            key: vec![("at".into(), Value::Timestamp(1_704_189_600_000_000))],
+            set: vec![
+                (
+                    column("at", "datetime", ValueKind::Timestamp),
+                    NewValue::Text("2024-01-03 10:00".into()),
+                ),
+                (
+                    column("day", "date", ValueKind::Date),
+                    NewValue::Text("2024-01-03".into()),
+                ),
+                (text("note"), NewValue::Text("2024-01-03 10:00".into())),
+            ],
+        };
+        assert_eq!(
+            statement(SqlGrammar::SqlServer, edit.clone()),
+            "UPDATE [public].[orders] SET [at] = N'2024-01-03T10:00:00', [day] = N'20240103', \
+             [note] = N'2024-01-03 10:00' WHERE [at] = N'2024-01-02T10:00:00'"
+        );
+        assert!(statement(SqlGrammar::Postgres, edit).contains("\"at\" = '2024-01-03 10:00'"));
     }
 
     #[test]

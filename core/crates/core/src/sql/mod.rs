@@ -23,7 +23,7 @@ pub use completion::{
 };
 pub use database_change::{DatabaseChange, database_change};
 pub use edit::{NewValue, RowEdit, edit_statement};
-pub use literal::{typed as typed_literal, value_literal};
+pub use literal::{sql_server_datetime, typed as typed_literal, value_literal};
 pub use object_action::{Maintenance, ObjectAction, action_statements, maintenance_tasks, view_definition};
 pub use plain_query::is_plain_query;
 pub use result_filter::{ResultFilter, ResultWhere, in_items, result_where};

@@ -74,6 +74,9 @@ impl CellValue {
                 },
                 ValueKind::Decimal => Value::Decimal(text),
                 ValueKind::Json => Value::Json(text),
+                ValueKind::Date | ValueKind::Timestamp | ValueKind::TimestampTz => {
+                    crate::filter::stamp_value(kind, &text).unwrap_or(Value::Text(text))
+                }
                 _ => Value::Text(text),
             },
         }
@@ -771,6 +774,27 @@ mod tests {
             Value::Decimal("1.50".into())
         );
         assert_eq!(text(ValueKind::Uuid, "abc").into_value(), Value::Text("abc".into()));
+        // Dates and times come back as the values whose text they are.
+        for value in [
+            Value::Date(19_724),
+            Value::Date(-1),
+            Value::Timestamp(1_704_189_605_123_000),
+            Value::TimestampTz {
+                micros: 1_704_189_605_000_000,
+                offset_seconds: 7 * 3600,
+            },
+            Value::TimestampTz {
+                micros: 0,
+                offset_seconds: -(5 * 3600 + 30 * 60),
+            },
+        ] {
+            let kind = value.kind();
+            assert_eq!(text(kind, &kemable_core::format::display(&value)).into_value(), value);
+        }
+        assert_eq!(
+            text(ValueKind::Timestamp, "infinity").into_value(),
+            Value::Text("infinity".into())
+        );
         assert_eq!(CellValue::Bytes(vec![1]).into_value(), Value::Bytes(vec![1]));
         assert_eq!(CellValue::Null.into_value(), Value::Null);
     }

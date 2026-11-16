@@ -83,3 +83,23 @@ Trước đây sửa một ô `bytea` từ `0x00ff` thành `0x00fe` thì Postgre
 - [ ] Làm lại với SQL Server (`varbinary(10)`) và SQLite (`blob`).
   **Đúng:** preview ghi `0x00fe` (SQL Server) và `X'00fe'` (SQLite); `select datalength(data)` / `select length(data), typeof(data)` ra `2` (và `blob` ở SQLite). Ở SQLite, gõ `abc` thì lưu thành chữ `abc` (SQLite cho mọi kiểu trong mọi cột).
 - [ ] Dọn: `drop table thu_bin2;`
+
+---
+
+## A5. SQL Server: ngày giờ không bị đọc lẫn ngày với tháng
+
+Trước đây Kemable viết ngày giờ dạng `'2024-01-02 10:00:00'`; với login dùng ngôn ngữ British (hay French, German), cột `datetime` đọc nó thành ngày 1 tháng 2, không báo lỗi. Giờ Kemable viết `'2024-01-02T10:00:00'` (có chữ `T`) và ngày không giờ là `'20240102'`, mọi ngôn ngữ đều đọc như nhau.
+
+- [ ] Kết nối SQL Server, chạy:
+  ```sql
+  SET LANGUAGE British;
+  create table thu_ngay (id int primary key, d datetime, d2 datetime2, dt date);
+  insert into thu_ngay values (1, '20240102 10:00', '20240102 10:00', '20240102');
+  ```
+  Mở `thu_ngay`, sửa ô `d2` thành `2024-03-04 05:06`, **Ctrl+S**.
+  **Đúng:** preview ghi `[d2] = N'2024-03-04T05:06:00'` và `WHERE [id] = 1`. Save xong, `select month(d2), day(d2) from thu_ngay;` ra `3` và `4`.
+- [ ] Chuột phải `thu_ngay`, **Export…**, **SQL INSERT**.
+  **Đúng:** file có `N'2024-01-02T10:00:00'` cho `d` và `N'20240102'` cho `dt`. Chạy lại câu INSERT đó (sau `delete from thu_ngay;`) trong phiên đang `SET LANGUAGE British`: `select month(d), day(d) from thu_ngay;` ra `1` và `2`.
+- [ ] Import một file CSV `id,d,d2,dt` / `2,2024-01-02 10:00,2024-01-02 10:00,2024-01-02` vào `thu_ngay` (trong phiên British).
+  **Đúng:** dòng `id = 2` có `month(d) = 1`, `day(d) = 2`.
+- [ ] Dọn: `drop table thu_ngay;`

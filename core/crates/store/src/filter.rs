@@ -26,7 +26,7 @@
 use kemable_core::DriverError;
 use kemable_core::format::days_from_civil;
 use kemable_core::sql::{FilterOp, ResultFilter, in_items};
-use kemable_core::value::ValueKind;
+use kemable_core::value::{Value, ValueKind};
 
 use crate::order::{SortCell, compare, is_decimal};
 use crate::store::{Chunk, ColumnChunk, kind_from_u8};
@@ -464,6 +464,25 @@ fn date_time(text: &str) -> Option<(i64, Option<i64>)> {
     cursor.eat(b' ');
     let offset = cursor.offset()?;
     cursor.rest.is_empty().then_some((micros, offset))
+}
+
+/// The date or time a cell's text names, read back from the text the core
+/// wrote for it (`format`), so an edit's key is written as the value it was:
+/// SQL Server reads a date's text by the login's language
+/// (`sql::literal::sql_server_datetime`).
+pub(crate) fn stamp_value(kind: ValueKind, text: &str) -> Option<Value> {
+    let (micros, offset) = date_time(text)?;
+    match (kind, offset) {
+        (ValueKind::Date, None) if !text.contains([' ', 'T', 't']) => {
+            i32::try_from(micros.div_euclid(MICROS_PER_DAY)).ok().map(Value::Date)
+        }
+        (ValueKind::Timestamp, None) => Some(Value::Timestamp(micros)),
+        (ValueKind::TimestampTz, Some(offset)) => Some(Value::TimestampTz {
+            micros: micros.checked_sub(offset.checked_mul(MICROS_PER_SECOND)?)?,
+            offset_seconds: i32::try_from(offset).ok()?,
+        }),
+        _ => None,
+    }
 }
 
 /// A time of day alone, for a time column.
