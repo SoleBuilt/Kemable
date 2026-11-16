@@ -97,6 +97,8 @@ export interface OpenedConnection {
   title: string;
   /** A Supabase project's URL: its Live tab can listen to Realtime too. */
   realtimeUrl: string | null;
+  /** What names it across launches, as its history entries keep it. */
+  key: string;
 }
 
 /** Rows from the first, in the order the grid shows them. */
@@ -375,6 +377,8 @@ export interface HistoryEntry {
   id: number;
   ranAt: number;
   connection: string;
+  /** What names the connection across launches; null for an entry from before it was kept. */
+  connectionKey: string | null;
   engine: string;
   database: string | null;
   statement: string;

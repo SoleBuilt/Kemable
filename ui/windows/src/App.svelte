@@ -2035,13 +2035,23 @@
     );
   }
 
-  /** Runs a statement from the history in the database it ran in, when it ran here. */
+  /**
+   * Runs a statement from the history when it ran on this connection, matched by its key,
+   * and in the database the page runs in now. One from another connection or another
+   * database is put in the editor instead, to be read before it runs (F5).
+   */
   function runEntry(entry: HistoryEntry) {
     if (!connection || running) return;
     if (offQuery) newQueryPage();
-    const here = entry.connection === connection.title && connection.engine.hasDatabases;
-    if (here && entry.database) database = entry.database;
     editor?.insert(entry.statement);
+    if (entry.connectionKey !== connection.key) {
+      note(`Put in the editor, not run: it ran on ${entry.connection}`);
+      return;
+    }
+    if (connection.engine.hasDatabases && entry.database !== null && entry.database !== database) {
+      note(`Put in the editor, not run: it ran in ${entry.database}`);
+      return;
+    }
     void startRun({ sql: entry.statement, cursor: null, origin: 0 }, false, { record: true });
   }
 

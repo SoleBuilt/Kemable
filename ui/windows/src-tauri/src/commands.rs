@@ -57,6 +57,8 @@ pub struct OpenedConnection {
     /// A Supabase project's URL, read from the host: its Live tab can listen
     /// to Realtime too (`docs/decisions/0025-supabase-realtime.md`).
     realtime_url: Option<String>,
+    /// What names it across launches, as its history entries keep it.
+    key: String,
 }
 
 #[tauri::command]
@@ -157,7 +159,12 @@ async fn open_server(
         .connect(&config, CallOptions::default().with_timeout(CONNECT_TIMEOUT))
         .await?;
     let server_version = first.server_version();
-    let server = Arc::new(OpenServer::new(driver, config, first, title.clone()).with_tunnel(tunnel));
+    let key = connection_key(&config, &title, saved_id.as_deref());
+    let server = Arc::new(
+        OpenServer::new(driver, config, first, title.clone())
+            .with_tunnel(tunnel)
+            .with_key(key.clone()),
+    );
     let opened = OpenedConnection {
         id: 0,
         engine: server.engine.clone(),
@@ -166,6 +173,7 @@ async fn open_server(
         saved_id,
         database: server.engine.has_databases.then(|| server.home.clone()),
         realtime_url: server.realtime_url(),
+        key,
     };
     let id = state.add_server(server);
     Ok(OpenedConnection { id, ..opened })
@@ -512,6 +520,16 @@ pub(crate) async fn try_connection(
     // A close that fails leaves nothing the user can act on.
     let _ = connection.close().await;
     Ok(tested)
+}
+
+/// Names a connection across launches: a saved one by its id, a SQLite file by its
+/// path, anything else by its engine and title (as `connectionKey` in pages.ts).
+pub(crate) fn connection_key(config: &ConnectionConfig, title: &str, saved_id: Option<&str>) -> String {
+    match (saved_id, &config.target) {
+        (Some(id), _) => format!("saved:{id}"),
+        (None, Target::File { path, .. }) => format!("file:{}", path.display()),
+        (None, _) => format!("{}:{title}", config.engine),
+    }
 }
 
 /// The error for a kept secret left out: its message names where the connection points now.

@@ -1857,3 +1857,40 @@ fn the_installer_carries_the_license_and_the_notices_about_opens() {
     let license = std::fs::read_to_string(folder.join("../../../LICENSE")).unwrap();
     assert!(license.contains("GNU AFFERO GENERAL PUBLIC LICENSE"));
 }
+
+#[test]
+fn a_connection_is_named_by_its_saved_id_its_file_or_its_engine_and_title() {
+    use kemable_core::config::{ConnectionConfig, Target};
+    let file = ConnectionConfig {
+        engine: "sqlite".into(),
+        target: Target::File {
+            path: r"D:\data\shop.db".into(),
+            read_only: false,
+        },
+        options: Default::default(),
+        ssh: None,
+        dial: None,
+    };
+    assert_eq!(
+        crate::commands::connection_key(&file, "shop.db", None),
+        r"file:D:\data\shop.db"
+    );
+    assert_eq!(
+        crate::commands::connection_key(&file, "shop.db", Some("abc")),
+        "saved:abc"
+    );
+    let mut network = file.clone();
+    network.engine = "postgres".into();
+    network.target = Target::Network {
+        host: "db".into(),
+        port: Some(5432),
+        user: None,
+        password: Default::default(),
+        database: None,
+        tls: Default::default(),
+    };
+    assert_eq!(
+        crate::commands::connection_key(&network, "db:5432", None),
+        "postgres:db:5432"
+    );
+}

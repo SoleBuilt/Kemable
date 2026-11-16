@@ -106,3 +106,16 @@ Database chọn ở thanh công cụ thuộc về trang đang xem, không còn l
   **Đúng:** trang bảng hiện `postgres` trong ô database; quay về Query 1 vẫn là `demo`.
 - [ ] Ở một trang chạy `\c postgres` (PostgreSQL) rồi sang trang khác.
   **Đúng:** chỉ trang đã chạy đổi database; trang kia giữ database của nó.
+
+## D6. Run trong History không chạy câu của kết nối hay database khác
+
+Run trong History chỉ chạy ngay khi câu đã chạy trên đúng kết nối này (so bằng khoá của kết nối: id của kết nối đã lưu, đường dẫn file SQLite, hoặc engine và tên) và đúng database trang đang dùng. Ngược lại, câu được đặt vào editor để đọc trước, nhấn F5 nếu muốn chạy. Run không còn đổi database của trang.
+
+- [ ] Kết nối `Local PG` (đã lưu), chạy `select 1 as mot;`. Trong History bấm **Run** ở dòng đó.
+  **Đúng:** câu được chèn vào editor và chạy ngay, ra `mot = 1`.
+- [ ] Đổi database của trang sang database khác, bấm **Run** ở dòng cũ (đã chạy ở database trước).
+  **Đúng:** câu chỉ được chèn vào editor, không chạy; status bar ghi `Put in the editor, not run: it ran in <database cũ>`; ô database không đổi.
+- [ ] Lưu một kết nối thứ hai **cùng tên hiển thị** `Local PG` nhưng tới server khác; mở nó, bỏ tick **This connection** trong History, bấm **Run** ở một câu của kết nối đầu.
+  **Đúng:** chỉ chèn vào editor, không chạy; status bar ghi `Put in the editor, not run: it ran on Local PG`.
+- [ ] Các câu trong History từ trước bản này (chưa có khoá kết nối), bấm **Run**.
+  **Đúng:** chỉ chèn vào editor, không chạy.
