@@ -59,3 +59,4 @@ A decision changes by a new file that supersedes it; the old one gets its status
 | 0029 | [SQL Server's TDS client is tabstream, Kemable's own fork of tiberius 0.13.0](0029-tabstream.md) |
 | 0030 | [Kemable's website lives in `site/`: static Astro pages on Cloudflare Pages, with the Terms and the Privacy Policy](0030-website.md) |
 | 0033 | [A kept password goes only where it was kept for; SSH host keys are each Windows user's own](0033-bound-passwords.md) |
+| 0034 | [The website is a Worker with static assets; it counts where visitors come from, and asks before cookies, Google Analytics and Meta Pixel](0034-site-worker-and-measuring.md) |

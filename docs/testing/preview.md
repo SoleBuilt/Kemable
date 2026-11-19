@@ -354,25 +354,70 @@ Bộ cài đặt `LICENSE.txt` (văn bản AGPL-3.0) cạnh `Kemable.exe`; Setti
 - [ ] F12, tab Network, tải lại trang chủ.
   **Đúng:** mọi yêu cầu đều tới `localhost` (font cũng vậy), không có Google Fonts hay analytics; không file `.js` nào tải trước khi cuộn tới chân trang.
 
-### C17.2 Triển khai lên Cloudflare Pages
+### C17.2 Triển khai lên Cloudflare (Worker)
 
-Làm theo `site/README.md` (Deploying) một lần: tạo project Pages `kemable`, thêm hai secret.
+`docs/decisions/0034-site-worker-and-measuring.md`. Làm theo `site/README.md` (Deploying) một lần: thêm hai secret. Database `kemable-site` đã có sẵn.
 
 - [ ] Trước khi có secret: merge một thay đổi trong `site/` vào `main` (hoặc Actions › Site › Run workflow).
-  **Đúng:** job **site** xanh; có thông báo "Built, not deployed. Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets".
+  **Đúng:** job **site** xanh (có bước **Test the Worker**); có thông báo "Built, not deployed. Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets".
 - [ ] Sau khi thêm `CLOUDFLARE_API_TOKEN` và `CLOUDFLARE_ACCOUNT_ID`: chạy lại workflow trên `main`.
-  **Đúng:** bước **Deploy to Cloudflare Pages** chạy, in địa chỉ deploy; `https://kemable.pages.dev` hiện trang chủ.
-- [ ] Mở `https://kemable.pages.dev/terms` và `https://kemable.pages.dev/privacy`.
+  **Đúng:** bước **Apply the database's migrations** báo không có gì mới (hoặc áp file mới); bước **Deploy the Worker** in `kemable.ducht.info.vn (custom domain)`; vài phút sau `https://kemable.ducht.info.vn` hiện trang chủ. Cloudflare › Workers & Pages có Worker `kemable`, không có địa chỉ `workers.dev`.
+- [ ] Mở `https://kemable.ducht.info.vn/terms` và `https://kemable.ducht.info.vn/privacy`.
   **Đúng:** mở thẳng trang, không chuyển hướng sang `/terms/`.
+- [ ] F12 › Elements trên trang chủ, tìm `canonical`.
+  **Đúng:** `<link rel="canonical" href="https://kemable.ducht.info.vn/">`; `/sitemap.xml` và `/llms.txt` cũng dùng domain này.
 - [ ] Một pull request chỉ sửa `site/`.
-  **Đúng:** job **site** chạy check và build, không deploy.
+  **Đúng:** job **site** chạy check, test và build, không deploy.
+
+### C17.2b Danh sách chờ macOS và Linux
+
+`docs/decisions/0030-website.md` (The waitlist), `site/README.md`.
+
+- [ ] Trong `site/`, hai terminal: `pnpm worker`, rồi `pnpm dev`; mở `http://localhost:4321`.
+  **Đúng:** dưới hai nút Download có dòng "macOS and Linux later" gạch chân; bấm vào thì cuộn tới khối waitlist: hàng 1 ô **Name**, hàng 2 ô **Email**, hàng 3 hai nút chọn **macOS** và **Linux** (có ô tick), hàng 4 nút **Notify me**.
+- [ ] Bấm **Notify me** khi ô còn trống, khi email sai (`abc`), rồi khi đã điền đủ nhưng chưa chọn hệ điều hành nào.
+  **Đúng:** trình duyệt chặn lại và chỉ ra chỗ cần sửa ("Pick macOS, Linux or both." cho lần cuối); không rời trang.
+- [ ] Bấm **macOS**, rồi **Linux**, rồi bấm lại **macOS**. Dùng Tab tới một nút và bấm Space.
+  **Đúng:** mỗi lần bấm đổi trạng thái tick, viền sáng lên khi được chọn; Tab có viền cam quanh nút đang được chọn, Space tick hoặc bỏ tick.
+- [ ] Mở `http://localhost:4321/?utm_source=chatgpt.com&utm_campaign=test`, nhập tên, email đúng, chọn cả **macOS** và **Linux**, bấm **Notify me**.
+  **Đúng:** chuyển sang trang "You are on the list." (vẫn ở `localhost:4321`); `npx wrangler@4.156.0 d1 execute kemable-site --local --command "SELECT * FROM waitlist"` có hai dòng `macos` và `linux` cho email đó, email viết thường, `source` là `chatgpt.com`, `medium` là `ai`, `campaign` là `test`, `signal` là `utm`.
+- [ ] Gửi lại cùng email, chỉ chọn **Linux**, với tên khác.
+  **Đúng:** vẫn hai dòng cho email đó; dòng `linux` mang tên mới, giữ `joined_at` cũ.
+- [ ] Tắt `pnpm worker`, gửi form từ `pnpm dev`.
+  **Đúng:** lỗi (không có Worker để nhận); bật lại `pnpm worker` thì gửi được.
+- [ ] Thu cửa sổ còn 375 px.
+  **Đúng:** bốn hàng xếp dọc, hai nút hệ điều hành vẫn cạnh nhau, không có thanh cuộn ngang.
+### C17.2c Đếm nguồn truy cập và cookie
+
+`docs/decisions/0034-site-worker-and-measuring.md`. Trên máy như C17.2b (`pnpm worker` và `pnpm dev`, mở `http://localhost:4321`), mỗi bước một cửa sổ InPrivate mới (chưa có cookie).
+
+- [ ] Mở `http://localhost:4321/?utm_source=facebook&utm_campaign=launch`.
+  **Đúng:** thông báo cookie hiện ở đáy trang, hai nút **No thanks** và **Allow** to bằng nhau, có link Privacy; F12 › Application › Cookies: trống; Network: không có gì tới `googletagmanager.com` hay `facebook.net`; có một `POST /api/visit` trả 204.
+- [ ] Bấm **Features**, rồi mở `/privacy` từ chân trang, rồi tải lại trang (F5).
+  **Đúng:** không có thêm `POST /api/visit` (đi trong site và tải lại không tính là lượt vào mới).
+- [ ] Bấm **Download for Windows**.
+  **Đúng:** có một `POST /api/visit` nữa; bảng `visits` có dòng `download` với `source` là `facebook`, `signal` là `utm`.
+- [ ] Bấm **No thanks**.
+  **Đúng:** thông báo biến mất; cookie chỉ còn `kemable_consent=none`; mở trang khác không hỏi lại.
+- [ ] Cửa sổ mới, mở trang chủ, bấm **Allow**.
+  **Đúng:** có cookie `kemable_consent=all`; khi chưa điền ID trong `site/src/analytics.ts`, vẫn không tải gì của Google hay Meta, và thông báo chỉ nói về việc nhớ link đầu tiên.
+- [ ] Chân trang › **Cookies** › **No thanks**.
+  **Đúng:** trang tải lại; cookie `kemable_src` và `_ga`, `_fbp` (nếu có) bị xóa, chỉ còn `kemable_consent=none`.
+- [ ] Đã điền ID Google Analytics và Meta Pixel (sau khi tạo, `site/README.md`), deploy, mở trang chủ, bấm **Allow**.
+  **Đúng:** thông báo nêu tên Google Analytics và Meta Pixel; sau Allow mới có yêu cầu tới `googletagmanager.com` và `connect.facebook.net`; GA › Realtime thấy lượt xem; Meta › Events Manager › Test events thấy `PageView`; đăng ký waitlist thì thấy `generate_lead` / `Lead`.
+- [ ] Mở `/privacy`.
+  **Đúng:** có các mục đếm nguồn không cookie, cookie và Google Analytics, Meta Pixel (chỉ khi đồng ý), waitlist có lưu nguồn; ngày "Last updated 18 November 2026".
+- [ ] Mở `/security` (chân trang › **Security**), rồi `/terms`.
+  **Đúng:** Security nói: mật khẩu trong Windows Credential Manager và chỉ gửi tới đúng host, port, user đã lưu; kết nối đi thẳng tới server, TLS, **Verify full**; SSH host key mới thì hỏi, bị đổi thì từ chối; không telemetry; bản cập nhật được ký; báo lỗ hổng riêng qua GitHub hoặc email, dẫn tới `SECURITY.md`. Privacy có bảng cookie, bên nhận dữ liệu, thời gian lưu, quyền của bạn. Terms có thêm luật áp dụng (Việt Nam). Trên 375 px các bảng cuộn ngang trong khung, trang không cuộn ngang.
+- [ ] Sau khi deploy: chạy các câu trong `site/README.md`, mục "Where visitors come from".
+  **Đúng:** số lượt vào và tải về theo nguồn; ChatGPT nằm ở `medium = 'ai'`.
 
 ### C17.3 Trong app
 
 - [ ] `pnpm tauri dev`, mở app lần đầu với thư mục data trống.
   **Đúng:** không có hộp thoại Terms (vẫn ẩn, như trước).
 - [ ] Tìm trong mã nguồn và ADR tên sản phẩm cũ dùng làm trang tạm: `git grep -i -n "clause/terms"`.
-  **Đúng:** không còn kết quả; `open_terms` trong `commands.rs` chỉ biết `https://kemable.pages.dev/terms` và `/privacy`.
+  **Đúng:** không còn kết quả; `open_terms` trong `commands.rs` chỉ biết `https://kemable.ducht.info.vn/terms` và `/privacy`.
 
 ---
 

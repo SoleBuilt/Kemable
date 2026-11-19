@@ -1,0 +1,217 @@
+---
+// Counting where visitors come from, and the cookie notice (docs/decisions/0034-site-worker-and-measuring.md).
+// Without a choice, or with "No thanks": one beacon per arrival and per Download click, no cookie,
+// no storage. With "Allow": the first link a visitor came by is kept in a cookie, and Google
+// Analytics and Meta Pixel are loaded when their ids are set (src/analytics.ts).
+import { cookieUses } from "../analytics";
+
+const button = "inline-flex h-9 flex-1 cursor-pointer items-center justify-center rounded-lg px-3.5 text-sm font-medium sm:flex-none";
+---
+
+<div
+  id="consent"
+  hidden
+  role="region"
+  aria-label="Cookies"
+  class="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-190 flex-wrap items-center gap-x-5 gap-y-3 rounded-[14px] border border-line-strong bg-chrome p-4 shadow-[0_20px_60px_-20px_#000000]"
+>
+  <p class="m-0 min-w-60 flex-1 text-sm text-fg2">
+    With your OK, Kemable sets cookies to {cookieUses()}. Without it, visits are only counted, with no cookie.{" "}
+    <a href="/privacy#cookies" class="text-fg underline underline-offset-[3px] hover:text-fg">Privacy</a>
+  </p>
+  <div class="flex w-full gap-2 sm:w-auto">
+    <button type="button" data-consent="none" class={`${button} border border-line-strong bg-transparent text-fg`}>No thanks</button>
+    <button type="button" data-consent="all" class={`${button} bg-accent text-on-accent`}>Allow</button>
+  </div>
+</div>
+
+<script>
+  import { FIRST_TOUCH_DAYS, GOOGLE_ANALYTICS_ID, META_PIXEL_ID } from "../analytics";
+  import { DOWNLOAD } from "../links";
+
+  type Fbq = ((...args: unknown[]) => void) & {
+    callMethod?: (...args: unknown[]) => void;
+    queue: unknown[];
+    push: Fbq;
+    loaded: boolean;
+    version: string;
+  };
+  type Window = typeof window & { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void; fbq?: Fbq; _fbq?: Fbq };
+
+  const CONSENT = "kemable_consent";
+  const FIRST_TOUCH = "kemable_src";
+  const KEYS = ["utm_source", "utm_medium", "utm_campaign", "gclid", "fbclid", "msclkid"] as const;
+  type Landing = Partial<Record<(typeof KEYS)[number] | "referrer", string>>;
+
+  const page = window as Window;
+  const notice = document.getElementById("consent");
+
+  function readCookie(name: string): string | null {
+    const found = document.cookie.split("; ").find((part) => part.startsWith(`${name}=`));
+    return found === undefined ? null : decodeURIComponent(found.slice(name.length + 1));
+  }
+
+  function writeCookie(name: string, value: string, days: number): void {
+    document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${days * 86400}; Path=/; SameSite=Lax; Secure`;
+  }
+
+  /** The other site, if this page was opened from one: its origin only. */
+  function referrer(): string | null {
+    try {
+      const from = new URL(document.referrer);
+      return from.host === location.host ? null : from.origin;
+    } catch {
+      return null;
+    }
+  }
+
+  /** What this page was opened with: the link's tags and the other site. */
+  function landingHere(): Landing {
+    const params = new URLSearchParams(location.search);
+    const landing: Landing = {};
+    for (const key of KEYS) {
+      const value = params.get(key);
+      if (value) landing[key] = value.slice(0, 200);
+    }
+    const from = referrer();
+    if (from !== null) landing.referrer = from;
+    return landing;
+  }
+
+  /** The first link kept, with consent; else this page's own. */
+  function landing(): Landing {
+    if (readCookie(CONSENT) === "all") {
+      const kept = readCookie(FIRST_TOUCH);
+      if (kept !== null) {
+        try {
+          return JSON.parse(kept) as Landing;
+        } catch {
+          // A cookie that cannot be read is replaced below.
+        }
+      }
+    }
+    return landingHere();
+  }
+
+  function beacon(kind: "view" | "download"): void {
+    navigator.sendBeacon("/api/visit", JSON.stringify({ kind, path: location.pathname, ...(kind === "view" ? landingHere() : landing()) }));
+  }
+
+  function loadGoogle(id: string): void {
+    if (page.gtag) return;
+    page.dataLayer = page.dataLayer ?? [];
+    // gtag.js reads each call as an Arguments object, as Google's own snippet pushes it.
+    page.gtag = function () {
+      page.dataLayer?.push(arguments);
+    };
+    // Loaded only after Allow, which covers measuring visits and ads; not ad personalisation
+    // (remarketing), which the notice does not ask for. Google Ads reads these for EU visitors.
+    page.gtag("consent", "default", {
+      analytics_storage: "granted",
+      ad_storage: "granted",
+      ad_user_data: "granted",
+      ad_personalization: "denied",
+    });
+    page.gtag("js", new Date());
+    page.gtag("config", id);
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`;
+    document.head.append(script);
+  }
+
+  function loadMeta(id: string): void {
+    if (page.fbq) return;
+    // Meta's own snippet: calls wait in a queue until fbevents.js loads and takes them.
+    const fbq = function (...args: unknown[]) {
+      if (fbq.callMethod) fbq.callMethod(...args);
+      else fbq.queue.push(args);
+    } as Fbq;
+    fbq.queue = [];
+    fbq.push = fbq;
+    fbq.loaded = true;
+    fbq.version = "2.0";
+    page.fbq = fbq;
+    page._fbq = fbq;
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = "https://connect.facebook.net/en_US/fbevents.js";
+    document.head.append(script);
+    fbq("init", id);
+    fbq("track", "PageView");
+  }
+
+  /** Everything a visitor who allowed cookies gets, on every page. */
+  function allowed(): void {
+    if (readCookie(FIRST_TOUCH) === null) {
+      const here = landingHere();
+      if (Object.keys(here).length > 0) writeCookie(FIRST_TOUCH, JSON.stringify(here), FIRST_TOUCH_DAYS);
+    }
+    if (/^G-[A-Z0-9]+$/.test(GOOGLE_ANALYTICS_ID)) loadGoogle(GOOGLE_ANALYTICS_ID);
+    if (/^\d+$/.test(META_PIXEL_ID)) loadMeta(META_PIXEL_ID);
+    if (document.body.dataset.conversion === "lead") {
+      page.gtag?.("event", "generate_lead");
+      page.fbq?.("track", "Lead");
+    }
+  }
+
+  /** Every cookie this site or its tools set, on this host and the parent domain. */
+  function forget(): void {
+    const names = document.cookie
+      .split("; ")
+      .map((part) => part.split("=")[0])
+      .filter((name) => name === FIRST_TOUCH || name.startsWith("_ga") || name === "_fbp" || name === "_fbc");
+    const parent = location.hostname.split(".").slice(-3).join(".");
+    for (const name of names) {
+      for (const domain of ["", `; Domain=${location.hostname}`, `; Domain=.${parent}`]) {
+        document.cookie = `${name}=; Max-Age=0; Path=/${domain}`;
+      }
+    }
+  }
+
+  function choose(choice: "all" | "none"): void {
+    const before = readCookie(CONSENT);
+    writeCookie(CONSENT, choice, 365);
+    if (notice) notice.hidden = true;
+    if (choice === "all") allowed();
+    else if (before === "all") {
+      // Google's and Meta's scripts are already running on this page: a reload is the only way out.
+      forget();
+      location.reload();
+    }
+  }
+
+  // An arrival from outside (or opened directly), not a move inside the site, a reload or Back.
+  const [navigation] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
+  const arrived = navigation?.type !== "reload" && navigation?.type !== "back_forward";
+  if (arrived && (referrer() !== null || document.referrer === "")) beacon("view");
+
+  const choice = readCookie(CONSENT);
+  if (choice === "all") allowed();
+  else if (choice === null && notice) notice.hidden = false;
+
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const option = target?.closest<HTMLElement>("[data-consent]");
+    if (option) {
+      const value = option.dataset.consent;
+      if (value === "all" || value === "none") choose(value);
+      return;
+    }
+    if (target?.closest("[data-consent-open]") && notice) {
+      notice.hidden = false;
+      return;
+    }
+    const link = target?.closest("a");
+    if (link?.href.startsWith(DOWNLOAD)) {
+      beacon("download");
+      page.gtag?.("event", "file_download", { link_url: link.href });
+      page.fbq?.("trackCustom", "Download");
+    }
+  });
+
+  // The waitlist's hidden fields: where this person came from, sent with their name.
+  for (const [key, value] of Object.entries(landing())) {
+    for (const field of document.querySelectorAll<HTMLInputElement>(`input[type="hidden"][name="${key}"]`)) field.value = value;
+  }
+</script>

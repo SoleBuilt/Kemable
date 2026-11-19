@@ -24,6 +24,8 @@ private data out of the report.
 - The Windows app, its installer, and the data it keeps: the data folder, and
   the passwords in Windows Credential Manager.
 - The shared Rust core and its drivers.
+- The website (`site/`), its Worker and the data it keeps (the waitlist and the
+  visit counts).
 - This repository's workflows.
 
 ## Supported versions

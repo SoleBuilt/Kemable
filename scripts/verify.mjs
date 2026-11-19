@@ -46,6 +46,7 @@ if (runUi) {
   // The website builds offline in seconds; its slower type check (`pnpm check`)
   // runs in .github/workflows/site.yml before each deploy (docs/decisions/0030-website.md).
   step("site install", "pnpm install --frozen-lockfile", site);
+  step("site test", "pnpm test", site);
   step("site build", "pnpm build", site);
 }
 

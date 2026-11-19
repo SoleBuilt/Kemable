@@ -1,8 +1,8 @@
 // The site's pages for search engines. Every page is listed here by hand: there
-// are three, and a sitemap package would be a dependency for one file.
+// are four, and a sitemap package would be a dependency for one file.
 import type { APIRoute } from "astro";
 
-const PAGES = ["/", "/terms", "/privacy"];
+const PAGES = ["/", "/terms", "/privacy", "/security"];
 
 export const GET: APIRoute = ({ site }) => {
   const urls = PAGES.map((path) => `  <url><loc>${new URL(path, site).href}</loc></url>`).join("\n");

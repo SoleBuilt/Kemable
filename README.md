@@ -2,7 +2,7 @@
 
 **A fast, light database client.** Kemable streams millions of rows into its grid without a stutter, shows the SQL before an edit is saved, and keeps out of the way of your data. One Rust core does the work; each operating system gets its own UI. Windows comes first.
 
-[Tiếng Việt](README.vi.md) · [Website](https://kemable.pages.dev) · [Download](https://github.com/SoleBuilt/Kemable/releases/latest)
+[Tiếng Việt](README.vi.md) · [Website](https://kemable.ducht.info.vn) · [Download](https://github.com/SoleBuilt/Kemable/releases/latest)
 
 ![Kemable in its light theme: a query and its result in the grid](site/public/hero-light.webp)
 
@@ -11,8 +11,6 @@
 Kemable 0.1 is a preview for **Windows 10 and 11, x64**. Download `Kemable_<version>_x64-setup.exe` from the [latest release](https://github.com/SoleBuilt/Kemable/releases/latest) and run it. The installer asks whether to install for you alone or for everyone, and where. It needs WebView2, which Windows 11 has; on Windows 10 the installer fetches it.
 
 The installer is not code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Choose **More info**, then **Run anyway**. Once installed, Kemable updates itself: at launch it asks GitHub once whether a newer version exists, and installs only an installer signed by this project's release workflow.
-
-macOS and Linux come later.
 
 ## Engines
 
@@ -32,7 +30,7 @@ macOS and Linux come later.
 - Browse and edit tables, with the statements shown before they run, saved all or nothing.
 - Live tabs that listen to PostgreSQL `NOTIFY`, Redis pub/sub, Supabase Realtime, RabbitMQ queues and Firebase, as rows.
 - SSH tunnels, saved connections, `.sql` files and folders, a command palette (Ctrl+K), light and dark themes.
-- Passwords stay in Windows Credential Manager. No telemetry: the only request Kemable makes on its own is the update check ([Privacy Policy](https://kemable.pages.dev/privacy)).
+- Passwords stay in Windows Credential Manager. No telemetry: the only request Kemable makes on its own is the update check ([Privacy Policy](https://kemable.ducht.info.vn/privacy)).
 
 ## Building from source
 

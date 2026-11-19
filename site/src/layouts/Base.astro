@@ -1,5 +1,6 @@
 ---
 // Every page's frame: the head, the bar at the top and the footer.
+import Measure from "../components/Measure.astro";
 import ThemeToggle from "../components/ThemeToggle";
 import { DOWNLOAD, REPOSITORY, SOLEBUILT } from "../links";
 import "../styles/global.css";
@@ -9,9 +10,13 @@ interface Props {
   description: string;
   /** schema.org data for the page (`src/seo.ts`), read by search engines and AI assistants. */
   structured?: object;
+  /** Kept out of search results: a page only a form leads to. */
+  noindex?: boolean;
+  /** A page that is itself a conversion, reported to the ad tools a visitor allowed (Measure.astro). */
+  conversion?: "lead";
 }
 
-const { title, description, structured } = Astro.props;
+const { title, description, structured, noindex = false, conversion } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 // PNG, not WebP: some link previews read only PNG or JPEG. 1200 by 630 is the size they crop to.
 const image = new URL("/og.png", Astro.site);
@@ -26,6 +31,7 @@ const imageAlt = "Kemable, a fast, light database client, with its grid of two m
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
     <link rel="icon" type="image/svg+xml" href="/app-icon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="sitemap" href="/sitemap.xml" />
@@ -53,10 +59,10 @@ const imageAlt = "Kemable, a fast, light database client, with its grid of two m
       } catch {}
     </script>
   </head>
-  <body>
+  <body data-conversion={conversion}>
     <div class="overflow-hidden">
-      <header class="relative z-[2] border-b border-line">
-        <nav aria-label="Main" class="mx-auto flex h-16 max-w-[1200px] items-center gap-7 px-6">
+      <header class="relative z-2 border-b border-line">
+        <nav aria-label="Main" class="mx-auto flex h-16 max-w-300 items-center gap-7 px-6">
           <a href="/" class="flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.01em] text-fg hover:text-fg">
             <img src="/app-icon.svg" width="26" height="26" alt="" />
             Kemable
@@ -81,16 +87,19 @@ const imageAlt = "Kemable, a fast, light database client, with its grid of two m
       </main>
 
       <footer class="border-t border-line">
-        <div class="mx-auto flex max-w-[1160px] flex-wrap items-center gap-x-6 gap-y-3 px-6 py-7 text-[13px] text-fg3">
+        <div class="mx-auto flex max-w-290 flex-wrap items-center gap-x-6 gap-y-3 px-6 py-7 text-[13px] text-fg3">
           <span>© 2026 Huỳnh Trung Đức</span>
           <span>A <a href={SOLEBUILT} class="font-medium text-ember hover:text-ember">SoleBuilt</a> project</span>
           <span class="flex-auto"></span>
           <a href="/terms">Terms</a>
           <a href="/privacy">Privacy</a>
+          <a href="/security">Security</a>
+          <button type="button" data-consent-open class="cursor-pointer border-0 bg-transparent p-0 text-[13px] text-fg2 hover:text-fg">Cookies</button>
           <a href={REPOSITORY}>GitHub</a>
           <ThemeToggle client:visible />
         </div>
       </footer>
     </div>
+    <Measure />
   </body>
 </html>

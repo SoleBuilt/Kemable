@@ -1,0 +1,25 @@
+# Kemable's website as a Worker with static assets (docs/decisions/0034-site-worker-and-measuring.md).
+# `wrangler deploy` from .github/workflows/site.yml uploads dist/ and worker/; `wrangler dev` runs both here.
+name = "kemable"
+main = "worker/index.ts"
+# No later than the newest date the pinned Wrangler's runtime knows (site.yml), or `wrangler dev` will not start.
+compatibility_date = "2026-10-30"
+
+# The site's one address, which the app opens too (docs/decisions/0030-website.md, The address).
+# No workers.dev address: one address, so links and search engines never split between two.
+routes = [{ pattern = "kemable.ducht.info.vn", custom_domain = true }]
+workers_dev = false
+preview_urls = false
+
+# The pages are served straight from dist/; the Worker runs only for /api/*.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+# The waitlist and the visits. The id is not a secret: it is useless without a token of the account.
+[[d1_databases]]
+binding = "DB"
+database_name = "kemable-site"
+database_id = "ee5432bf-60ff-4acf-a2af-cd644e142a7d"
+migrations_dir = "migrations"

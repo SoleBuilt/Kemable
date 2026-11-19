@@ -1,0 +1,13 @@
+---
+// Where the waitlist's form leads when the name could not be kept (worker/index.ts).
+import Base from "../../layouts/Base.astro";
+import { CONTACT } from "../../links";
+---
+
+<Base title="Not on the list yet · Kemable" description="The waitlist did not keep your name. Try again." noindex>
+  <article class="prose-page">
+    <h1>That did not go through.</h1>
+    <p>Your name is not on the list yet. Check the email address, pick macOS, Linux or both, and <a href="/#notify">try again</a>.</p>
+    <p>If it fails again, write to <a href={`mailto:${CONTACT}`}>{CONTACT}</a> and say which system you want.</p>
+  </article>
+</Base>

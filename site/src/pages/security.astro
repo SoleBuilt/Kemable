@@ -1,0 +1,94 @@
+---
+// How Kemable protects passwords, connections and updates, and how to report a vulnerability. Each claim is the
+// app's behaviour as written down in docs/decisions/0033-bound-passwords.md and 0015-credential-profiles.md
+// (Credential Manager), 0004-engines.md (TLS per engine), 0024-ssh-tunnels.md (host keys), 0028-updates.md
+// (signed updates) and 0034-site-worker-and-measuring.md (the website). How to report lives in SECURITY.md;
+// this page points to it. When one of them changes, this page changes with it, and its date.
+import Base from "../layouts/Base.astro";
+import { CONTACT, REPOSITORY } from "../links";
+
+const advisory = `${REPOSITORY}/security/advisories/new`;
+---
+
+<Base title="Security · Kemable" description="How Kemable keeps your passwords and connections safe, how its updates are signed, and how to report a vulnerability.">
+  <article class="prose-page">
+    <h1>Security</h1>
+    <p>Last updated 18 November 2026.</p>
+    <p>
+      Kemable holds the keys to your databases, so this page says plainly what it does with them. Every claim here can be checked in{" "}
+      <a href={REPOSITORY}>the source</a>.
+    </p>
+
+    <h2 id="passwords">Passwords stay in Windows Credential Manager</h2>
+    <ul>
+      <li>
+        Passwords, API tokens and SSH passphrases are kept in Windows Credential Manager, protected by Windows under your own account. They are never
+        written to a file or a log.
+      </li>
+      <li>
+        A saved connection's password is sent only to the host, port and user it was saved for. Change any of them and Kemable asks for the password
+        again rather than send it somewhere new. An SSH secret is bound to its SSH server in the same way.
+      </li>
+      <li>
+        On a computer shared by several Windows users, each user's passwords and trusted SSH servers are their own, even when Kemable is installed for
+        everyone.
+      </li>
+    </ul>
+
+    <h2 id="connections">Your data goes straight to your servers</h2>
+    <ul>
+      <li>Kemable has no server of its own. Queries and rows go between your computer and your database, and nowhere else.</li>
+      <li>
+        Network engines connect with TLS through rustls and the Windows certificate store. Each connection has its TLS setting; <strong>Verify full</strong>
+        checks the server's certificate against its name. Cloudflare D1, Firebase and Supabase are reached over HTTPS.
+      </li>
+      <li>
+        Through an SSH tunnel, the server's host key is checked against your own <code>known_hosts</code> and Kemable's. A server seen for the first
+        time shows its key's fingerprint and waits for you to trust it. A server whose key has changed is refused, as <code>ssh</code> refuses it.
+      </li>
+    </ul>
+
+    <h2 id="changes-you-see">Changes are shown before they run</h2>
+    <ul>
+      <li>Edits, imports, drops and truncates show the exact statements they will run before you confirm, and saving edits is all or nothing.</li>
+      <li>The row limit never cancels a statement that writes.</li>
+    </ul>
+
+    <h2 id="telemetry">No telemetry</h2>
+    <p>
+      The app sends no usage statistics, crash reports or identifiers. Its one request of its own is the update check at launch, which carries nothing
+      about you and can be turned off. The <a href="/privacy">Privacy Policy</a> has the details.
+    </p>
+
+    <h2 id="updates">Updates are signed</h2>
+    <ul>
+      <li>
+        Each installer is built by Kemable's release workflow on GitHub and signed there, with a key that never leaves it. The app installs an update
+        only when its signature matches the key built into the app; anything else is refused.
+      </li>
+      <li>
+        The installer does not carry a Windows code-signing certificate yet, so Windows may warn on the first install. Download Kemable only from its{" "}
+        <a href={`${REPOSITORY}/releases/latest`}>GitHub releases</a>.
+      </li>
+    </ul>
+
+    <h2 id="website">This website</h2>
+    <p>
+      The website is served only over HTTPS. It asks for no password. Its database, which holds the visit counts and the waitlist, can be reached only
+      with Kemable's own Cloudflare account.
+    </p>
+
+    <h2 id="open-source">Open source</h2>
+    <p>
+      Kemable is open source under the AGPL-3.0, so anyone can read how it handles credentials, connections and updates, and build it themselves.
+    </p>
+
+    <h2 id="report">Report a vulnerability privately</h2>
+    <p>
+      Use GitHub's <a href={advisory}>private vulnerability report</a>, or write to <a href={`mailto:${CONTACT}`}>{CONTACT}</a>, in English or
+      Vietnamese. Never open a public issue for a vulnerability. Say what is affected and its version, your Windows version, the steps or a proof of
+      concept, and what an attacker gains; leave real passwords and private data out. The full policy, with what is in scope, is{" "}
+      <a href={`${REPOSITORY}/blob/main/SECURITY.md`}>SECURITY.md</a>. Fixes ship in a new release, so check the latest one first.
+    </p>
+  </article>
+</Base>

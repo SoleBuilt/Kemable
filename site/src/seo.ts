@@ -24,7 +24,7 @@ export const FAQ: { question: string; answer: string }[] = [
   {
     question: "Does Kemable run on macOS or Linux?",
     answer:
-      "Not yet. Kemable 0.1 runs on Windows 10 and 11 (x64). macOS and Linux versions will come later, built on the same core.",
+      "Not yet. Kemable 0.1 runs on Windows 10 and 11 (x64). macOS and Linux versions will come later, built on the same core. The home page has a waitlist for each: leave your email there to hear once when it is ready.",
   },
   {
     question: "How does Kemable stay fast with millions of rows?",

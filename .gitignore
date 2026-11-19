@@ -8,5 +8,7 @@ dist/
 ui/windows/src-tauri/gen/
 CLAUDE.local.md
 site/.astro/
+# Wrangler's local state: the local D1 of `wrangler pages dev` (site/README.md)
+site/.wrangler/
 # tabstream's own test run (core/crates/tabstream/README.md)
 core/crates/tabstream/Cargo.lock

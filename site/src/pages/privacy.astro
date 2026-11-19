@@ -1,24 +1,37 @@
 ---
-// What the app sends and keeps, in plain words. Each claim is the app's behaviour as written down in
-// docs/decisions/0019-data-folder.md (the data folder), 0028-updates.md (the update check) and
-// 0015-credential-profiles.md (Credential Manager). When the app changes one of them, this page changes with it.
+// What the app and the website send and keep, in plain words. Each claim is the behaviour written down in
+// docs/decisions/0019-data-folder.md (the data folder), 0028-updates.md (the update check),
+// 0015-credential-profiles.md and 0033-bound-passwords.md (Credential Manager), 0030-website.md (the waitlist)
+// and 0034-site-worker-and-measuring.md (the counting, the cookies and the ad tools).
+// When one of them changes, this page changes with it, and its date.
 import DraftNotice from "../components/DraftNotice.astro";
 import Base from "../layouts/Base.astro";
 import { CONTACT, REPOSITORY } from "../links";
 ---
 
-<Base title="Privacy Policy · Kemable" description="What Kemable sends, what it keeps, and where.">
+<Base title="Privacy Policy · Kemable" description="What Kemable and its website send, what they keep, where, and for how long.">
   <article class="prose-page">
     <DraftNotice />
     <h1>Privacy Policy</h1>
-    <p>Last updated 15 November 2026.</p>
+    <p>Last updated 18 November 2026.</p>
 
+    <h2 id="in-brief">In brief</h2>
+    <ul>
+      <li>The app has no account and no telemetry. It talks only to the servers you connect to, and asks GitHub once at launch for a newer version.</li>
+      <li>Your passwords stay in Windows Credential Manager on your computer. Your queries and data never pass through Kemable.</li>
+      <li>The website counts where visitors come from without cookies and without anything that identifies you.</li>
+      <li>Cookies, Google Analytics and the Meta Pixel run only if you click <strong>Allow</strong>; <strong>Cookies</strong> at the bottom of every page changes that.</li>
+      <li>The macOS and Linux waitlist keeps the name and email you send, only to write to you once when the version is ready.</li>
+    </ul>
+
+    <h2 id="who">Who is responsible</h2>
     <p>
-      Kemable is a database client that runs on your computer. It has no account, no server of its own and no telemetry. This page says what the app
-      sends over the network, what it keeps on your computer, and what this website does.
+      Kemable and this website are made by Huỳnh Trung Đức, an individual in Vietnam, as a SoleBuilt project. He decides what is collected and why.
+      Write to <a href={`mailto:${CONTACT}`}>{CONTACT}</a> for anything on this page.
     </p>
 
-    <h2>What the app sends</h2>
+    <h2 id="app">The app</h2>
+    <h3>What the app sends</h3>
     <ul>
       <li>
         <strong>One update check at launch.</strong> When Kemable opens, it asks GitHub for one file, <code>latest.json</code>, from Kemable's latest
@@ -35,7 +48,7 @@ import { CONTACT, REPOSITORY } from "../links";
       </li>
     </ul>
 
-    <h2>What the app keeps on your computer</h2>
+    <h3>What the app keeps on your computer</h3>
     <p>
       Everything Kemable remembers stays in its data folder on your computer: the <code>data</code> folder beside the app,
       or <code>%APPDATA%\kemable.app</code> when that folder cannot be written. Settings › Data shows where it is. It holds:
@@ -54,23 +67,129 @@ import { CONTACT, REPOSITORY } from "../links";
       remove the passwords in Windows Credential Manager (their names end in <code>.Kemable</code>).
     </p>
 
-    <h2>This website</h2>
+    <h2 id="website">This website</h2>
     <p>
-      This website is a set of static pages served by Cloudflare Pages. It sets no cookies and runs no analytics. It remembers your choice of light
-      or dark theme in your browser's storage, which never leaves your browser. Cloudflare, as the host, processes the requests your browser makes,
-      such as your IP address, to deliver the pages. The download links lead to GitHub.
+      This website is served by Cloudflare. Cloudflare, as the host, processes the requests your browser makes, such as your IP address, to deliver
+      the pages. The download links lead to GitHub. The website remembers your choice of light or dark theme in your browser's storage, which never
+      leaves your browser.
     </p>
 
-    <h2>Children</h2>
-    <p>Kemable is a tool for working with databases. It collects nothing from anyone, children included.</p>
-
-    <h2>Changes</h2>
+    <h3 id="counting">Counting where visitors come from, without cookies</h3>
     <p>
-      If what the app sends or keeps changes, this page changes in the same release, and the date above with it. The history of this page is public
-      in <a href={REPOSITORY}>Kemable's repository</a>.
+      When you arrive on the website, and when you click a Download link, your browser tells Kemable's own server where you came from: the page, the
+      link's campaign tags (such as <code>utm_source</code>), an ad's click id if the link had one, and the address of the site that sent you, such as
+      a search engine, a social network or an AI assistant. The server keeps that source, what told it (the tag, the click id or the referring
+      site), the time and your country (from Cloudflare, two letters), in a Cloudflare D1 database of Kemable's own. It keeps no IP address, no
+      details of your browser and no identifier, and sets no cookie for it, so none of this can be tied to you. It is used only to learn which links
+      bring people to Kemable.
     </p>
 
-    <h2>Contact</h2>
+    <h3 id="cookies">Cookies, Google Analytics and the Meta Pixel, only if you allow them</h3>
+    <p>
+      The first time you visit, a notice asks whether you allow cookies. Until you choose, and if you choose <strong>No thanks</strong>, the website
+      sets none of the cookies below except your choice, and loads nothing from Google or Meta. You can change your choice at any time from{" "}
+      <strong>Cookies</strong> at the bottom of every page; taking it back deletes these cookies.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Cookie</th><th>Set by</th><th>Kept for</th><th>What for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>kemable_consent</code></td><td>this website</td><td>1 year</td><td>Your choice, so the notice is not asked again. Set either way.</td></tr>
+        <tr><td><code>kemable_src</code></td><td>this website, if you allow</td><td>90 days</td><td>The first link that brought you here, so a later download or waitlist entry is counted for it. Sent only to this website.</td></tr>
+        <tr><td><code>_ga</code>, <code>_ga_*</code></td><td>Google Analytics, if you allow</td><td>up to 2 years</td><td>Google measures your visit, the pages you see and your downloads.</td></tr>
+        <tr><td><code>_fbp</code></td><td>the Meta Pixel, if you allow</td><td>90 days</td><td>Meta measures visits and sign-ups that came from its ads.</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Google Analytics and the Meta Pixel are loaded only once Kemable uses them, and only after you allow. With them, Kemable allows measuring ads but
+      not personalising them: it does not build audiences from your visit to show you ads elsewhere. Kemable uses these to see which links and ads
+      bring people, never to sell anything about you.
+    </p>
+
+    <h3 id="waitlist">The waitlist for macOS and Linux</h3>
+    <p>
+      The home page has a form for people who want Kemable on macOS or Linux. Only if you send it, the website keeps the name and the email address you
+      type, the systems you picked, the time, and where you came from (as described above), in Kemable's own D1 database. No IP address is kept with
+      them. They are used to count how many people want each system and which links brought them, and to write to you once when each version is
+      ready. They are never sold, shared or used for anything else, and no newsletter is sent.
+    </p>
+
+    <h2 id="why">Why, under data protection law</h2>
+    <ul>
+      <li><strong>The waitlist</strong>: your consent, given by sending the form. You can withdraw it at any time.</li>
+      <li><strong>Cookies, Google Analytics and the Meta Pixel</strong>: your consent, given with <strong>Allow</strong>.</li>
+      <li>
+        <strong>Counting where visitors come from</strong>: Kemable's legitimate interest in knowing which links bring people, which holds nothing that
+        identifies you.
+      </li>
+      <li><strong>The update check</strong>: to keep the app you installed up to date, which you can turn off.</li>
+    </ul>
+
+    <h2 id="recipients">Who receives data</h2>
+    <table>
+      <thead>
+        <tr><th>Who</th><th>What for</th><th>What they get</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Cloudflare</td><td>Hosting the website and its database</td><td>Your requests to the website; it stores the counts and the waitlist for Kemable.</td></tr>
+        <tr><td>GitHub</td><td>Downloads and the app's update check</td><td>Your download and update requests, with your IP address.</td></tr>
+        <tr><td>Google</td><td>Google Analytics, only if you allow</td><td>Your visit, as described above, under <a href="https://policies.google.com/privacy">Google's privacy policy</a>.</td></tr>
+        <tr><td>Meta</td><td>The Meta Pixel, only if you allow</td><td>Your visit and sign-up, under <a href="https://www.facebook.com/privacy/policy/">Meta's privacy policy</a>.</td></tr>
+        <tr><td>The servers you connect to</td><td>Your work in the app</td><td>What you run there. You choose them; Kemable never sees it.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="where">Where data is processed</h2>
+    <p>
+      Cloudflare serves the website from its network worldwide; Kemable's database is kept in its Asia-Pacific region. GitHub, Google and Meta process
+      data mainly in the United States, under the safeguards their own policies describe for transfers from other countries.
+    </p>
+
+    <h2 id="retention">How long data is kept</h2>
+    <table>
+      <thead>
+        <tr><th>Data</th><th>Kept</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Visit counts</td><td>Without a time limit: they identify no one.</td></tr>
+        <tr><td>A waitlist entry</td><td>Until you have been told that the version you asked for is out, then deleted; or sooner, when you ask.</td></tr>
+        <tr><td>Cookies</td><td>As in the table above, or until you take your consent back or clear them.</td></tr>
+        <tr><td>Google Analytics</td><td>14 months, then deleted by Google.</td></tr>
+        <tr><td>The Meta Pixel</td><td>As Meta's policy says.</td></tr>
+        <tr><td>What the app keeps</td><td>On your computer, until you delete it.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="rights">Your choices and rights</h2>
+    <ul>
+      <li>Turn the app's update check off in Settings › Updates; turn cookies off from <strong>Cookies</strong> at the bottom of every page.</li>
+      <li>
+        Ask to see, correct or delete what Kemable keeps about you, to restrict or object to its use, or to have a copy: write to{" "}
+        <a href={`mailto:${CONTACT}`}>{CONTACT}</a> from the address concerned. You get an answer within one month.
+      </li>
+      <li>If you think your data was handled wrongly, you can complain to the data protection authority where you live.</li>
+    </ul>
+
+    <h2 id="children">Children</h2>
+    <p>
+      Kemable is a tool for working with databases, not meant for children. The app collects nothing from anyone. The waitlist and the cookies are
+      meant for people aged 16 or over; if a child sent the form, write and the entry is deleted.
+    </p>
+
+    <h2 id="security">Security</h2>
+    <p>
+      The website is served only over HTTPS, and its database can be reached only with Kemable's own Cloudflare account. How the app protects your
+      passwords and connections, and how to report a vulnerability, is on the <a href="/security">Security</a> page.
+    </p>
+
+    <h2 id="changes">Changes</h2>
+    <p>
+      If what the app or the website sends or keeps changes, this page changes before it does, with the date above. Its history is public in{" "}
+      <a href={REPOSITORY}>Kemable's repository</a>.
+    </p>
+
+    <h2 id="contact">Contact</h2>
     <p>Questions about this policy: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.</p>
   </article>
 </Base>

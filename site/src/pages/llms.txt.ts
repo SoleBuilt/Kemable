@@ -23,7 +23,8 @@ ${FAQ.map(({ question, answer }) => `### ${question}\n\n${answer}`).join("\n\n")
 ## Pages
 
 - [Home](${page("/")}): what Kemable does, with a demo video and screenshots.
-- [Privacy Policy](${page("/privacy")}): what the app sends and keeps.
+- [Privacy Policy](${page("/privacy")}): what the app and this website send and keep.
+- [Security](${page("/security")}): how passwords, connections and updates are protected, and how to report a vulnerability.
 - [Terms of Service](${page("/terms")}): the terms and the licenses.
 `;
   return new Response(text, { headers: { "Content-Type": "text/plain; charset=utf-8" } });

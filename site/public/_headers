@@ -1,4 +1,4 @@
-# Cloudflare Pages reads this file (site/AGENTS.md).
+# Cloudflare reads this file with the static assets (site/AGENTS.md).
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

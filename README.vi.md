@@ -2,7 +2,7 @@
 
 Database client nhanh, nhẹ, mượt. Core Rust làm toàn bộ việc nặng, mỗi hệ điều hành có UI riêng trong `ui/`. Hiện chỉ có bản Windows (Tauri 2, Svelte 5, TypeScript).
 
-[English](README.md) · [Website](https://kemable.pages.dev) · [Tải về](https://github.com/SoleBuilt/Kemable/releases/latest)
+[English](README.md) · [Website](https://kemable.ducht.info.vn) · [Tải về](https://github.com/SoleBuilt/Kemable/releases/latest)
 
 ## Tải về
 

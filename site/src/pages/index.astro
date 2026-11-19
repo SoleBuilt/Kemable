@@ -47,8 +47,18 @@ const cards = [
 ];
 
 const primary =
-  "inline-flex h-12 items-center gap-2 rounded-[10px] bg-accent px-[22px] font-medium text-on-accent hover:text-on-accent";
-const secondary = "inline-flex h-12 items-center rounded-[10px] border border-line-strong px-[22px] font-medium text-fg hover:text-fg";
+  "inline-flex h-12 items-center gap-2 rounded-[10px] bg-accent px-5.5 font-medium text-on-accent hover:text-on-accent";
+const secondary = "inline-flex h-12 items-center rounded-[10px] border border-line-strong px-5.5 font-medium text-fg hover:text-fg";
+const field = "h-12 rounded-[10px] border border-line-strong bg-chrome px-4 text-base text-fg outline-none focus-visible:border-fg3";
+const label = "flex flex-col gap-1.5 text-[13px] text-fg3";
+const landingFields = ["utm_source", "utm_medium", "utm_campaign", "gclid", "fbclid", "msclkid", "referrer"];
+// The waitlist's systems: checkboxes drawn as buttons, so a person can pick one or both.
+const systems = [
+  { value: "macos", name: "macOS" },
+  { value: "linux", name: "Linux" },
+];
+const toggle =
+  "group flex h-12 cursor-pointer select-none items-center justify-center gap-2.5 rounded-[10px] border border-line-strong text-base font-medium text-fg2 hover:text-fg has-checked:border-fg3 has-checked:text-fg has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ember";
 ---
 
 <Base
@@ -59,20 +69,20 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
   <section class="relative px-6 pt-28 text-center">
     <div
       aria-hidden="true"
-      class="absolute left-1/2 top-[420px] h-[520px] w-[1100px] -translate-x-1/2 opacity-[0.22] blur-[40px]"
+      class="absolute left-1/2 top-105 h-130 w-275 -translate-x-1/2 opacity-[0.22] blur-2xl"
       style="background: radial-gradient(closest-side, var(--glow), transparent);"
     >
     </div>
-    <div class="relative mx-auto flex max-w-[960px] flex-col items-center gap-[22px]">
+    <div class="relative mx-auto flex max-w-240 flex-col items-center gap-5.5">
       <a
         href={DOWNLOAD}
-        class="inline-flex items-center gap-2 rounded-full border border-line-strong py-[5px] pl-1.5 pr-3 text-[13px] text-fg2"
+        class="inline-flex items-center gap-2 rounded-full border border-line-strong py-1.25 pl-1.5 pr-3 text-[13px] text-fg2"
       >
         <span class="rounded-full bg-ember px-2 py-px text-xs font-semibold text-[#0a0a0a]">New</span>
         Preview 0.1 for Windows is out →
       </a>
       <h1 class="m-0 text-[clamp(48px,8vw,96px)] font-semibold leading-[0.98] tracking-[-0.045em]">Fast is the feature.</h1>
-      <p class="m-0 max-w-[560px] text-xl text-fg2">The database client that streams millions of rows without a stutter.</p>
+      <p class="m-0 max-w-140 text-xl text-fg2">The database client that streams millions of rows without a stutter.</p>
       <div class="mt-1.5 flex flex-wrap justify-center gap-3">
         <a href={DOWNLOAD} class={primary}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
@@ -82,10 +92,12 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
         </a>
         <a href={REPOSITORY} class={secondary}>Star on GitHub</a>
       </div>
-      <p class="m-0 text-[13px] text-fg3">Free and open source · Windows x64 · macOS and Linux later</p>
+      <p class="m-0 text-[13px] text-fg3">
+        Free and open source · Windows x64 · <a href="#notify" class="text-fg3 underline underline-offset-[3px] hover:text-fg">macOS and Linux later</a>
+      </p>
     </div>
 
-    <div class="relative mx-auto mt-16 max-w-[1160px]">
+    <div class="relative mx-auto mt-16 max-w-290">
       <div class="rounded-[14px] p-1.5" style="background: linear-gradient(180deg, var(--line-strong), transparent 70%);">
         <video
           autoplay
@@ -107,7 +119,7 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
   </section>
 
   <section id="engines" class="px-6 pt-14">
-    <div class="mx-auto flex max-w-[1100px] flex-wrap items-center justify-center gap-x-9 gap-y-3 text-[17px] font-medium text-fg3">
+    <div class="mx-auto flex max-w-275 flex-wrap items-center justify-center gap-x-9 gap-y-3 text-[17px] font-medium text-fg3">
       <span class="text-[13px] font-normal">Works with</span>
       {engines.map((engine) => <span>{engine}</span>)}
     </div>
@@ -115,7 +127,7 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
 
   <section aria-label="Measured" class="px-6 py-24">
     <div
-      class="mx-auto grid max-w-[1100px] gap-px overflow-hidden rounded-2xl border border-line bg-line"
+      class="mx-auto grid max-w-275 gap-px overflow-hidden rounded-2xl border border-line bg-line"
       style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));"
     >
       {
@@ -129,10 +141,10 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
     </div>
   </section>
 
-  <section id="features" class="flex flex-col gap-[120px] px-6">
+  <section id="features" class="flex flex-col gap-30 px-6">
     {
       features.map((feature) => (
-        <div class:list={["mx-auto flex w-full max-w-[1160px] items-center gap-12", feature.imageFirst ? "flex-wrap-reverse" : "flex-wrap"]}>
+        <div class:list={["mx-auto flex w-full max-w-290 items-center gap-12", feature.imageFirst ? "flex-wrap-reverse" : "flex-wrap"]}>
           <div class="flex flex-[1_1_300px] flex-col gap-3.5">
             <span class="font-mono text-[13px] text-ember">{feature.tag}</span>
             <h2 class="m-0 text-[44px] font-semibold leading-[1.05] tracking-[-0.035em]">
@@ -156,8 +168,8 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
     }
   </section>
 
-  <section class="px-6 pt-[140px]">
-    <div class="mx-auto grid max-w-[1160px] gap-3" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+  <section class="px-6 pt-35">
+    <div class="mx-auto grid max-w-290 gap-3" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
       {
         cards.map((card) => (
           <div class="flex flex-col gap-2 rounded-[14px] border border-line bg-chrome p-6">
@@ -175,8 +187,8 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
     </div>
   </section>
 
-  <section id="questions" class="px-6 pt-[140px]">
-    <div class="mx-auto flex max-w-[860px] flex-col gap-8">
+  <section id="questions" class="px-6 pt-35">
+    <div class="mx-auto flex max-w-215 flex-col gap-8">
       <h2 class="m-0 text-center text-[44px] font-semibold leading-[1.05] tracking-[-0.035em]">Questions</h2>
       <div class="border-t border-line">
         {
@@ -194,11 +206,52 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
     </div>
   </section>
 
-  <section class="px-6 py-[140px]">
-    <div class="relative mx-auto max-w-[1160px] overflow-hidden rounded-[20px] border border-line bg-chrome px-8 py-[72px] text-center">
+  <section id="notify" class="scroll-mt-8 px-6 pt-35">
+    <div class="mx-auto flex max-w-160 flex-col items-center gap-5 text-center">
+      <h2 class="m-0 text-[44px] font-semibold leading-[1.05] tracking-[-0.035em]">Join the Waitlist MacOS and Linux.</h2>
+      <p class="m-0 text-lg text-fg2">Leave your name and email, and pick the systems you want. We write once, when each is ready.</p>
+      <!-- A plain form that works without JavaScript: each ticked system is sent as `os` (worker/index.ts). -->
+      <form id="waitlist" method="post" action="/api/waitlist" class="relative mt-2 flex w-full max-w-110 flex-col gap-4 text-left">
+        <label class={label}>
+          Name
+          <input name="name" type="text" required maxlength="100" autocomplete="name" class={field} />
+        </label>
+        <label class={label}>
+          Email
+          <input name="email" type="email" required maxlength="254" autocomplete="email" class={field} />
+        </label>
+        <fieldset class="m-0 border-0 p-0">
+          <legend class="mb-1.5 p-0 text-[13px] text-fg3">Which system? Pick one or both.</legend>
+          <div class="grid grid-cols-2 gap-3">
+            {
+              systems.map(({ value, name }) => (
+                <label class={toggle}>
+                  <input type="checkbox" name="os" value={value} class="sr-only" />
+                  {name}
+                </label>
+              ))
+            }
+          </div>
+        </fieldset>
+        <!-- Never seen by people; a bot that fills it is kept out. -->
+        <div aria-hidden="true" class="absolute left-[-9999px] h-px w-px overflow-hidden">
+          <label>Website <input name="website" type="text" tabindex="-1" autocomplete="off" /></label>
+        </div>
+        <!-- Where this person came from, filled by Measure.astro; empty without JavaScript. -->
+        {landingFields.map((name) => <input type="hidden" name={name} />)}
+        <button type="submit" class={`${primary} w-full cursor-pointer justify-center border-0`}>Join Now</button>
+        <p class="m-0 text-center text-[13px] text-fg3">
+          Kept only for this, never shared. <a href="/privacy#waitlist" class="text-fg3 underline underline-offset-[3px] hover:text-fg">Privacy</a>
+        </p>
+      </form>
+    </div>
+  </section>
+
+  <section class="px-6 py-35">
+    <div class="relative mx-auto max-w-290 overflow-hidden rounded-[20px] border border-line bg-chrome px-8 py-18 text-center">
       <div
         aria-hidden="true"
-        class="absolute -bottom-[220px] left-1/2 h-[360px] w-[760px] -translate-x-1/2 opacity-[0.28] blur-[30px]"
+        class="absolute -bottom-55 left-1/2 h-90 w-190 -translate-x-1/2 opacity-[0.28] blur-[30px]"
         style="background: radial-gradient(closest-side, var(--glow), transparent);"
       >
       </div>
@@ -213,3 +266,15 @@ const secondary = "inline-flex h-12 items-center rounded-[10px] border border-li
     </div>
   </section>
 </Base>
+
+<script>
+  // Without JavaScript the Worker turns away a form with no system ticked (/waitlist/failed); with it,
+  // the browser says so on the spot, as it does for an empty name.
+  const form = document.getElementById("waitlist");
+  if (form instanceof HTMLFormElement) {
+    const boxes = [...form.querySelectorAll<HTMLInputElement>('input[name="os"]')];
+    const check = () => boxes[0]?.setCustomValidity(boxes.some((box) => box.checked) ? "" : "Pick macOS, Linux or both.");
+    for (const box of boxes) box.addEventListener("change", check);
+    check();
+  }
+</script>
