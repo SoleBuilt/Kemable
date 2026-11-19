@@ -17,7 +17,10 @@ interface Props {
 }
 
 const { title, description, structured, noindex = false, conversion } = Astro.props;
-const canonical = new URL(Astro.url.pathname, Astro.site);
+// The address a page is served at, as the sitemap lists it: with `build.format: "file"` the build
+// names pages /index.html and /terms.html, but they are served at / and /terms (and /index.html
+// redirects), so a canonical link with .html would point search engines at a redirect.
+const canonical = new URL(Astro.url.pathname.replace(/(^|\/)index\.html$/, "$1").replace(/\.html$/, ""), Astro.site);
 // PNG, not WebP: some link previews read only PNG or JPEG. 1200 by 630 is the size they crop to.
 const image = new URL("/og.png", Astro.site);
 const imageAlt = "Kemable, a fast, light database client, with its grid of two million rows";
