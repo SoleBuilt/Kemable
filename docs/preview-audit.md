@@ -2,7 +2,7 @@
 
 What a read of the code found that could hurt a person using Kemable, before its first public preview. Each item says what happens, where in the code, how it could be fixed, and what is decided. An item is fixed through the `fix-issue` skill, ticked here, and moved to the ADR or roadmap entry that owns its subject.
 
-Groups: **A** loses or corrupts data, or crashes; **B** hurts everyday use; **C** release and legal; **D** small, after the preview.
+Groups: **A** loses or corrupts data, or crashes; **B** hurts everyday use; **C** release and legal; **D** small, after the preview; **E** found by running `docs/testing/` on the installed build, 2026-11-21.
 
 The paths name a function or a place; line numbers move, so search for the name.
 
@@ -101,3 +101,43 @@ Seen while recording the landing page's video (2026-11-15, release build, SQLite
 - [ ] **D22.** SQL Server: saving edits outside a transaction leaves `XACT_ABORT` on for the session afterwards, as before A3 (`mssql/src/connection.rs`, `apply_edits`).
 - [ ] **D23.** A credential profile's password (ADR 0015) is bound to no host: a shared connection that uses the profile, pointed at another host, still gets it (B15 bound connections' own passwords only; `docs/decisions/0033-bound-passwords.md`, undecided).
 - [ ] **D24.** SQL Server: a Stop that lands inside a token, in the message where the server also ends a transaction (`XACT_ABORT ON`), misses that change and drops the session, as before A9 (`docs/decisions/0029-tabstream.md`).
+
+## E. Found by the manual run of 2026-11-21
+
+The steps of `docs/testing/` run on the installed build of `task/2026-11-15` (with E1 fixed), against PostgreSQL 17, SQL Server 2025 and SQLite on the machine, through Vitro and a CDP client on the same WebView2. Redis, D1, RabbitMQ, Firebase, Supabase, SSH and the updater were not tried. **E2 to E7** hurt everyday use or lose data; **E8** is the testers' docs; **E9 to E15** are small.
+
+- [x] **E1. After a fast run, the next run stays in "Running" for good.** SQLite in memory: `select 1`, then any statement: no result, Stop and Esc do nothing, every later run is refused. The run ended in Rust (it is in History), but the page dropped all its events.
+  - Where: `ui/windows/src/App.svelte` (`startRun`): a fast run's events, `finished` among them, arrive before `run_query` returns; the id it returns was then kept as the run followed, and the next run's events, which carry another id, were all dropped.
+  - Fixed 2026-11-21: `ui/windows/src/lib/followed-run.ts` takes a run's events by its channel and keeps no id for an ended run; `followed-run.test.ts`, `pnpm test`. The same order fixed in `lib/live/session.svelte.ts`.
+- [ ] **E2. Running again with a result filter empties the result.** PostgreSQL, Limit 1,000: `select * from order_items; select 1;`, filter Result 1 `quantity > 3`, F5: Result 1 shows "0 of 0 rows held" and "Stopped at 0 rows", the grid is empty, and the filter row is back to its defaults (first column, contains, empty) while the WHERE strip still shows the condition.
+  - Where: `ui/windows/src/App.svelte` (`onEvent`, `setStarted`): the carried filter is applied by `filterSet` without waiting; the set is added with `filter: null`, so `rows` and `setFinished` count it as unfiltered, then `filterSet` returns the counts of the empty set and writes them over. The `FilterRow` of a result is keyed by `set.result` and mounts before the filter is there, so it shows no condition.
+  - Fix: the new set carries the filter's conditions from `setStarted`; `filterSet` reads the counts again once it has run (`refreshCounts`).
+- [ ] **E3. JSON and SQL INSERT exports start with a UTF-8 byte order mark that cannot be turned off.** `JSON.parse` fails on the file ("Unexpected token"), and `psql` reads the mark as part of the first statement.
+  - Where: `ui/windows/src/lib/data/ExportDialog.svelte` (`bom` starts true and is sent for every format; its checkbox shows only for CSV); `core/crates/core/src/export.rs` (`start` writes the mark whenever `bom` is set).
+  - Fix: the mark is for CSV only: the dialog sends `bom` only with CSV, and the core writes it only for CSV; a test per format.
+- [ ] **E4. Esc does not stop a run.** The Stop button's tip says "Stop the run  Esc" and opening another connection says "Stop the running query first (Esc)", but nothing binds Esc: `select pg_sleep(60)` ran its full 60 s with Esc pressed. `docs/testing/preview.md` B11, B12, D8 and D10 stop with Esc.
+  - Where: `ui/windows/src/App.svelte` (`onWindowKeydown` has no Escape; `stopRun` is reached only from `RunControls.svelte`).
+  - Fix: Esc stops the page's run while it runs, unless a dialog, menu, picker, the completion list or a cell editor takes the key first.
+- [ ] **E5. Import drops a SQLite `INTEGER PRIMARY KEY` field.** A file `id,ma` / `50,c` into `thu_so (id integer primary key, ...)`: the plan says `id` is "left out: no column of that name", the INSERT has no `id`, and the row gets the next rowid (3) instead of 50.
+  - Where: `core/crates/drivers/sqlite/src/lib.rs` (`mark_rowid_alias` marks the rowid alias `generated`); `core/crates/core/src/import.rs` (mapping skips generated columns); `ui/windows/src/lib/data/ImportDialog.svelte` (words every unmapped field as "no column of that name").
+  - Fix: a rowid alias takes a value when the file gives one (it is generated only when left out), as an identity column with a value would need `SET IDENTITY_INSERT` on SQL Server; the dialog words a skipped generated column as such.
+- [ ] **E6. The SQL files pane's Refresh and Remove from the sidebar do nothing.** The click throws "Cannot read properties of null (reading 'folder')"; the folder stays, also after a restart.
+  - Where: `ui/windows/src/lib/sidebar/SqlFolders.svelte`: the items set `menu = null`, then read `target.folder` from `{@const target = menu}`, which is null by then.
+  - Fix: read the folder before closing the menu; look for the same order in the other context menus.
+- [ ] **E7. A dialog does not take the focus, so keys go to what is behind it.** With a grid cell selected, open Settings or the Close Kemable? question, press Esc: the grid takes it (it collapses its selection and calls `preventDefault`) and the dialog stays.
+  - Where: `ui/windows/src/lib/ui/Dialog.svelte` (no focus on open, none given back on close; its Esc handler skips a prevented event); `ui/windows/src/lib/grid/engine.ts` (Escape with a selection).
+  - Fix: a dialog moves the focus into itself when it opens and back when it closes; keys outside an open modal dialog do nothing.
+- [ ] **E8. The testers' steps name keys and behaviour that changed.** Not a code bug, but the steps mislead whoever runs them:
+  - `phase-2.md` §3 pages with Alt+PageDown and Alt+PageUp; the keys are Ctrl+] and Ctrl+[ (as `phase-1.md` 8.3 says).
+  - `phase-2.md` §7 expects opening another table or running in the editor to be blocked while a table page has edits; since pages (ADR 0013) they go to other pages, which keep their edits.
+  - `phase-2.md` §1 says History's Run switches the database; since D6 it puts the statement in the editor when the database differs.
+  - `phase-3.md` 1.6 expects the "Listening in demo_sales, while queries now run in postgres" strip; since D5 each page has its own database.
+  - `phase-3.md` §12 times `select g from generate_series(1, 50000000) g` under a second; PostgreSQL computes a set-returning function in `FROM` in full before the first row (12 s here). `select generate_series(1, 50000000)` returns in 1 ms.
+  - `phase-3.md` §5 says the first row sorted by `n` is `0`; `x * 7919 % 2000003` is never 0 for `x` up to 2,000,000, so it is `1`.
+- [ ] **E9.** A table page's status bar never says "sorted by the server" (`phase-1.md` §5, `phase-2.md` §3), though a query result does (`App.svelte`, the status bar's table-page branch).
+- [ ] **E10.** The status bar keeps the previous result's selection after a run ("5 × 6 selected" over a 1-column result); `selected` is not cleared with the results (`App.svelte`).
+- [ ] **E11.** Errors coded `config.invalid` are titled "The connection settings are not valid" where no connection is set: the Rename dialog opens already showing it ("the new name is the old one", `object_action.rs`), and so do "Stop the running query first (Esc)" and a duplicate credential profile name (`errors.ts`).
+- [ ] **E12.** Wording: "Import 1 rows" and "Imported 1 rows into …" (`ImportDialog.svelte`); "statement 1 changed not one rows" (`error.rs`, `edit_row_gone`); "This file is not UTF-8 or UTF-16 text: not UTF-8 or UTF-16 text: …" (`text_file.rs` repeats the title in the detail).
+- [ ] **E13.** PostgreSQL reports "0 rows affected" for `CREATE TABLE`, `DROP`, `DO` and `NOTIFY`, and History shows "0 rows"; SQL Server and SQLite say "Done" (D17). The driver passes `rows_affected()` for every command (`postgres/src/connection.rs`, `command_done`); a count belongs only to INSERT, UPDATE, DELETE, MERGE, COPY and SELECT INTO.
+- [ ] **E14.** The object tree (`role="tree"`) has no arrow keys: Right does not open a node, Up and Down do not move (`ObjectTree.svelte`), against the keyboard-first rule.
+- [ ] **E15.** A column widens only for a value with more bytes than the widest measured (D19), so a value of the same length with wider digits is cut: at row 2,000,000, "row 2000000" shows as "row 200000(" (`engine.ts`).
