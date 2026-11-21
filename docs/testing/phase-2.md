@@ -20,8 +20,9 @@ Lịch sử nằm trong `history.db` ở thư mục dữ liệu của app (thư 
   **Đúng:** History **không** thêm mục nào: đây là câu app tự viết, không phải câu người dùng gõ.
 - [ ] Chạy `alter user postgres password 'abc';` trên một user thử (hoặc gõ rồi chạy bất kỳ câu nào chứa chữ `PASSWORD`, kể cả câu lỗi).
   **Đúng:** mục mới ghi `-- not kept: this statement holds a password`, không lưu câu gốc.
-- [ ] Gõ `now` vào ô **Search history**.
-  **Đúng:** sau khoảng 0,2 giây chỉ còn những câu chứa `now`.
+- [x] Gõ một từ có trong History vào ô **Search history**.
+  **Đúng:** sau khoảng 0,2 giây chỉ còn những câu khớp từ đã gõ.
+  Đã thử trên **In memory** (SQLite 3.54.1) với `select 1`: còn 3 mục khớp trên tổng số 7.
 - [ ] Bỏ tick **This connection**, rồi kết nối `Local MSSQL` và mở History.
   **Đúng:** khi tick thì chỉ thấy câu của SQL Server; bỏ tick thì thấy cả câu của PostgreSQL.
 - [ ] Rê chuột lên một mục, bấm **Insert**.
@@ -39,8 +40,9 @@ Lịch sử nằm trong `history.db` ở thư mục dữ liệu của app (thư 
 
 Lưu trong `queries.json` cạnh `connections.json`.
 
-- [ ] Gõ một câu vào editor, nhấn **Ctrl+Shift+D** (hoặc bấm **Save query** trên toolbar).
+- [x] Gõ một câu vào editor, nhấn **Ctrl+Shift+D** (hoặc bấm **Save query** trên toolbar).
   **Đúng:** hộp thoại mở, tên là dòng đầu của câu, ô SQL có câu đó, con trỏ ở ô Name.
+  Đã thử với truy vấn xác minh A6: tên và SQL được điền đúng, con trỏ ở Name. Đã hủy hộp thoại, không lưu truy vấn.
 - [ ] Bôi chọn một phần của editor rồi nhấn **Ctrl+Shift+D**.
   **Đúng:** ô SQL chỉ có phần đã chọn.
 - [ ] Đặt tên `Doanh thu theo tháng`, để **Show it for every connection** không tick, bấm **Save**.
@@ -57,6 +59,7 @@ Lưu trong `queries.json` cạnh `connections.json`.
   **Đúng:** không mở hộp thoại; status bar ghi "Nothing to save: the editor is empty".
 - [ ] Nhấn **Esc** trong hộp thoại.
   **Đúng:** hộp thoại đóng, con trỏ về editor.
+  Đã thử Esc: hộp thoại đóng; chưa xác nhận được vị trí con trỏ trong editor.
 - [ ] Chuyển qua lại giữa Objects, Queries, History.
   **Đúng:** cây ở Objects giữ nguyên các nút đã mở.
 

@@ -490,24 +490,30 @@ Chuẩn bị một thư mục, ví dụ `D:\scripts`, có vài file `.sql`, mộ
 ### 8.6 Ô nhập
 - [ ] Bấm vào ô Filter objects, ô Value của filter, ô tìm trong Ctrl+K.
   **Đúng:** chỉ có con trỏ nhấp nháy, không có viền hay vòng sáng quanh ô.
-- [ ] Ô Filter objects trên sidebar.
+- [x] Ô Filter objects trên sidebar.
   **Đúng:** cao bằng các ô khác, cây đối tượng nằm ngay dưới, không có khoảng trống lớn.
+  Đã kiểm tra trên In memory (SQLite 3.54.1): ô lọc cao bằng các ô tìm khác; cây Objects nằm ngay dưới, không có khoảng trống lớn.
+  Mục ô nhập phía trên vẫn chưa đạt: đã bấm ô Filter objects và ô tìm trong Ctrl+K, nhưng ảnh chụp tĩnh không xác nhận được con trỏ nhấp nháy hay viền focus; ô Value chưa có grid để thử.
 
 ### 8.7 Settings
 - [ ] Nhấn **Ctrl+=** hai lần (hoặc Ctrl và phím + trên bàn số), rồi **Ctrl+-**, rồi **Ctrl+0**.
   **Đúng:** cả cửa sổ to lên 120 %, 144 %, nhỏ lại 120 %, rồi về 100 %; status bar báo "Zoom 144 %"… Chữ trong grid vẫn nét ở mọi mức. Đóng mở lại app: giữ mức zoom. Settings › **Zoom** đổi được và xem ngay; Cancel trả về mức cũ.
+  Đã thử Ctrl+= hai lần, Ctrl+-, Ctrl+0: kích thước giao diện lần lượt đổi tương ứng 120 %, 144 %, 120 % và 100 %. Trong Settings cũng đổi được 100 % → 120 %; Cancel trả giao diện về 100 %. Chưa xác nhận status bar, độ nét của grid hay mức zoom sau khi mở lại app.
 - [ ] Nhấn **Ctrl+,**, đổi Theme Light / Dark / System.
   **Đúng:** đổi ngay cả grid và editor; **Cancel** trả lại theme cũ.
+  Đã đổi System → Light → Dark → System: giao diện sáng ở Light và tối ở Dark/System theo Windows. Đổi System → Light rồi Cancel đóng Settings; lần mở Settings kế tiếp vẫn là System. Editor đổi giao diện theo theme; grid không hiện do query còn `Running…`, nên chưa xác nhận được phần grid.
 - [ ] Chọn **Compact · 24 px**, Save.
   **Đúng:** dòng grid thấp hơn; mở lại app vẫn nhớ.
 - [ ] Bỏ tick "After CREATE DATABASE…", chạy lại script ở 3.1.
   **Đúng:** không chuyển database.
 - [ ] Chọn Style **Orange**, chưa Save.
   **Đúng:** nút Save, gạch dưới tab đang mở, checkbox đã tick, viền con trỏ ô trong grid và con trỏ gõ trong editor đổi sang cam ngay; nền, chữ, đường kẻ không đổi. **Cancel** trả lại đen trắng.
+  Đã đổi Black and white → Orange chưa lưu: nút Run/Save và checkbox chuyển cam ngay. Cancel đóng Settings và giao diện trở về Black and white. Không có grid kết quả vì query còn `Running…`, nên chưa xác nhận màu con trỏ ô, con trỏ gõ hay gạch dưới tab.
 - [ ] Chọn Orange, Save, đổi Theme Light rồi Dark.
   **Đúng:** Light: nút cam đậm chữ trắng. Dark: nút cam sáng chữ đen. Chữ trên nút đọc rõ ở cả hai. Mở lại app vẫn nhớ Orange.
 - [ ] Trên Windows 11, bật **Mica background: On**, chưa Save.
   **Đúng:** toolbar và sidebar thấy màu nền desktop mờ phía sau (kéo cửa sổ qua hình nền có màu để thấy rõ); editor, grid, thanh tab, status bar và dialog vẫn đặc. **Cancel** trả lại nền đặc.
+  Đã bật Mica trong Settings: lựa chọn **On** được chọn. Ảnh chụp không cho thấy rõ nền desktop xuyên mờ; chưa kéo cửa sổ qua nền có màu nên chưa xác nhận hiệu ứng. Đã bấm **Cancel**, không lưu thay đổi.
 - [ ] Bật Mica, Save, đổi Theme Light / Dark / System, rồi đổi Windows sang Dark khi Theme là System.
   **Đúng:** lớp Mica sáng hoặc tối theo theme đang hiện; chữ trên toolbar và sidebar đọc rõ.
 - [ ] Bật Mica, kéo đổi kích thước, maximize rồi restore cửa sổ.

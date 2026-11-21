@@ -142,6 +142,7 @@ Trước đây gõ `1.10` vào cột TEXT của SQLite thì lưu thành `1.1`, `
   ```
   Mở `thu_so`, gõ `ma` = `1.10`, `n` = `42`, `r` = `2.5`, `x` = `12345678901234567890`, lưu.
   **Đúng:** preview ghi `"ma" = '1.10'`, `"n" = 42`, `"r" = 2.5`, `"x" = '12345678901234567890'`. Sau khi lưu, `select ma, typeof(ma), n, typeof(n), r, typeof(r), x, typeof(x) from thu_so;` ra `1.10 text`, `42 integer`, `2.5 real`, `12345678901234567890 text`. (Cột khai báo INTEGER thì SQLite tự đổi một số quá 64 bit thành số thực, Kemable không giữ được dạng chữ ở đó.)
+  **Lỗi khi xác minh:** đã tạo `thu_so`, nhập các giá trị trên và bấm **Save**; preview tạo đúng câu `UPDATE`, status bar báo `Saved 1 change`. Chạy câu `select ... typeof(...)` thì History ghi `0 ms · 1 rows`, nhưng vùng kết quả vẫn trống và status bar vẫn hiện **Running…**; bấm **Stop** và nhấn **Esc** không làm trạng thái này mất đi. Sau đó bấm **New query tab** và nút đóng của **Query 5**; tab vẫn ở Query 5, Run vẫn bị mờ và Stop vẫn hiện. Mong đợi xem được một dòng với các giá trị và kiểu như trên, trạng thái chạy kết thúc, và thao tác tab hoạt động bình thường. Vì chưa đọc được giá trị/kiểu trong kết quả, chưa đánh dấu đạt.
 - [ ] Sửa `n` thành `10.00`, lưu.
   **Đúng:** `n` là `10`, `typeof(n)` là `integer` (cột số đổi chữ thành số khi không mất gì).
 - [ ] Import một CSV `id,ma,x` / `2,1.10,12345678901234567890` vào `thu_so`.
@@ -153,20 +154,26 @@ Trước đây gõ `1.10` vào cột TEXT của SQLite thì lưu thành `1.1`, `
 
 Đóng cửa sổ (nút X, Alt+F4, chuột phải trên taskbar › Close window) hỏi trước khi làm dừng một query đang chạy, một tab Live đang nghe, hoặc làm mất các sửa đổi bảng chưa lưu. Danh sách là danh sách bản cập nhật đã dùng (`docs/decisions/0028-updates.md`), trừ các trang `.sql` có thay đổi chưa lưu vào file: chúng được giữ lại như trước.
 
-- [ ] Kết nối một SQLite, không làm gì thêm, nhấn **Alt+F4**.
+- [x] Kết nối một SQLite, không làm gì thêm, nhấn **Alt+F4**.
   **Đúng:** cửa sổ đóng ngay, không hỏi gì.
-- [ ] Mở lại, mở một bảng, sửa một ô (chưa nhấn Ctrl+S), bấm nút **X** của cửa sổ.
+  Đã mở SQLite in-memory, không chạy query hay sửa bảng rồi nhấn Alt+F4; cửa sổ đóng ngay, không hiện hộp thoại. Các query tabs được khôi phục sẵn từ lần mở trước nhưng không có query đang chạy hay chỉnh sửa chưa lưu.
+- [x] Mở lại, mở một bảng, sửa một ô (chưa nhấn Ctrl+S), bấm nút **X** của cửa sổ.
   **Đúng:** hộp thoại **Close Kemable?** hiện danh sách có dòng `<tên bảng> has table edits not saved: they are lost.`; cửa sổ vẫn mở.
-- [ ] Nhấn **Esc** (hoặc **Back**).
+- [x] Nhấn **Esc** (hoặc **Back**).
   **Đúng:** hộp thoại đóng, sửa đổi vẫn còn (ô vẫn tô màu).
-- [ ] Bấm **X** lần nữa, rồi **Close anyway** (hoặc Enter).
+- [x] Bấm **X** lần nữa, rồi **Close anyway** (hoặc Enter).
   **Đúng:** cửa sổ đóng. Mở lại: các trang query vẫn còn, vị trí cửa sổ đúng chỗ cũ, sửa đổi bảng không còn.
+  Đã tạo bảng thử `a7_close_test`, sửa `note` từ `before` thành `after` nhưng chưa lưu. Hộp thoại liệt kê đúng `a7_close_test has table edits not saved: they are lost.`; **Back** đóng hộp thoại, giữ `after` và trạng thái `1 changed` / `Unsaved changes`. **Close anyway** đóng cửa sổ. Sau khi mở lại và kết nối SQLite in-memory, Query 1–6 còn, cây báo `No tables yet` (sửa đổi bảng không còn), cửa sổ mở lại cùng vị trí và kích thước.
 - [ ] Chạy một query dài (SQLite: `with recursive c(x) as (select 1 union all select x + 1 from c) select count(*) from c;`), trong lúc **Running**, chuột phải vào biểu tượng trên taskbar › **Close window**.
   **Đúng:** hộp thoại có dòng `A query is running: it stops.`. **Back** thì query vẫn chạy; Stop nó rồi đóng thì không hỏi nữa.
+  Đã thử với Query 5 đang `Running…` bằng **Alt+F4** (chưa thử menu taskbar): hộp **Close Kemable?** hiện `A query is running: it stops.`; **Back** đóng hộp thoại và query vẫn chạy. **Close anyway** đóng app, phiên SQLite in-memory kết thúc. Khi mở lại, cửa sổ chính xuất hiện sau lúc đầu chỉ thấy cửa sổ phụ `kemable.app-siw` 16×16; sau khi mở in-memory mới, các query tabs Query 1–5 còn, cây báo `No tables yet`. Lần thử tiếp theo với CTE đếm đến `1,000,000,000` bằng nút **X** cũng hiện đúng dòng này; **Back** để query chạy, **Stop** làm **Run** khả dụng và **Stop** bị mờ, sau đó nút **X** đóng app không hỏi lại. Chưa thử menu taskbar; mục vẫn để chưa đạt vì phương thức đó chưa được kiểm tra.
+  Ở lần mở lại cuối, Query 1–7 đều còn; Query 7 vẫn chứa CTE đếm đến `1,000,000,000`.
 - [ ] Với PostgreSQL: mở tab Live (Ctrl+Alt+L), nghe `orders`, rồi **Alt+F4**.
   **Đúng:** hộp thoại có dòng `Live is listening: it stops.`.
+  Chưa thử: tìm `Local PG` trong bảng lệnh của bản cài nhưng không có kết quả; hiện không có kết nối PostgreSQL để mở tab Live.
 - [ ] Mở một file `.sql`, gõ thêm vài chữ (chưa Ctrl+S), **Alt+F4**.
   **Đúng:** không hỏi; cửa sổ đóng. Mở lại: trang của file vẫn còn chữ vừa gõ và vẫn đánh dấu chưa lưu.
+  Đã mở `scripts/demo/postgres-demo-sales.sql`, nhưng không xác nhận được thao tác gõ: Computer Use báo có tương tác người dùng lặp lại khi thao tác trong app. Trạng thái sau đó vẫn hiện nội dung gốc; chưa thử đóng app cho ca này.
 
 ---
 

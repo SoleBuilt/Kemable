@@ -176,9 +176,10 @@ Script viết không có dấu `;` vẫn chạy được từng câu, khi các c
   **Đúng:** chỉ câu đó chạy, có kết quả; status bar ghi "Ran 1 of 2 statements"; editor tô khung đúng dòng đó. Không còn lỗi "syntax error".
 - [ ] Đặt con trỏ ở dòng `select 1`, nhấn **Ctrl+Enter**.
   **Đúng:** chỉ `select 1` chạy, ra một dòng.
-- [ ] Nhấn **Ctrl+Shift+Enter** (Run all).
+- [x] Nhấn **Ctrl+Shift+Enter** (Run all).
   **Đúng:** hai tab kết quả, Result 1 và Result 2; status bar ghi "Ran 2 statements".
-- [ ] Gõ một câu có dòng trống ở giữa, rồi Run all:
+  Đã thử trên **In memory** (SQLite 3.54.1); `Local PG` chưa được xác nhận.
+- [x] Gõ một câu có dòng trống ở giữa, rồi Run all:
   ```sql
   with x as (select 1 as a)
 
@@ -189,6 +190,7 @@ Script viết không có dấu `;` vẫn chạy được từng câu, khi các c
   where a = 1
   ```
   **Đúng:** vẫn là **một** câu, chạy ra một dòng: dòng trống bên trong một câu không cắt nó.
+  Đã thử trên **In memory** (SQLite 3.54.1): `a = 1`, `Ran 1 statement`; `Local PG` chưa được xác nhận.
 - [ ] Gõ `update pg_tables` (đừng chạy), dòng trống, `set x = 1`, dòng trống, `select 2`, rồi xem status bar sau khi nhấn Ctrl+Enter ở dòng cuối.
   **Đúng:** "Ran 1 of 2 statements": `set` không mở câu mới (nó thuộc về `update`), còn `select 2` thì có.
 - [ ] Kết nối `Local MSSQL`, gõ `declare @x int = 1`, dòng trống, `select @x`, nhấn Ctrl+Enter.
