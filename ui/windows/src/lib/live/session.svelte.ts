@@ -89,13 +89,16 @@ export class LiveSession {
     try {
       const realtime = this.source === "realtime";
       const request = { topics: this.typed, apiKey: realtime ? this.apiKey.trim() || null : null };
-      this.run = await ipc.startLive(conn, database, request, (event) => this.onEvent(event));
+      const run = await ipc.startLive(conn, database, request, (event) => this.onEvent(event));
       // The key went to Credential Manager: the box need not hold it any more.
       if (realtime) this.apiKey = "";
-      // The page closed, or Stop was pressed, before the id came back. (The
-      // cast undoes the narrowing from the assignment above: events and Stop
-      // change the status while the call waits.)
-      if (this.closed || (this.status as LiveStatus) === "stopping") void ipc.cancelRun(this.run);
+      // Events and Stop change the status while the call waits (the cast undoes
+      // the narrowing above). A listening refused at once has sent `finished`
+      // already: its id is not kept, so Stop and Close never aim at it.
+      const status = this.status as LiveStatus;
+      if (status !== "idle") this.run = run;
+      // The page closed, or Stop was pressed, before the id came back.
+      if (status !== "idle" && (this.closed || status === "stopping")) void ipc.cancelRun(run);
     } catch (caught) {
       this.error = asCoreError(caught);
       this.status = "idle";

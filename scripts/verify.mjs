@@ -42,6 +42,7 @@ function step(name, command, cwd = root) {
 if (runUi) {
   step("ui install", "pnpm install --frozen-lockfile", ui);
   step("ui check", "pnpm check", ui);
+  step("ui test", "pnpm test", ui);
   step("ui build", "pnpm build", ui);
   // The website builds offline in seconds; its slower type check (`pnpm check`)
   // runs in .github/workflows/site.yml before each deploy (docs/decisions/0030-website.md).

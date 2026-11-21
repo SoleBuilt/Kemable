@@ -20,6 +20,7 @@ Tauri 2 over WebView2, with a Svelte 5 and TypeScript UI. The Rust side (`src-ta
 - `src/lib/live/`: the Live page (`docs/decisions/0020-live-tab.md`). `session.svelte.ts` is one page's listening and what it heard, kept by its page so it goes on while another page is shown; `LivePage.svelte` is the channels and the grid; `LiveTools.svelte` its tools on the page bar. `src-tauri/src/live.rs` runs a listening and counts its events to the UI; `cancel_run` stops it.
 - Update in place (`docs/decisions/0028-updates.md`): `src-tauri/src/updates.rs` checks GitHub Releases' `latest.json` through `tauri-plugin-updater` and downloads, checks and runs the installer; `src/lib/updates.ts` decides whether the launch check offers a version (Later, Skip this version, kept in `ui.json`); `src/lib/shell/UpdateDialog.svelte` is the notice. `tauri.conf.json` holds the endpoint and the public key; `.github/workflows/release.yml` and `scripts/release.mjs` build, sign and draft a release from a version tag.
 - `src/lib/data/`: Export, Import and Generate Rows (ADR 0018). `src-tauri/src/export.rs` and `src-tauri/src/jobs.rs` run them in the background, `cancel_run` stopping them.
+- `src/lib/followed-run.ts`: which run a query page takes events from, and the id Stop cancels (ADR 0013).
 - `src/lib/ipc.ts`: every command with its types. `src/lib/types.ts`: the Rust types as TypeScript. `src/lib/errors.ts`: the words for each error code.
 - `src/lib/grid/`: `engine.ts` (the canvas grid), `window.ts` (the packed window reader), `DataGrid.svelte` (the thin Svelte wrapper), `FilterRow.svelte` (the filter conditions of a table tab or a query result), `Pager.svelte` (a table tab's pager, in the status bar; the page and count statements are the core's), `CellEditor.svelte` (the editor laid over a cell), `EditPreview.svelte` (the statements a save runs), `ResultBar.svelte`, `MessageList.svelte`, `WhereStrip.svelte`, `KeyBar.svelte`, `TableTools.svelte` (the bars and tools around the grid).
 - `src/lib/editor/RunControls.svelte`: Run or Stop, the row limit and Save query, on the page bar.
@@ -39,6 +40,7 @@ From `ui/windows/`:
 pnpm install
 pnpm tauri dev        # the app with hot reload, as dev.kemable.app
 pnpm check            # svelte-check, no warnings allowed
+pnpm test             # node --test over src/**/*.test.ts: the UI's logic that draws nothing
 pnpm build            # the UI bundle into dist/
 pnpm tauri build      # the release app and its NSIS installer, as kemable.app
 ```

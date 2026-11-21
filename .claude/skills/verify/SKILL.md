@@ -24,6 +24,7 @@ The last line is `PASS` or `FAIL: <steps>`. Only `PASS` means done. Report the v
 |---|---|---|
 | ui install | `pnpm install --frozen-lockfile` in `ui/windows` | a `package.json` change without its lockfile |
 | ui check | `pnpm check` (svelte-check, warnings fail) | type errors, Svelte misuse, a command whose types drifted from Rust |
+| ui test | `pnpm test` (`node --test` over `src/**/*.test.ts`) | a UI rule that is not drawing, such as which run's events a page takes |
 | ui build | `pnpm build` | bundling errors; it also writes `dist/`, which the Tauri crate embeds |
 | site install | `pnpm install --frozen-lockfile` in `site` | the website's `package.json` changed without its lockfile |
 | site build | `pnpm build` in `site` | a page of the website that does not build (`site/AGENTS.md`); its type check runs in the deploy workflow |

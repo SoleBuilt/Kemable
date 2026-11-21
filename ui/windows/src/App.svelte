@@ -25,6 +25,7 @@
   import FilterRow, { type Condition } from "./lib/grid/FilterRow.svelte";
   import Pager, { PAGE_SIZES } from "./lib/grid/Pager.svelte";
   import RowDetail from "./lib/grid/RowDetail.svelte";
+  import { FollowedRun } from "./lib/followed-run";
   import { appWindow, asCoreError, ipc } from "./lib/ipc";
   import { flushStore, readPref, setAsideAtStart, writePref } from "./lib/store";
   import HistoryList from "./lib/sidebar/HistoryList.svelte";
@@ -294,13 +295,8 @@
   let sets: ResultSetView[] = $state.raw([]);
   let messages: Message[] = $state([]);
   let activeTab: number | "messages" = $state(0);
-  let runId: number | null = $state(null);
-  /**
-   * Which run the page listens to. A run's events go to it only while it is
-   * the latest, so a run left behind by another connection opening never
-   * lands on the new connection's page.
-   */
-  let runToken = 0;
+  /** Which run the page takes events from, and the id Stop cancels. */
+  const followed = new FollowedRun();
   let running = $state(false);
   let elapsedMs: number | null = $state(null);
   let refreshKey = $state(0);
@@ -836,7 +832,7 @@
     connecting = true;
     try {
       const opened = await opening();
-      runToken++;
+      followed.drop();
       if (connection) void ipc.disconnect(connection.id);
       // Files opened and queries written with no connection go to the one that opens now (ADR 0016).
       const carried = connection ? [] : keepCurrent().filter((page) => page.kind === "query" && (page.file || pageText(page).trim() !== ""));
@@ -1350,11 +1346,7 @@
     // What a person ran goes to the history; what the app wrote for them does not.
     const record = overrides.record ?? fromEditor;
     recording = record;
-    const token = ++runToken;
-    // Events can come before runQuery resolves with the run's id: the token decides until then.
-    const ownEvent = (event: RunMessage) => {
-      if (token === runToken && (runId === null || event.run === runId)) onEvent(event);
-    };
+    const { token, events } = followed.begin<RunMessage>(onEvent);
     try {
       const started = await ipc.runQuery(
         connection.id,
@@ -1364,9 +1356,9 @@
         settings.followCreatedDatabase,
         rowLimit,
         record,
-        ownEvent,
+        events,
       );
-      if (token === runToken) runId = started.run;
+      followed.started(token, started.run);
       ranCount = { ran: started.ranges.length, total: started.scriptStatements };
       if (fromEditor) {
         editor?.showRan(request, started.ranges);
@@ -1378,6 +1370,7 @@
       }
     } catch (caught) {
       running = false;
+      followed.end();
       pendingSort = null;
       if (record) historyKey++;
       messages = [{ kind: "error", statement: null, error: asCoreError(caught) }];
@@ -1512,7 +1505,7 @@
         break;
       case "finished":
         running = false;
-        runId = null;
+        followed.end();
         pendingSort = null;
         if (recording) historyKey++;
         if (pageRun && tableTab && countAfterPage && !event.failed && !event.cancelled) {
@@ -1532,7 +1525,8 @@
   }
 
   function stopRun() {
-    if (runId !== null) void ipc.cancelRun(runId);
+    const run = followed.cancellable;
+    if (run !== null) void ipc.cancelRun(run);
   }
 
   /** The text a set came from: its statement, or the part of a SQL Server batch that made it. */
