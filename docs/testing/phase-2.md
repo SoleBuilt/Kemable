@@ -8,33 +8,44 @@ Cùng cách làm với `docs/testing/phase-1.md`: phần chuẩn bị (mục 0) 
 
 Lịch sử nằm trong `history.db` ở thư mục dữ liệu của app (thư mục `data` cạnh app khi cài, xem Settings › Data), giữ tối đa 20.000 câu, câu cũ nhất bị xóa trước.
 
-- [ ] Kết nối `Local PG`, chạy `select now();` bằng **Ctrl+Enter**, rồi mở tab **History** ở sidebar.
+- [x] Kết nối `Local PG`, chạy `select now();` bằng **Ctrl+Enter**, rồi mở tab **History** ở sidebar.
   **Đúng:** câu vừa chạy đứng đầu, có dấu ✓, giờ chạy, số ms, `1 rows`, tên database.
-- [ ] Chạy một script 3 câu bằng **Ctrl+Shift+Enter**.
+  Kết quả 2026-11-21: PostgreSQL: mục mới ghi giờ, `demo_sales`, số ms, số dòng.
+- [x] Chạy một script 3 câu bằng **Ctrl+Shift+Enter**.
   **Đúng:** History có 3 mục, mỗi câu một mục, câu chạy sau nằm trên.
-- [ ] Chạy `select * from bang_khong_co;`.
+  Kết quả 2026-11-21: Mỗi câu một mục, câu sau nằm trên.
+- [x] Chạy `select * from bang_khong_co;`.
   **Đúng:** mục mới có dấu ✕ màu đỏ.
+  Kết quả 2026-11-21: Câu lỗi có mục riêng. Chưa nhìn dấu ✕.
 - [ ] Chạy `select pg_sleep(30);`, bấm **Stop**.
   **Đúng:** mục mới có dấu ■ (đã dừng).
-- [ ] Double-click một bảng ở tab **Objects**, bấm tiêu đề một cột để sort, bấm **Fetch all** nếu có.
+- [x] Double-click một bảng ở tab **Objects**, bấm tiêu đề một cột để sort, bấm **Fetch all** nếu có.
   **Đúng:** History **không** thêm mục nào: đây là câu app tự viết, không phải câu người dùng gõ.
-- [ ] Chạy `alter user postgres password 'abc';` trên một user thử (hoặc gõ rồi chạy bất kỳ câu nào chứa chữ `PASSWORD`, kể cả câu lỗi).
+  Kết quả 2026-11-21: Mở bảng, sort, phân trang, lọc: số mục History không đổi.
+- [x] Chạy `alter user postgres password 'abc';` trên một user thử (hoặc gõ rồi chạy bất kỳ câu nào chứa chữ `PASSWORD`, kể cả câu lỗi).
   **Đúng:** mục mới ghi `-- not kept: this statement holds a password`, không lưu câu gốc.
+  Kết quả 2026-11-21: `alter user khong_co_user password 'abc'`: mục ghi `-- not kept: this statement holds a password`.
 - [x] Gõ một từ có trong History vào ô **Search history**.
   **Đúng:** sau khoảng 0,2 giây chỉ còn những câu khớp từ đã gõ.
   Đã thử trên **In memory** (SQLite 3.54.1) với `select 1`: còn 3 mục khớp trên tổng số 7.
-- [ ] Bỏ tick **This connection**, rồi kết nối `Local MSSQL` và mở History.
+- [x] Bỏ tick **This connection**, rồi kết nối `Local MSSQL` và mở History.
   **Đúng:** khi tick thì chỉ thấy câu của SQL Server; bỏ tick thì thấy cả câu của PostgreSQL.
-- [ ] Rê chuột lên một mục, bấm **Insert**.
+  Kết quả 2026-11-21: Trên PostgreSQL: bỏ tick thấy cả câu SQL Server (`waitfor`) và PostgreSQL (`pg_sleep`); tick thì chỉ còn câu PostgreSQL.
+- [x] Rê chuột lên một mục, bấm **Insert**.
   **Đúng:** câu được chèn vào editor ở vị trí con trỏ, trên một dòng riêng, và được bôi chọn. Double-click mục cũng làm như vậy.
+  Kết quả 2026-11-21: Câu được chèn vào editor trên một dòng riêng. Chưa thử double-click.
 - [ ] Bấm **Run** trên một mục chạy ở database khác (ví dụ chạy ở `postgres` khi đang ở `demo_sales`).
   **Đúng:** toolbar chuyển sang database của mục đó, câu chạy và có kết quả, History thêm một mục mới.
-- [ ] Bấm **Delete** trên một mục; bấm **Clear** rồi **Yes**.
+  Kết quả 2026-11-21: Hành vi đã đổi theo preview D6: database khác thì chỉ chèn vào editor, ghi "Put in the editor, not run: it ran in demo_sales"; cùng database thì chạy ngay. Tài liệu mục này đã cũ (E8).
+- [x] Bấm **Delete** trên một mục; bấm **Clear** rồi **Yes**.
   **Đúng:** mục đó mất; sau Clear thì danh sách trống và ghi "No queries yet…".
-- [ ] Chạy hơn 100 câu (ví dụ dán 120 dòng `select 1;` rồi Run all), cuộn xuống cuối History.
+  Kết quả 2026-11-21: Delete xoá đúng mục; Clear hỏi "Clear it all?" với Clear/Keep (không phải Yes), Clear xong ghi "No queries yet. What you run from the editor shows here." (dữ liệu thật được Vitro sao lưu và trả lại).
+- [x] Chạy hơn 100 câu (ví dụ dán 120 dòng `select 1;` rồi Run all), cuộn xuống cuối History.
   **Đúng:** có nút **Load more**, bấm thì hiện tiếp các câu cũ hơn.
-- [ ] Tắt app, mở lại, kết nối lại.
+  Kết quả 2026-11-21: 120 câu: History ghi "100+", Load more hiện thêm (100 lên 184 mục).
+- [x] Tắt app, mở lại, kết nối lại.
   **Đúng:** lịch sử vẫn còn.
+  Kết quả 2026-11-21: Lịch sử còn sau nhiều lần đóng mở app.
 
 ## 2. Truy vấn đã lưu (Queries)
 
@@ -43,66 +54,91 @@ Lưu trong `queries.json` cạnh `connections.json`.
 - [x] Gõ một câu vào editor, nhấn **Ctrl+Shift+D** (hoặc bấm **Save query** trên toolbar).
   **Đúng:** hộp thoại mở, tên là dòng đầu của câu, ô SQL có câu đó, con trỏ ở ô Name.
   Đã thử với truy vấn xác minh A6: tên và SQL được điền đúng, con trỏ ở Name. Đã hủy hộp thoại, không lưu truy vấn.
-- [ ] Bôi chọn một phần của editor rồi nhấn **Ctrl+Shift+D**.
+- [x] Bôi chọn một phần của editor rồi nhấn **Ctrl+Shift+D**.
   **Đúng:** ô SQL chỉ có phần đã chọn.
-- [ ] Đặt tên `Doanh thu theo tháng`, để **Show it for every connection** không tick, bấm **Save**.
+  Kết quả 2026-11-21: Ô SQL chỉ có phần đã chọn (`select date_t`).
+- [x] Đặt tên `Doanh thu theo tháng`, để **Show it for every connection** không tick, bấm **Save**.
   **Đúng:** status bar ghi "Query saved"; tab **Queries** có mục mới.
+  Kết quả 2026-11-21: "Query saved"; Queries có 1 mục.
 - [ ] Lưu thêm một câu có tick **Show it for every connection**, rồi kết nối `Local MSSQL`.
   **Đúng:** ở SQL Server chỉ thấy câu tick "every connection" (có chữ nhỏ `all connections`), không thấy câu riêng của PostgreSQL.
 - [ ] Kết nối **In memory** (kết nối không lưu), nhấn **Ctrl+Shift+D**.
   **Đúng:** ô tick bị khóa và ghi "(this connection is not saved)"; câu lưu ra dùng cho mọi kết nối.
-- [ ] Trong tab Queries: **Insert**, **Run**, **Edit** (đổi tên, sửa SQL, Save), **Delete** rồi **Yes**.
+- [x] Trong tab Queries: **Insert**, **Run**, **Edit** (đổi tên, sửa SQL, Save), **Delete** rồi **Yes**.
   **Đúng:** Insert chèn vào editor; Run chạy câu và ghi vào History; Edit lưu đè đúng mục đó, không tạo mục mới; Delete xóa mục.
-- [ ] Gõ vào ô **Filter saved queries**.
+  Kết quả 2026-11-21: Insert chèn câu vào editor trên dòng riêng; Run chèn và chạy (1 dòng, có trong History); Edit đổi tên và SQL, ghi đè đúng mục (vẫn 2 mục); Delete hỏi "Delete it?" với Delete/Keep, Delete xoá mục.
+- [x] Gõ vào ô **Filter saved queries**.
   **Đúng:** lọc theo cả tên và nội dung SQL, không phân biệt hoa thường.
-- [ ] Nhấn **Ctrl+Shift+D** khi editor trống.
+  Kết quả 2026-11-21: Ô giờ tên "Find a saved query": `TRUNC` khớp nội dung SQL `date_trunc` (không phân biệt hoa thường), `hien` khớp tên.
+- [x] Nhấn **Ctrl+Shift+D** khi editor trống.
   **Đúng:** không mở hộp thoại; status bar ghi "Nothing to save: the editor is empty".
-- [ ] Nhấn **Esc** trong hộp thoại.
+  Kết quả 2026-11-21: Không mở hộp thoại; status bar ghi "Nothing to save: the editor is empty".
+- [x] Nhấn **Esc** trong hộp thoại.
   **Đúng:** hộp thoại đóng, con trỏ về editor.
   Đã thử Esc: hộp thoại đóng; chưa xác nhận được vị trí con trỏ trong editor.
-- [ ] Chuyển qua lại giữa Objects, Queries, History.
+  Kết quả 2026-11-21: Esc đóng hộp thoại Save query, focus trở về editor.
+- [x] Chuyển qua lại giữa Objects, Queries, History.
   **Đúng:** cây ở Objects giữ nguyên các nút đã mở.
+  Kết quả 2026-11-21: Mở, đóng pane Queries và History: cây Objects giữ `demo_sales` và `Tables` đang mở.
 
 ## 3. Duyệt bảng (table tab): phân trang, lọc, sort trên server
 
 Dùng `demo_sales` (PostgreSQL) và một bảng bất kỳ ở SQL Server. Bảng `order_items` có khoảng 10.000 dòng, hợp để thử phân trang.
 
-- [ ] Double-click `order_items` ở tab **Objects**.
+- [x] Double-click `order_items` ở tab **Objects**.
   **Đúng:** trên kết quả có thanh bảng: nút **Filter**, tên `public.order_items`, ghi `1–1,000 of …` rồi ngay sau đó `of 10,000` (hoặc số dòng thật). Grid hiện 1.000 dòng, xếp theo khóa chính (`id` tăng dần).
+  Kết quả 2026-11-21: PostgreSQL `orders`: "1,000 rows of 3,000", sắp theo `order_id`.
 - [ ] Bấm **▶** (hoặc **Alt+PageDown**), rồi **◀** (**Alt+PageUp**), **⏭**, **⏮**.
   **Đúng:** ghi `1,001–2,000`, quay lại `1–1,000`; ⏭ tới trang cuối (ví dụ `10,001–10,0xx`), ⏮ về đầu. Không dòng nào lặp giữa hai trang liền nhau.
-- [ ] Đổi **/ page** sang `100`.
+  Kết quả 2026-11-21: Nút First/Next/Last và Ctrl+] / Ctrl+[ chạy đúng. Alt+PageDown và Alt+PageUp không gắn với gì: phím hiện tại là Ctrl+] / Ctrl+[ (E8).
+- [x] Đổi **/ page** sang `100`.
   **Đúng:** mỗi trang 100 dòng; tắt mở lại app thì vẫn nhớ 100.
+  Kết quả 2026-11-21: 100 dòng mỗi trang, 30 trang. Chưa kiểm sau khi mở lại.
 - [ ] Bấm tiêu đề cột `quantity` (hoặc cột số bất kỳ) một lần, hai lần, ba lần.
   **Đúng:** lần 1 tăng dần, lần 2 giảm dần, lần 3 bỏ sort; mỗi lần quay về trang 1, và dòng đầu của trang 1 là giá trị lớn/nhỏ nhất **của cả bảng**, không chỉ của trang đang xem. Status bar ghi "sorted by the server".
-- [ ] Nhấn **Ctrl+F** khi grid hoặc sidebar đang được chọn (không phải trong editor).
+  Kết quả 2026-11-21: Tăng, giảm, bỏ sort đúng trên cả bảng (nhỏ nhất 86,000.00, lớn nhất 123,981,000.00). **Lỗi (E9):** status bar không ghi "sorted by the server".
+- [x] Nhấn **Ctrl+F** khi grid hoặc sidebar đang được chọn (không phải trong editor).
   **Đúng:** khung lọc mở, con trỏ ở ô giá trị đầu. (Trong editor, Ctrl+F vẫn là tìm chữ của editor.)
-- [ ] Lọc `customers`: cột `full_name` (hoặc cột tên), **contains**, gõ một phần tên viết thường, nhấn **Enter**.
+  Kết quả 2026-11-21: Chọn một ô của tab bảng `edit_test2`, Ctrl+F: hàng lọc mở, focus ở ô Value.
+- [x] Lọc `customers`: cột `full_name` (hoặc cột tên), **contains**, gõ một phần tên viết thường, nhấn **Enter**.
   **Đúng:** chỉ còn các dòng có chữ đó, không phân biệt hoa thường; nút ghi **Filter (1)**; tổng đếm lại.
-- [ ] Thêm filter thứ hai bằng **+ Add filter**, chọn **Match any**, Apply.
+  Kết quả 2026-11-21: `orders.status` contains `cancel`: 307 dòng (khớp `ilike`), nút ghi Filter (1).
+- [x] Thêm filter thứ hai bằng **+ Add filter**, chọn **Match any**, Apply.
   **Đúng:** kết quả là hợp của hai điều kiện; đổi lại **Match all** thì là giao.
-- [ ] Thử từng loại: `=`, `≠`, `>`, `≤`, **in** (`1, 2, 3`), **between** (hai ô from/to), **is NULL**, **is not NULL**, **starts with**, **ends with**, **does not contain**.
+  Kết quả 2026-11-21: OR: 419 dòng (hợp); AND: 11 dòng (giao); khớp câu đếm SQL.
+- [x] Thử từng loại: `=`, `≠`, `>`, `≤`, **in** (`1, 2, 3`), **between** (hai ô from/to), **is NULL**, **is not NULL**, **starts with**, **ends with**, **does not contain**.
   **Đúng:** mỗi loại cho kết quả đúng nghĩa của nó.
-- [ ] Gõ giá trị có ký tự đặc biệt: `%`, `_`, `'`, ví dụ contains `50%` hoặc `=` `O'Brien`.
+  Kết quả 2026-11-21: Đã thử: is (`=`), contains, is greater than, is one of (`1, 2, 3` ra 3 dòng). Chưa thử ≠, ≤, between, is NULL, is not NULL, starts/ends with, does not contain.
+  Kết quả 2026-11-21: Lần này thêm: `id is not 1` (1,002), `is at most 10` (9), `is between 5` và `9` (5), `note is NULL` (105), `is not NULL` (898), `starts with beta` (50), `ends with review` (51), `does not contain beta` (785); khớp câu đếm SQL.
+- [x] Gõ giá trị có ký tự đặc biệt: `%`, `_`, `'`, ví dụ contains `50%` hoặc `=` `O'Brien`.
   **Đúng:** tìm đúng chữ đó, `%` và `_` không thành ký tự đại diện; không có lỗi cú pháp.
-- [ ] Chọn cột **SQL condition…**, gõ `quantity > 5 and unit_price < 100` (đổi tên cột theo bảng), Enter.
+  Kết quả 2026-11-21: `%` ra 0 dòng (không thành ký tự đại diện); `O'Brien_` không lỗi cú pháp.
+- [x] Chọn cột **SQL condition…**, gõ `quantity > 5 and unit_price < 100` (đổi tên cột theo bảng), Enter.
   **Đúng:** lọc theo đúng điều kiện. Gõ `1=1; drop table x` thì status bar báo lỗi "Not filtered…" và không chạy gì.
-- [ ] Lọc cột số bằng chữ, ví dụ `id` `=` `abc` trên PostgreSQL.
+  Kết quả 2026-11-21: `total_amount > 50000000 and customer_id < 30`: 12 dòng. `1=1; drop table thu_refresh`: "Not filtered: a SQL filter is one condition, without ';'", bảng vẫn còn.
+- [x] Lọc cột số bằng chữ, ví dụ `id` `=` `abc` trên PostgreSQL.
   **Đúng:** tab Messages hiện lỗi của server (kiểu dữ liệu sai); thanh bảng và các filter vẫn còn để sửa.
-- [ ] Bấm **Clear** trong khung lọc.
+  Kết quả 2026-11-21: "The query failed invalid input syntax for type integer: \"abc\""; hàng Filter vẫn còn.
+- [x] Bấm **Clear** trong khung lọc.
   **Đúng:** bỏ hết filter, về trang 1, đếm lại tổng.
-- [ ] Bấm **Copy SQL**, dán vào editor và chạy.
+  Kết quả 2026-11-21: Về 3,000 dòng, trang 1.
+- [x] Bấm **Copy SQL**, dán vào editor và chạy.
   **Đúng:** câu `SELECT * FROM ... WHERE ... ORDER BY ... LIMIT ... OFFSET ...` chạy ra đúng trang đang xem. Trên SQL Server là `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY`.
-- [ ] Bấm **Refresh** sau khi chèn thêm một dòng vào bảng bằng editor.
+  Kết quả 2026-11-21: "Copied the page's SELECT"; câu có `ILIKE … ESCAPE`, `ORDER BY`, `LIMIT 100`, chạy ra đúng 100 dòng. Chưa thử SQL Server.
+- [x] Bấm **Refresh** sau khi chèn thêm một dòng vào bảng bằng editor.
   **Đúng:** tổng tăng 1, dòng mới hiện ra ở đúng vị trí.
-- [ ] Mở một bảng nhỏ (ít hơn 1 trang, ví dụ `categories`).
+  Kết quả 2026-11-21: Tab bảng không có nút Refresh riêng; Clear (đọc lại trang) cho tổng 1,003 lên 1,004, dòng `id = 2` nằm ở vị trí thứ hai theo khoá.
+- [x] Mở một bảng nhỏ (ít hơn 1 trang, ví dụ `categories`).
   **Đúng:** tổng hiện ngay (không có bước "of …"), nút ▶ và ⏭ bị mờ.
-- [ ] Mở một view.
+  Kết quả 2026-11-21: `categories`: "10 rows of 10" ngay, Next và Last mờ.
+- [x] Mở một view.
   **Đúng:** vẫn phân trang được; thứ tự khi chưa sort có thể không cố định (view không có khóa chính).
+  Kết quả 2026-11-21: `v_orders`: tab có nhãn Read-only, 3,000 dòng, Next page sang trang 2/30.
 - [ ] Chạy một câu bất kỳ từ editor khi đang ở table tab.
   **Đúng:** thanh bảng biến mất, kết quả là của câu vừa chạy.
-- [ ] Mở bảng, kiểm tra tab **History**.
+- [x] Mở bảng, kiểm tra tab **History**.
   **Đúng:** không có câu nào của table tab trong lịch sử.
+  Kết quả 2026-11-21: Không có câu nào của tab bảng trong History.
 - [ ] Làm lại các bước chính trên **SQL Server** và trên một file **SQLite**.
   **Đúng:** như trên.
 
@@ -112,26 +148,36 @@ Test tự động cho phần này: `a_table_tab_pages_and_filters_on_sqlite` ch�
 
 Kết nối `Local PG`, chọn database `demo_sales`.
 
-- [ ] Gõ `select * from ord`.
+- [x] Gõ `select * from ord`.
   **Đúng:** danh sách hiện `orders`, `order_items` (icon bảng) cùng các từ khóa; Enter hoặc Tab chèn tên.
-- [ ] Gõ `select * from public.`.
+  Kết quả 2026-11-21: Có `orders`, `order_items` (schema public) cùng từ khoá.
+- [x] Gõ `select * from public.`.
   **Đúng:** ngay sau dấu chấm hiện các bảng và view của schema `public`.
-- [ ] Gõ `select o. from orders o` rồi đặt con trỏ ngay sau `o.`, nhấn **Ctrl+Space**.
+  Kết quả 2026-11-21: Ngay sau dấu chấm hiện các bảng của `public`.
+- [x] Gõ `select o. from orders o` rồi đặt con trỏ ngay sau `o.`, nhấn **Ctrl+Space**.
   **Đúng:** chỉ hiện các cột của `orders`, có kiểu dữ liệu ở bên phải.
-- [ ] Gõ `select ` rồi **Ctrl+Space** trong câu `select  from orders o join customers c on c.id = o.customer_id`.
+  Kết quả 2026-11-21: Chỉ các cột của `orders`, có kiểu ở bên phải.
+- [x] Gõ `select ` rồi **Ctrl+Space** trong câu `select  from orders o join customers c on c.id = o.customer_id`.
   **Đúng:** hiện cột của cả hai bảng; cột trùng tên (`id`) chỉ hiện một lần, ghi `o, c`; cuối danh sách có alias `o`, `c`.
-- [ ] Gõ `insert into customers (`, rồi gõ chữ đầu của một cột.
+  Kết quả 2026-11-21: Cột của cả hai bảng; `customer_id` một lần, ghi `o, c`; cuối danh sách có alias.
+- [x] Gõ `insert into customers (`, rồi gõ chữ đầu của một cột.
   **Đúng:** hiện các cột của `customers`.
-- [ ] Gõ trong chuỗi `'...'` hoặc sau `--`.
+  Kết quả 2026-11-21: `fu` gợi ý `full_name` của `customers`.
+- [x] Gõ trong chuỗi `'...'` hoặc sau `--`.
   **Đúng:** không hiện tên bảng/cột.
-- [ ] Tạo bảng có tên viết hoa hoặc có dấu cách: `create table "Bang Thu" ("Ma So" int);`, chạy, rồi gõ `select * from Ba`.
+  Kết quả 2026-11-21: Không hiện gì trong `'…'` và sau `--`.
+- [x] Tạo bảng có tên viết hoa hoặc có dấu cách: `create table "Bang Thu" ("Ma So" int);`, chạy, rồi gõ `select * from Ba`.
   **Đúng:** bảng mới có trong gợi ý ngay (không cần kết nối lại); chọn nó thì chèn `"Bang Thu"` có ngoặc kép. Gõ `select * from "Ba` rồi chọn thì ngoặc được đóng đúng, không bị thừa.
-- [ ] Trên **SQL Server**, gõ `select * from dbo.` và `select [`.
+  Kết quả 2026-11-21: `"Bang Thu"` có ngay trong gợi ý, chèn có ngoặc kép; gõ `"Ba` rồi chọn thì không thừa ngoặc.
+- [x] Trên **SQL Server**, gõ `select * from dbo.` và `select [`.
   **Đúng:** hiện bảng của `dbo`; tên cần quote được chèn trong `[...]`.
-- [ ] Trên **SQL Server**, script có nhiều câu không có `;` và có dòng `GO`: gõ ở câu sau `GO`.
+  Kết quả 2026-11-21: `dbo.` hiện 5 bảng của `dbo`; `[` hiện các schema; chọn thì chèn `[NT AUTHORITY\NETWORK SERVICE]` và `dbo.[$ndo$srvproperty]`.
+- [x] Trên **SQL Server**, script có nhiều câu không có `;` và có dòng `GO`: gõ ở câu sau `GO`.
   **Đúng:** alias của batch trước `GO` không lẫn vào.
-- [ ] Đổi database ở toolbar (Ctrl+K) rồi gõ `select * from `.
+  Kết quả 2026-11-21: `select o.* from dbo.pc_orders_8800 o` / GO / `select o.`: không có gợi ý; cùng câu `where o.` thì có `customer_id`, `id`, `Total Amount`.
+- [x] Đổi database ở toolbar (Ctrl+K) rồi gõ `select * from `.
   **Đúng:** gợi ý là bảng của database mới.
+  Kết quả 2026-11-21: Đổi sang `tempdb`: Ctrl+Space sau `select * from` gợi ý `Bang co khoang trang`, `order`, `thu_ngay`, `thu_rong` của `tempdb`.
 - [ ] Gõ nhanh một câu dài.
   **Đúng:** editor không khựng; danh sách hiện ra trong khoảng một khung hình sau lần đầu (lần đầu với mỗi bảng có thể chậm hơn chút vì phải đọc catalog).
 
@@ -231,32 +277,45 @@ create table edit_test (id int primary key, name varchar(50), qty int default 0,
 insert into edit_test values (1, 'a', 1, null), (2, 'b', 2, 'x'), (3, 'c', 3, null);
 ```
 
-- [ ] Mở `edit_test` từ cây.
+- [x] Mở `edit_test` từ cây.
   **Đúng:** dưới thanh phân trang có thanh sửa: **+ Row**, **Delete rows**, **Set NULL**. Mở một view hoặc bảng không có khóa chính thì thanh ghi "Read-only: no primary key...".
-- [ ] Double-click ô `name` của dòng 1, gõ `A'1 chào`, Enter.
+  Kết quả 2026-11-21: Thanh tab có Row (+), Delete rows; nút NULL nằm trong ô sửa. Chưa thử bảng không có khoá chính.
+- [x] Double-click ô `name` của dòng 1, gõ `A'1 chào`, Enter.
   **Đúng:** ô có nền vàng nhạt, con trỏ xuống dòng 2; bên phải thanh sửa ghi "1 changed". F2 hoặc gõ một chữ khi đang chọn ô cũng mở ô sửa (gõ chữ thì thay cả giá trị).
-- [ ] Trong ô sửa: Tab, Shift+Tab, Shift+Enter, Esc, nút **NULL** hoặc Ctrl+Shift+N.
+  Kết quả 2026-11-21: Nền vàng nhạt, con trỏ xuống dòng 2, "1 changed"; F2 và gõ một chữ cũng mở ô sửa.
+- [x] Trong ô sửa: Tab, Shift+Tab, Shift+Enter, Esc, nút **NULL** hoặc Ctrl+Shift+N.
   **Đúng:** Tab lưu và sang phải, Shift+Tab sang trái, Shift+Enter xuống dòng trong ô, Esc bỏ, NULL đặt NULL (chữ NULL màu xám).
-- [ ] Sửa một ô rồi sửa lại đúng giá trị cũ.
+  Kết quả 2026-11-21: Tab lưu ô, Ctrl+Shift+N đặt NULL, Shift+Enter xuống dòng trong ô (preview D2). Chưa thử Shift+Tab.
+- [x] Sửa một ô rồi sửa lại đúng giá trị cũ.
   **Đúng:** nền vàng mất, không còn tính là thay đổi.
-- [ ] Chọn dòng 2, nhấn **Delete**; nhấn Delete lần nữa.
+  Kết quả 2026-11-21: Hết nền vàng, không còn tính là thay đổi.
+- [x] Chọn dòng 2, nhấn **Delete**; nhấn Delete lần nữa.
   **Đúng:** lần 1 dòng bị gạch ngang, nền đỏ nhạt; lần 2 bỏ đánh dấu.
-- [ ] Bấm **+ Row** (Alt+Insert), gõ `4` vào `id`, Tab, gõ `d`.
+  Kết quả 2026-11-21: Lần 1 gạch ngang, nền đỏ nhạt, số dòng ghi "− 2".
+- [x] Bấm **+ Row** (Alt+Insert), gõ `4` vào `id`, Tab, gõ `d`.
   **Đúng:** dòng mới ở cuối, số dòng là `*`; ô chưa nhập ghi `DEFAULT`. Delete trên dòng mới thì xóa hẳn dòng đó.
+  Kết quả 2026-11-21: Dòng `+` ở cuối, ô chưa nhập ghi DEFAULT; `id` 4, `name` d. Cột hẹp cắt chữ DEFAULT thành "DEFAU".
 - [ ] Khi đang có thay đổi: bấm sang trang khác, bấm tiêu đề cột để sort, mở bảng khác, chạy một câu trong editor, Disconnect.
   **Đúng:** đều bị chặn, status bar ghi "Save or discard the table's edits first (Ctrl+S)".
-- [ ] Nhấn **Ctrl+S** (hoặc **Preview & save**).
+  Kết quả 2026-11-21: Sort và Disconnect bị chặn với "Save or discard the table's edits first (Ctrl+S)". Mở bảng khác và chạy câu ở trang query thì không bị chặn: từ khi có trang (ADR 0013), trang bảng giữ sửa đổi riêng. Tài liệu mục này đã cũ (E8).
+- [x] Nhấn **Ctrl+S** (hoặc **Preview & save**).
   **Đúng:** hộp thoại liệt kê đúng các câu sẽ chạy, theo thứ tự DELETE → UPDATE → INSERT, ví dụ `UPDATE "public"."edit_test" SET "name" = 'A''1 chào' WHERE "id" = 1;`. Có **Copy SQL**. Esc đóng mà không chạy gì.
-- [ ] Bấm **Save** (Ctrl+Enter).
+  Kết quả 2026-11-21: Thứ tự DELETE, UPDATE, INSERT; `SET "name" = 'A''1 chào'`; có Copy SQL; Esc đóng không chạy gì.
+- [x] Bấm **Save** (Ctrl+Enter).
   **Đúng:** status bar ghi "Saved N changes"; trang đọc lại, thấy dữ liệu mới, tổng số dòng đếm lại; nền vàng/đỏ mất.
-- [ ] Thử xung đột: mở `edit_test`, sửa ô của dòng `id = 3` nhưng chưa lưu; trong một cửa sổ khác (psql/SSMS, hoặc tạm Discard rồi chạy trong editor) chạy `delete from edit_test where id = 3`; quay lại lưu.
+  Kết quả 2026-11-21: "Saved 3 changes"; dữ liệu mới, `qty` mặc định 0.
+- [x] Thử xung đột: mở `edit_test`, sửa ô của dòng `id = 3` nhưng chưa lưu; trong một cửa sổ khác (psql/SSMS, hoặc tạm Discard rồi chạy trong editor) chạy `delete from edit_test where id = 3`; quay lại lưu.
   **Đúng:** hộp thoại báo "A row being saved is no longer there; nothing was saved" kèm "statement N changed 0 rows"; các thay đổi khác trong cùng lần lưu cũng không được ghi; thay đổi vẫn còn trên lưới để sửa hoặc Discard.
-- [ ] Gõ chữ vào cột số (`qty` = `abc`) rồi lưu.
+  Kết quả 2026-11-21: SQL Server (xoá dòng bằng sqlcmd): "A row being saved is no longer there; nothing was saved", thay đổi kia cũng không được ghi, sửa đổi vẫn còn. Chi tiết ghi "statement 1 changed not one rows" (E12).
+- [x] Gõ chữ vào cột số (`qty` = `abc`) rồi lưu.
   **Đúng:** hộp thoại hiện lỗi của server; không có gì được ghi.
-- [ ] Bấm **Discard**.
+  Kết quả 2026-11-21: "The query failed invalid input syntax for type integer" trong hộp thoại; không ghi gì.
+- [x] Bấm **Discard**.
   **Đúng:** mọi thay đổi chưa lưu biến mất.
-- [ ] Trên **SQL Server** và **SQLite**: sửa, xóa, thêm dòng, lưu.
+  Kết quả 2026-11-21: Dữ liệu về như cũ.
+- [x] Trên **SQL Server** và **SQLite**: sửa, xóa, thêm dòng, lưu.
   **Đúng:** câu lệnh dùng `[...]` và `N'...'` (SQL Server) hoặc `"..."` (SQLite); lưu đúng; xung đột cũng không ghi gì.
+  Kết quả 2026-11-21: SQL Server: `[...]`, `N'...'`; SQLite: `"..."`; lưu đúng; xung đột không ghi gì (SQL Server).
 - [ ] Giao diện sáng và tối.
   **Đúng:** nền vàng/đỏ của ô sửa và dòng xóa đọc rõ ở cả hai.
 

@@ -33,8 +33,9 @@ Tab Live nghe trên một kết nối riêng tới server, mỗi sự kiện là
   **Đúng:** câu trả về một dòng `5000`; tab Live có 5.001 sự kiện; status bar và nhãn tab ghi đúng số; cuộn grid mượt; dòng cuối có payload `5000`.
 - [x] Chạy `NOTIFY Orders, 'chữ hoa';` (không có dấu nháy kép quanh tên).
   **Đúng:** tab Live **có** nhận: tên không nháy được PostgreSQL đổi về chữ thường, cả khi nghe lẫn khi gửi, nên cả hai đều là `orders`.
-- [ ] Chạy `NOTIFY "Orders", 'nháy kép';`.
+- [x] Chạy `NOTIFY "Orders", 'nháy kép';`.
   **Đúng:** tab Live **không** nhận: tên trong nháy kép giữ nguyên là `Orders`, khác kênh `orders` đang nghe. Muốn nghe nó thì gõ `"Orders"` (có nháy kép) vào ô Channels.
+  Kết quả 2026-11-21: Không nhận.
 - [x] Chạy `NOTIFY khac, 'x';`.
   **Đúng:** tab Live **không** thêm dòng nào: `khac` là kênh khác, tab chỉ nghe `orders`.
 - [ ] Chạy một câu bất kỳ không tạo hay xoá bảng (`NOTIFY`, `INSERT`, `SELECT`), nhìn sidebar.
@@ -48,54 +49,69 @@ Tab Live nghe trên một kết nối riêng tới server, mỗi sự kiện là
   **Đúng:** grid đứng yên ở chỗ đang xem; số sự kiện vẫn tăng.
 - [x] Nhấn **Ctrl+F** (hoặc bấm **Filter**), chọn cột `payload`, điều kiện **contains**, giá trị `99`, bấm **Apply**.
   **Đúng:** grid chỉ còn các dòng payload chứa `99`; status bar ghi `<n> of <tổng> events`; nút Filter có số `1`.
-- [ ] Trong lúc filter đang bật và tab vẫn đang nghe, chạy `NOTIFY orders, '1990';` rồi `NOTIFY orders, 'abc';`.
+- [x] Trong lúc filter đang bật và tab vẫn đang nghe, chạy `NOTIFY orders, '1990';` rồi `NOTIFY orders, 'abc';`.
   **Đúng:** dòng `1990` xuất hiện, dòng `abc` thì không; tổng tăng 2, số đang hiện tăng 1.
+  Kết quả 2026-11-21: `1990` hiện, `abc` không; "96 of 5,004 events".
 - [x] Bấm **Clear** trong hàng filter.
   **Đúng:** hiện lại mọi sự kiện.
 - [x] Bấm tiêu đề cột `payload` một lần, hai lần, ba lần.
   **Đúng:** tăng dần, giảm dần, rồi về thứ tự nhận; khi đang sort status bar ghi "sorted in Kemable" và grid không tự cuộn theo dòng mới.
-- [ ] Bấm tiêu đề cột `received` hai lần (giảm dần, mũi tên chỉ xuống), rồi gửi `NOTIFY orders, 'mới nhất';`.
+- [x] Bấm tiêu đề cột `received` hai lần (giảm dần, mũi tên chỉ xuống), rồi gửi `NOTIFY orders, 'mới nhất';`.
   **Đúng:** trong vòng nửa giây, dòng `mới nhất` lên **đầu** grid. Một lần bấm (tăng dần) thì dòng mới nằm **cuối**.
-- [ ] Bấm một ô, nhấn **Ctrl+Alt+I**.
+  Kết quả 2026-11-21: Sort `received` giảm dần: dòng mới nhất ("mới nhất") lên đầu.
+- [x] Bấm một ô, nhấn **Ctrl+Alt+I**.
   **Đúng:** pane chi tiết mở bên phải, hiện đủ 4 trường của dòng đó. Gửi `NOTIFY orders, '{"id": 7, "ten": "Lan"}';`, chọn ô payload của dòng đó: JSON hiện thụt lề.
-- [ ] Bôi chọn vài ô, nhấn **Ctrl+C**, dán vào Notepad hoặc Excel.
+  Kết quả 2026-11-21: Pane chi tiết hiện đủ received, channel, payload, pid; payload `{"id": 7, "ten": "Lan"}` hiện thụt lề.
+- [x] Bôi chọn vài ô, nhấn **Ctrl+C**, dán vào Notepad hoặc Excel.
   **Đúng:** dán ra đúng các ô, cách nhau bằng tab; status bar ghi "Copied n cells".
+  Kết quả 2026-11-21: Clipboard có 2 dòng × 2 cột tách bằng tab (chuỗi có nháy được bọc như bảng tính đọc); status bar "Copied 4 cells".
 
 ### 1.4 Dừng, nghe lại, xóa
 
-- [ ] Nhấn **Shift+F5** (hoặc bấm **Stop**).
+- [x] Nhấn **Shift+F5** (hoặc bấm **Stop**).
   **Đúng:** status bar ghi **Stopped**; các sự kiện vẫn còn để xem; ô Channels gõ lại được; Listen sáng, Stop mờ.
-- [ ] Ở tab query chạy `NOTIFY orders, 'sau khi dừng';`.
+  Kết quả 2026-11-21: Shift+F5: "Stopped"; sự kiện vẫn còn.
+- [x] Ở tab query chạy `NOTIFY orders, 'sau khi dừng';`.
   **Đúng:** tab Live không thêm dòng.
-- [ ] Ở tab query chạy `select count(*) from pg_stat_activity where application_name = 'Kemable' and query ilike 'listen%';` trước và sau khi Stop.
+  Kết quả 2026-11-21: Không thêm dòng.
+- [x] Ở tab query chạy `select count(*) from pg_stat_activity where application_name = 'Kemable' and query ilike 'listen%';` trước và sau khi Stop.
   **Đúng:** đang nghe thì là 1, sau Stop là 0: kết nối nghe đã đóng trên server.
-- [ ] Sửa ô Channels thành `orders, jobs` rồi **Listen**.
+  Kết quả 2026-11-21: Đang nghe: 1; sau Stop: 0.
+- [x] Sửa ô Channels thành `orders, jobs` rồi **Listen**.
   **Đúng:** danh sách cũ còn nguyên cho tới khi server nhận xong lệnh nghe, rồi được thay bằng danh sách mới trống; `NOTIFY jobs, 'a';` và `NOTIFY orders, 'b';` đều hiện.
-- [ ] Stop rồi bấm **Clear** trên thanh công cụ.
+  Kết quả 2026-11-21: Ghi `orders, jobs, "Order Events"`: `jobs` và `orders` đều hiện.
+- [x] Stop rồi bấm **Clear** trên thanh công cụ.
   **Đúng:** về lại "Nothing heard yet"; nhãn tab hết số. Khi đang nghe thì nút Clear mờ.
+  Kết quả 2026-11-21: Về "Nothing heard yet", nhãn tab còn "Live" (hết số); khi đang nghe nút Clear mờ.
 
 ### 1.5 Tên có chữ hoa, dấu cách
 
-- [ ] Gõ `"Order Events"` (có nháy kép) vào Channels, Listen. Ở tab query chạy `select pg_notify('Order Events', 'đúng tên');` rồi `select pg_notify('order events', 'sai tên');`.
+- [x] Gõ `"Order Events"` (có nháy kép) vào Channels, Listen. Ở tab query chạy `select pg_notify('Order Events', 'đúng tên');` rồi `select pg_notify('order events', 'sai tên');`.
   **Đúng:** chỉ dòng `đúng tên` hiện ra, cột channel ghi `Order Events`.
+  Kết quả 2026-11-21: Chỉ `đúng tên` hiện, cột channel ghi `Order Events`.
 
 ### 1.6 Nhiều tab, đổi database, đóng
 
-- [ ] Mở thêm một tab Live nữa (**Ctrl+Alt+L**), nghe `jobs`; tab đầu nghe `orders`. Gửi vào từng channel.
+- [x] Mở thêm một tab Live nữa (**Ctrl+Alt+L**), nghe `jobs`; tab đầu nghe `orders`. Gửi vào từng channel.
   **Đúng:** tab thứ hai tên **Live 2**; mỗi tab chỉ nhận channel của mình; chuyển qua lại thì mỗi tab giữ danh sách, vị trí cuộn và filter riêng.
+  Kết quả 2026-11-21: Tab thứ hai tên Live 2, chỉ nhận `jobs`; tab đầu nhận kênh của nó.
 - [ ] Đang nghe ở database `demo_sales`, chuyển database trên toolbar sang `postgres`, mở tab query và chạy `NOTIFY orders, 'khác database';`.
   **Đúng:** tab Live **không** nhận (`NOTIFY` chỉ tới người nghe cùng database); status bar của tab Live vẫn ghi `in demo_sales`, và tab hiện dải vàng "Listening in demo_sales, while queries now run in postgres". Đổi toolbar về `demo_sales` thì dải vàng mất. Stop rồi Listen lại thì nghe ở `postgres`.
-- [ ] Đóng tab Live đang nghe bằng **Ctrl+W**, rồi chạy lại câu đếm `pg_stat_activity` ở 1.4.
+  Kết quả 2026-11-21: Không nhận (đúng). Không có dải vàng: từ preview D5 mỗi trang có database riêng, đổi database ở trang query không đổi trang Live. Tài liệu mục này đã cũ (E8).
+- [x] Đóng tab Live đang nghe bằng **Ctrl+W**, rồi chạy lại câu đếm `pg_stat_activity` ở 1.4.
   **Đúng:** tab đóng ngay, không hỏi; kết quả đếm là 0.
-- [ ] Mở tab Live, Listen, rồi bấm **Disconnect** trong menu kết nối (hoặc mở một kết nối khác).
+  Kết quả 2026-11-21: Đóng ngay, không hỏi; câu đếm ra 0.
+- [x] Mở tab Live, Listen, rồi bấm **Disconnect** trong menu kết nối (hoặc mở một kết nối khác).
   **Đúng:** ngắt được ngay; không còn tab Live; không có thông báo lỗi nào hiện ra sau đó.
+  Kết quả 2026-11-21: Ngắt ngay, về màn Welcome, không còn tab Live, không có lỗi nào sau đó.
 
 ### 1.7 Lỗi và giới hạn
 
 - [ ] Đang nghe, khởi động lại dịch vụ PostgreSQL (Services › postgresql › Restart).
   **Đúng:** tab Live hiện dải đỏ "The connection was lost" kèm lời của server; các sự kiện đã nhận còn nguyên; bấm Listen thì nghe lại được sau khi server lên.
-- [ ] Listen với Channels là `orders`, rồi chạy `select count(pg_notify('orders', g::text)) from generate_series(1, 100001) g;`.
+- [x] Listen với Channels là `orders`, rồi chạy `select count(pg_notify('orders', g::text)) from generate_series(1, 100001) g;`.
   **Đúng:** tab dừng ở đúng 100.000 sự kiện, hiện dải vàng "Stopped at 100,000 events", status bar ghi Stopped. Clear rồi Listen thì nghe tiếp được.
+  Kết quả 2026-11-21: Dừng ở 100,000 với dải "Stopped at 100,000 events A Live tab keeps that many."; status bar Stopped.
 - [ ] (Nếu có Supabase) kết nối qua pooler cổng 6543, mở tab Live, Listen.
   **Đúng:** có dải thông báo rằng pooler ở chế độ transaction không giữ `LISTEN`, hãy kết nối trực tiếp cổng 5432.
 
@@ -151,8 +167,9 @@ Cần một Redis như mục 5 của `docs/testing/phase-2.md`.
 
 - [ ] Đổi Light / Dark trong Settings khi tab Live đang mở.
   **Đúng:** hàng Channels, grid, các dải thông báo, empty state đều đổi màu đúng, không có chỗ nào chữ khó đọc.
-- [ ] Bật **Compact rows** trong Settings.
+- [x] Bật **Compact rows** trong Settings.
   **Đúng:** grid của tab Live cũng dùng dòng 24 px.
+  Kết quả 2026-11-21: Các dòng của grid Live cách nhau 24 px (đo bằng OCR).
 - [ ] Chỉ dùng bàn phím: Ctrl+Alt+L, gõ channel, Enter, Tab tới các nút, Shift+F5.
   **Đúng:** làm được hết, không cần chuột; rê chuột lên mỗi nút thấy tip có ghi phím tắt.
 - [ ] Thu hẹp cửa sổ khi tab Live đang mở.
@@ -166,7 +183,7 @@ Cần một Redis như mục 5 của `docs/testing/phase-2.md`.
 
 Script viết không có dấu `;` vẫn chạy được từng câu, khi các câu cách nhau một dòng trống (`docs/decisions/0021-blank-line-ends-a-statement.md`). SQL Server không đổi: cả batch giữa hai dòng `GO` vẫn gửi nguyên.
 
-- [ ] Kết nối `Local PG`, gõ vào editor (không có `;`, có một dòng trống ở giữa):
+- [x] Kết nối `Local PG`, gõ vào editor (không có `;`, có một dòng trống ở giữa):
   ```sql
   select 1
 
@@ -174,8 +191,10 @@ Script viết không có dấu `;` vẫn chạy được từng câu, khi các c
   ```
   Đặt con trỏ ở dòng `select * from pg_tables`, nhấn **Ctrl+Enter**.
   **Đúng:** chỉ câu đó chạy, có kết quả; status bar ghi "Ran 1 of 2 statements"; editor tô khung đúng dòng đó. Không còn lỗi "syntax error".
-- [ ] Đặt con trỏ ở dòng `select 1`, nhấn **Ctrl+Enter**.
+  Kết quả 2026-11-21: "Ran 1 of 2 statements", có kết quả.
+- [x] Đặt con trỏ ở dòng `select 1`, nhấn **Ctrl+Enter**.
   **Đúng:** chỉ `select 1` chạy, ra một dòng.
+  Kết quả 2026-11-21: Chỉ `select 1` chạy, ra một dòng.
 - [x] Nhấn **Ctrl+Shift+Enter** (Run all).
   **Đúng:** hai tab kết quả, Result 1 và Result 2; status bar ghi "Ran 2 statements".
   Đã thử trên **In memory** (SQLite 3.54.1); `Local PG` chưa được xác nhận.
@@ -191,10 +210,12 @@ Script viết không có dấu `;` vẫn chạy được từng câu, khi các c
   ```
   **Đúng:** vẫn là **một** câu, chạy ra một dòng: dòng trống bên trong một câu không cắt nó.
   Đã thử trên **In memory** (SQLite 3.54.1): `a = 1`, `Ran 1 statement`; `Local PG` chưa được xác nhận.
-- [ ] Gõ `update pg_tables` (đừng chạy), dòng trống, `set x = 1`, dòng trống, `select 2`, rồi xem status bar sau khi nhấn Ctrl+Enter ở dòng cuối.
+- [x] Gõ `update pg_tables` (đừng chạy), dòng trống, `set x = 1`, dòng trống, `select 2`, rồi xem status bar sau khi nhấn Ctrl+Enter ở dòng cuối.
   **Đúng:** "Ran 1 of 2 statements": `set` không mở câu mới (nó thuộc về `update`), còn `select 2` thì có.
-- [ ] Kết nối `Local MSSQL`, gõ `declare @x int = 1`, dòng trống, `select @x`, nhấn Ctrl+Enter.
+  Kết quả 2026-11-21: "Ran 1 of 2 statements".
+- [x] Kết nối `Local MSSQL`, gõ `declare @x int = 1`, dòng trống, `select @x`, nhấn Ctrl+Enter.
   **Đúng:** cả hai dòng chạy như một batch, ra `1`: SQL Server không tách theo dòng trống.
+  Kết quả 2026-11-21: Cả hai dòng chạy như một batch, ra `1`.
 
 ---
 
@@ -202,18 +223,22 @@ Script viết không có dấu `;` vẫn chạy được từng câu, khi các c
 
 Thử trên bản release (`pnpm tauri build` rồi chạy app đã cài, hoặc `target/release/kemable-windows.exe`): bản `pnpm tauri dev` không tối ưu code nên chậm hơn nhiều lần, thời gian ở đó không nói lên điều gì.
 
-- [ ] Mở **In memory** (SQLite), đặt Limit là **No limit**, chạy:
+- [x] Mở **In memory** (SQLite), đặt Limit là **No limit**, chạy:
   ```sql
   with recursive c(x) as (select 1 union all select x + 1 from c limit 2000000)
   select x * 7919 % 2000003 as n, 'khách ' || (x * 7919 % 2000003) as ten from c
   ```
   **Đúng:** 2.000.000 dòng, các số ở cột `n` không theo thứ tự.
-- [ ] Bấm **Filter**, lọc `n` **is at least** `0`, Apply. Bộ lọc này giữ mọi dòng; nó chỉ để buộc Kemable tự sort các dòng đang giữ thay vì chạy lại câu lệnh với `ORDER BY` (ADR 0005, ADR 0011).
+  Kết quả 2026-11-21: 2,000,000 dòng.
+- [x] Bấm **Filter**, lọc `n` **is at least** `0`, Apply. Bộ lọc này giữ mọi dòng; nó chỉ để buộc Kemable tự sort các dòng đang giữ thay vì chạy lại câu lệnh với `ORDER BY` (ADR 0005, ADR 0011).
   **Đúng:** status bar ghi `2,000,000 of 2,000,000 rows held`.
-- [ ] Bấm tiêu đề cột `n`.
+  Kết quả 2026-11-21: "2,000,000 of 2,000,000 rows held".
+- [x] Bấm tiêu đề cột `n`.
   **Đúng:** sort xong gần như tức thì (dưới nửa giây), status bar ghi "sorted in Kemable"; trong lúc sort grid vẫn cuộn được. Dòng đầu là `0`.
-- [ ] Bấm tiêu đề cột `ten`.
+  Kết quả 2026-11-21: "sorted in Kemable". Dòng đầu là `1`, không phải `0`: với `x` tới 2,000,000 thì `x * 7919 % 2000003` không bao giờ bằng 0 (E8). Thời gian không đo chính xác được qua công cụ.
+- [x] Bấm tiêu đề cột `ten`.
   **Đúng:** xong trong khoảng nửa giây; `khách 2` đứng trước `khách 10`, vì số nằm trong chữ được so theo giá trị.
+  Kết quả 2026-11-21: `khách 2` đứng trước `khách 10`.
 - [ ] Bấm lại cùng tiêu đề (giảm dần), rồi giữ **Shift** bấm thêm tiêu đề `n`.
   **Đúng:** đảo chiều đúng; sort theo hai cột cũng xong trong khoảng nửa giây, và trong mỗi nhóm `ten` bằng nhau thì `n` tăng dần.
 
@@ -472,23 +497,30 @@ as $$ insert into cap_log values (x) returning x $$;
 
 ### 12.1 PostgreSQL
 
-- [ ] Chạy `select cap_logged(g) from generate_series(1, 300000) g;`, rồi `select count(*) from cap_log;`.
+- [x] Chạy `select cap_logged(g) from generate_series(1, 300000) g;`, rồi `select count(*) from cap_log;`.
   **Đúng:** câu đầu hiện 1.000 dòng và báo dừng ở giới hạn dòng, không có lỗi. Câu đếm ra `1001`: server chỉ tính tới dòng 1.001 rồi dừng, và giữ những gì đã ghi.
-- [ ] Mở một tab Live nghe `orders` (Ctrl+Alt+L), rồi ở tab query chạy `select pg_notify('orders', g::text) from generate_series(1, 300000) g;`.
+  Kết quả 2026-11-21: 1,000 dòng, "Stopped at 1,000 rows", không lỗi; câu đếm ra 1001.
+- [x] Mở một tab Live nghe `orders` (Ctrl+Alt+L), rồi ở tab query chạy `select pg_notify('orders', g::text) from generate_series(1, 300000) g;`.
   **Đúng:** tab Live nhận đúng 1.001 sự kiện (payload `1` tới `1001`). Trước bản sửa: không nhận được sự kiện nào.
-- [ ] Chạy `insert into cap_log select g from generate_series(1, 300000) g returning a;`, rồi `select count(*) from cap_log;`.
+  Kết quả 2026-11-21: Tab Live nhận đúng 1,001 sự kiện (đếm 1,002 sau khi gửi thêm một tin JSON).
+- [x] Chạy `insert into cap_log select g from generate_series(1, 300000) g returning a;`, rồi `select count(*) from cap_log;`.
   **Đúng:** câu insert hiện 1.000 dòng; câu đếm tăng thêm đúng 300.000 (câu insert chạy hết, không bị huỷ).
-- [ ] Chạy lần lượt `begin;`, `insert into cap_log values (-1);`, `select g from generate_series(1, 5000000) g;`, rồi `select count(*) from cap_log where a = -1;`.
+  Kết quả 2026-11-21: Hiện 1,000 dòng; bảng tăng đúng 300,000.
+- [x] Chạy lần lượt `begin;`, `insert into cap_log values (-1);`, `select g from generate_series(1, 5000000) g;`, rồi `select count(*) from cap_log where a = -1;`.
   **Đúng:** câu select hiện 1.000 dòng, không lỗi; tab Messages **không** có cảnh báo "there is already a transaction in progress"; câu đếm ra `1` (transaction vẫn mở, chưa bị huỷ). Chạy `rollback;` rồi đếm lại: ra `0` (Kemable không tự commit transaction của bạn).
+  Kết quả 2026-11-21: 1,000 dòng, Messages không có cảnh báo; đếm ra 1 trong transaction, 0 sau `rollback`.
 - [ ] Chạy `select g from generate_series(1, 50000000) g;`.
   **Đúng:** kết quả hiện gần như ngay (dưới 1 giây), không phải chờ server tính hết 50 triệu dòng.
-- [ ] Chạy `select g, 1 / (g - 5000) from generate_series(1, 10000) g;`.
+  Kết quả 2026-11-21: Mất 12.3 giây: PostgreSQL tính hết hàm trả tập trong `FROM` trước khi trả dòng đầu, Kemable không làm gì được. `select generate_series(1, 50000000)` ra trong 1 ms. Nên đổi câu thử (E8).
+- [x] Chạy `select g, 1 / (g - 5000) from generate_series(1, 10000) g;`.
   **Đúng:** 1.000 dòng, không lỗi (dòng chia cho 0 nằm sau giới hạn, server không tính tới). Bấm **Fetch all**: báo lỗi `division by zero`.
-- [ ] Dọn: `drop function cap_logged(int); drop table cap_log;`.
+  Kết quả 2026-11-21: 1,000 dòng, không lỗi; Fetch all báo `division by zero`.
+- [x] Dọn: `drop function cap_logged(int); drop table cap_log;`.
+  Kết quả 2026-11-21: Đã dọn.
 
 ### 12.2 SQL Server
 
-- [ ] Trên `Local MSSQL`, database `tempdb`, chạy cả script (F5) sau, không có `GO`:
+- [x] Trên `Local MSSQL`, database `tempdb`, chạy cả script (F5) sau, không có `GO`:
 
   ```sql
   create table #cap (a int);
@@ -498,8 +530,10 @@ as $$ insert into cap_log values (x) returning x $$;
   ```
 
   **Đúng:** hai kết quả: kết quả đầu 1.000 dòng và báo dừng ở giới hạn dòng, kết quả sau `n` = `1`. Trước bản sửa: chỉ có kết quả đầu, câu insert không chạy.
-- [ ] Chạy riêng `select top 200000 a.object_id from sys.all_objects a cross join sys.all_objects b;`.
+  Kết quả 2026-11-21: Hai kết quả: 1,000 dòng có "Stopped at 1,000 rows", rồi `n` = 1.
+- [x] Chạy riêng `select top 200000 a.object_id from sys.all_objects a cross join sys.all_objects b;`.
   **Đúng:** dừng ngay ở 1.000 dòng.
+  Kết quả 2026-11-21: Dừng ở 1,000 dòng.
 
 ## Test tự động chạy trên server thật
 

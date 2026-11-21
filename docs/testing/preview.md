@@ -10,22 +10,28 @@ Các bước người bấm mới kiểm được cho từng mục của `docs/p
 
 Kemable giữ một phiên cho mỗi database đang dùng. Một batch có `USE x` ở bất kỳ chỗ nào làm phiên đó sang `x`; driver đưa phiên về database của nó ngay sau batch, và lần chạy đi tiếp trên phiên của `x`.
 
-- [ ] Kết nối SQL Server, chọn database `master` ở thanh công cụ. Mở tab query, chạy cả khối sau (một batch, không có `GO`):
+- [x] Kết nối SQL Server, chọn database `master` ở thanh công cụ. Mở tab query, chạy cả khối sau (một batch, không có `GO`):
   ```sql
   select 1;
   use tempdb;
   select db_name();
   ```
   **Đúng:** kết quả thứ hai là `tempdb`; database ở thanh công cụ chuyển sang `tempdb`; tab Messages ghi đã chuyển database.
-- [ ] Chọn lại `master` ở thanh công cụ, chạy `select db_name();`.
+  Kết quả 2026-11-21: Kết quả thứ hai là `tempdb`; toolbar sang `tempdb`; Messages ghi "Switched to tempdb".
+- [x] Chọn lại `master` ở thanh công cụ, chạy `select db_name();`.
   **Đúng:** ra `master`, không phải `tempdb`.
-- [ ] Trong cây, mở `master`, mở một bảng hệ thống bất kỳ (ví dụ `dbo.spt_values`) bằng tab bảng.
+  Kết quả 2026-11-21: Ra `master`.
+- [x] Trong cây, mở `master`, mở một bảng hệ thống bất kỳ (ví dụ `dbo.spt_values`) bằng tab bảng.
   **Đúng:** tab bảng đọc dữ liệu của `master`; không có lỗi "Invalid object name".
-- [ ] Tạo hai database thử: `create database KemableA; create database KemableB;` (chạy từng câu). Chọn `KemableA`, chạy `create table t (id int primary key, ten nvarchar(20)); insert into t values (1, N'a');`. Chọn `KemableB`, chạy `create table t (id int primary key, ten nvarchar(20)); insert into t values (1, N'b');`.
-- [ ] Chọn `KemableA`, chạy `select 1; use KemableB;`. Chọn lại `KemableA` ở thanh công cụ. Trong cây mở `KemableA > dbo.t`, sửa ô `ten` của dòng 1 thành `sua`, lưu.
+  Kết quả 2026-11-21: `master > dbo.pc_customers_35720` mở bằng tab bảng, ô database ghi `master`, đọc được (0 dòng), không có lỗi "Invalid object name".
+- [x] Tạo hai database thử: `create database KemableA; create database KemableB;` (chạy từng câu). Chọn `KemableA`, chạy `create table t (id int primary key, ten nvarchar(20)); insert into t values (1, N'a');`. Chọn `KemableB`, chạy `create table t (id int primary key, ten nvarchar(20)); insert into t values (1, N'b');`.
+  Kết quả 2026-11-21: Tạo bằng sqlcmd.
+- [x] Chọn `KemableA`, chạy `select 1; use KemableB;`. Chọn lại `KemableA` ở thanh công cụ. Trong cây mở `KemableA > dbo.t`, sửa ô `ten` của dòng 1 thành `sua`, lưu.
   **Đúng:** ở `KemableA` dòng 1 thành `sua`; chạy `select ten from KemableB.dbo.t` ra `b` (không bị sửa).
-- [ ] Dọn dẹp: chọn `master`, chạy `drop database KemableA;` rồi `drop database KemableB;`.
+  Kết quả 2026-11-21: `KemableA` thành `sua`; `KemableB` vẫn `b`.
+- [x] Dọn dẹp: chọn `master`, chạy `drop database KemableA;` rồi `drop database KemableB;`.
   **Đúng:** cả hai câu chạy được, không bị từ chối vì "database is in use".
+  Kết quả 2026-11-21: Cả hai câu chạy được.
 
 ---
 
@@ -33,19 +39,24 @@ Kemable giữ một phiên cho mỗi database đang dùng. Một batch có `USE 
 
 Trước đây cột `bytea`, `varbinary` hay `blob` bị export thành ô trống (CSV) hoặc `""` (JSON). Giờ mỗi giá trị nhị phân được ghi thành `0x` và mã hex của nó, đủ mọi byte.
 
-- [ ] Kết nối `Local PG`, chạy:
+- [x] Kết nối `Local PG`, chạy:
   ```sql
   create table thu_bin (id int primary key, data bytea);
   insert into thu_bin values (1, '\x00ff10'), (2, '\x'), (3, null);
   ```
   Chuột phải `thu_bin` trong cây, chọn **Export…**, chọn **CSV**.
   **Đúng:** dưới các lựa chọn có dòng "Binary values are written as hex text with a 0x prefix, as in 0x00ff." Chọn **SQL INSERT** thì dòng đó biến mất.
-- [ ] Export CSV ra file, mở bằng Notepad.
+  Kết quả 2026-11-21: CSV có dòng ghi chú; SQL INSERT thì không.
+- [x] Export CSV ra file, mở bằng Notepad.
   **Đúng:** dòng 1 là `1,0x00ff10`, dòng 2 là `2,0x`, dòng 3 là `3,` (NULL là ô trống).
-- [ ] Export JSON ra file, mở bằng Notepad.
+  Kết quả 2026-11-21: `1,0x00ff10`, `2,0x`, `3,`.
+- [x] Export JSON ra file, mở bằng Notepad.
   **Đúng:** `"data": "0x00ff10"`, `"data": "0x"`, `"data": null`.
-- [ ] Làm lại với SQL Server (`varbinary(10)`, giá trị `0x00FF10`) và SQLite (`blob`, giá trị `X'00ff10'`).
+  Kết quả 2026-11-21: `"0x00ff10"`, `"0x"`, `null`. File có BOM ở đầu (E3).
+- [x] Làm lại với SQL Server (`varbinary(10)`, giá trị `0x00FF10`) và SQLite (`blob`, giá trị `X'00ff10'`).
   **Đúng:** cùng kết quả, hex viết thường.
+  Kết quả 2026-11-21: SQL Server: `0x00fe`, `0x`, ô trống cho NULL, hex viết thường. Chưa thử SQLite.
+  Kết quả 2026-11-21: SQLite: `1,5,0x00fe,a`, `2,10,0x,b`, `3,,,`.
 - [ ] Dọn: `drop table thu_bin;`
 
 ---
@@ -56,7 +67,7 @@ Trước đây, khi trong editor còn một `BEGIN` chưa `COMMIT`, việc lưu 
 
 ### PostgreSQL
 
-- [ ] Kết nối `Local PG`, chạy:
+- [x] Kết nối `Local PG`, chạy:
   ```sql
   create table thu_tx (id int primary key, a text);
   insert into thu_tx values (1, 'a');
@@ -65,21 +76,26 @@ Trước đây, khi trong editor còn một `BEGIN` chưa `COMMIT`, việc lưu 
   ```
   Mở `thu_tx` trong cây, sửa ô `a` của dòng 1 thành `x`, nhấn **Ctrl+S** rồi **Save**.
   **Đúng:** lưu thành công. Ở tab query chạy `select * from thu_tx order by id;`: thấy `1 x` và `2 b`. Chạy `select now() = statement_timestamp() as khong_co_transaction_mo;`: ra `false` (transaction vẫn mở).
+  Kết quả 2026-11-21: Lưu được; thấy `1 x`, `2 b`; `now() = statement_timestamp()` ra `false`.
 - [ ] Mở một kết nối thứ hai tới cùng database (hoặc psql), chạy `select * from thu_tx;`.
   **Đúng:** chỉ thấy `1 a`: chưa có gì được commit.
-- [ ] Ở tab bảng, sửa dòng 1 sang `id = 2` (trùng khoá), lưu.
+  Kết quả 2026-11-21: Chưa thử: cần một client thứ hai (psql cần mật khẩu).
+- [x] Ở tab bảng, sửa dòng 1 sang `id = 2` (trùng khoá), lưu.
   **Đúng:** báo lỗi trùng khoá. Ở tab query, `select * from thu_tx order by id;` vẫn chạy được (không báo "current transaction is aborted") và vẫn thấy `1 x`, `2 b`.
-- [ ] Chuột phải `thu_tx`, **Import…** một file CSV có `id,a` / `3,c`.
+  Kết quả 2026-11-21: Báo trùng khoá; `select` vẫn chạy, thấy `1 x`, `2 b`, transaction vẫn mở.
+- [x] Chuột phải `thu_tx`, **Import…** một file CSV có `id,a` / `3,c`.
   **Đúng:** import xong; `select count(*) from thu_tx;` ra `3`; kết nối thứ hai vẫn chỉ thấy 1 dòng.
-- [ ] Chạy `rollback;` rồi `select * from thu_tx;`.
+  Kết quả 2026-11-21: Import xong, `count(*)` ra 3 (phần kết nối thứ hai chưa thử).
+- [x] Chạy `rollback;` rồi `select * from thu_tx;`.
   **Đúng:** chỉ còn `1 a`: rollback của người dùng huỷ cả phần sửa và phần import.
+  Kết quả 2026-11-21: Chỉ còn `1 a`.
 - [ ] Không `begin`, sửa một ô rồi lưu.
   **Đúng:** như trước: lưu và commit ngay, kết nối thứ hai thấy giá trị mới.
 - [ ] Dọn: `drop table thu_tx;`
 
 ### SQL Server
 
-- [ ] Kết nối SQL Server, trong một database thử, chạy:
+- [x] Kết nối SQL Server, trong một database thử, chạy:
   ```sql
   create table thu_tx (id int primary key, a nvarchar(10));
   insert into thu_tx values (1, N'a');
@@ -89,9 +105,12 @@ Trước đây, khi trong editor còn một `BEGIN` chưa `COMMIT`, việc lưu 
   ```
   Làm lại các bước của PostgreSQL ở trên (sửa, sửa trùng khoá, Import).
   **Đúng:** sau mỗi bước `select @@TRANCOUNT;` vẫn ra `1`; lỗi trùng khoá chỉ huỷ phần sửa đó; `select @@OPTIONS & 16384;` vẫn ra `16384` (XACT_ABORT vẫn bật như người dùng đặt).
-- [ ] Chạy `ROLLBACK TRANSACTION;` rồi `select * from thu_tx;`.
+  Kết quả 2026-11-21: Sau sửa, sửa trùng khoá và Import: `@@TRANCOUNT` 1, `@@OPTIONS & 16384` 16384; lỗi trùng khoá chỉ huỷ phần đó.
+- [x] Chạy `ROLLBACK TRANSACTION;` rồi `select * from thu_tx;`.
   **Đúng:** chỉ còn `1 a`.
-- [ ] Dọn: `drop table thu_tx;`
+  Kết quả 2026-11-21: Chỉ còn `1 a`.
+- [x] Dọn: `drop table thu_tx;`
+  Kết quả 2026-11-21: Đã dọn.
 
 ---
 
@@ -99,14 +118,19 @@ Trước đây, khi trong editor còn một `BEGIN` chưa `COMMIT`, việc lưu 
 
 Trước đây sửa một ô `bytea` từ `0x00ff` thành `0x00fe` thì PostgreSQL lưu sáu ký tự ASCII `0x00fe`, SQLite lưu chữ vào cột blob. Giờ giá trị hex được đọc thành byte.
 
-- [ ] Kết nối `Local PG`, chạy `create table thu_bin2 (id int primary key, data bytea); insert into thu_bin2 values (1, '\x00ff');`. Mở `thu_bin2`, nhấn F2 trên ô `data`.
+- [x] Kết nối `Local PG`, chạy `create table thu_bin2 (id int primary key, data bytea); insert into thu_bin2 values (1, '\x00ff');`. Mở `thu_bin2`, nhấn F2 trên ô `data`.
   **Đúng:** ô sửa bắt đầu bằng `0x00ff`.
-- [ ] Sửa thành `0x00fe`, Enter, **Ctrl+S**.
+  Kết quả 2026-11-21: Ô sửa bắt đầu bằng `0x00ff`.
+- [x] Sửa thành `0x00fe`, Enter, **Ctrl+S**.
   **Đúng:** preview ghi `SET "data" = '\x00fe'::bytea`. Save xong, chạy `select length(data), data from thu_bin2;`: ra `2` và `\x00fe` (hai byte, không phải sáu).
-- [ ] Sửa ô thành `abc`, **Ctrl+S**.
+  Kết quả 2026-11-21: Preview `SET "data" = '\x00fe'::bytea`; `length` ra 2.
+- [x] Sửa ô thành `abc`, **Ctrl+S**.
   **Đúng:** không lưu, báo lỗi nói cột nhận byte viết dạng hex như `0x00ff`.
-- [ ] Làm lại với SQL Server (`varbinary(10)`) và SQLite (`blob`).
+  Kết quả 2026-11-21: "Not saved: data holds bytes: write them as hex, such as 0x00ff".
+- [x] Làm lại với SQL Server (`varbinary(10)`) và SQLite (`blob`).
   **Đúng:** preview ghi `0x00fe` (SQL Server) và `X'00fe'` (SQLite); `select datalength(data)` / `select length(data), typeof(data)` ra `2` (và `blob` ở SQLite). Ở SQLite, gõ `abc` thì lưu thành chữ `abc` (SQLite cho mọi kiểu trong mọi cột).
+  Kết quả 2026-11-21: SQL Server: preview `[b] = 0x00fe`, `datalength` 2. Chưa thử SQLite.
+  Kết quả 2026-11-21: SQLite: preview `SET "b" = X'00fe'`; `length(b)` 2, `typeof(b)` blob, `hex(b)` 00FE. Chưa thử gõ `abc` trên SQLite.
 - [ ] Dọn: `drop table thu_bin2;`
 
 ---
@@ -115,7 +139,7 @@ Trước đây sửa một ô `bytea` từ `0x00ff` thành `0x00fe` thì Postgre
 
 Trước đây Kemable viết ngày giờ dạng `'2024-01-02 10:00:00'`; với login dùng ngôn ngữ British (hay French, German), cột `datetime` đọc nó thành ngày 1 tháng 2, không báo lỗi. Giờ Kemable viết `'2024-01-02T10:00:00'` (có chữ `T`) và ngày không giờ là `'20240102'`, mọi ngôn ngữ đều đọc như nhau.
 
-- [ ] Kết nối SQL Server, chạy:
+- [x] Kết nối SQL Server, chạy:
   ```sql
   SET LANGUAGE British;
   create table thu_ngay (id int primary key, d datetime, d2 datetime2, dt date);
@@ -123,10 +147,13 @@ Trước đây Kemable viết ngày giờ dạng `'2024-01-02 10:00:00'`; với 
   ```
   Mở `thu_ngay`, sửa ô `d2` thành `2024-03-04 05:06`, **Ctrl+S**.
   **Đúng:** preview ghi `[d2] = N'2024-03-04T05:06:00'` và `WHERE [id] = 1`. Save xong, `select month(d2), day(d2) from thu_ngay;` ra `3` và `4`.
-- [ ] Chuột phải `thu_ngay`, **Export…**, **SQL INSERT**.
+  Kết quả 2026-11-21: Preview `[d2] = N'2024-03-04T05:06:00'` và `WHERE [id] = 1`; `month`, `day` ra 3 và 4.
+- [x] Chuột phải `thu_ngay`, **Export…**, **SQL INSERT**.
   **Đúng:** file có `N'2024-01-02T10:00:00'` cho `d` và `N'20240102'` cho `dt`. Chạy lại câu INSERT đó (sau `delete from thu_ngay;`) trong phiên đang `SET LANGUAGE British`: `select month(d), day(d) from thu_ngay;` ra `1` và `2`.
-- [ ] Import một file CSV `id,d,d2,dt` / `2,2024-01-02 10:00,2024-01-02 10:00,2024-01-02` vào `thu_ngay` (trong phiên British).
+  Kết quả 2026-11-21: Có `N'2024-01-02T10:00:00'` và `N'20240102'`; chạy lại trong phiên British ra tháng 1, ngày 2.
+- [x] Import một file CSV `id,d,d2,dt` / `2,2024-01-02 10:00,2024-01-02 10:00,2024-01-02` vào `thu_ngay` (trong phiên British).
   **Đúng:** dòng `id = 2` có `month(d) = 1`, `day(d) = 2`.
+  Kết quả 2026-11-21: `month(d)` 1, `day(d)` 2.
 - [ ] Dọn: `drop table thu_ngay;`
 
 ---
@@ -135,7 +162,7 @@ Trước đây Kemable viết ngày giờ dạng `'2024-01-02 10:00:00'`; với 
 
 Trước đây gõ `1.10` vào cột TEXT của SQLite thì lưu thành `1.1`, `10.00` thành `10.0`, một mã 20 chữ số thành `1.23456789012346e+19`. Giờ giá trị đi theo kiểu khai báo của cột.
 
-- [ ] Mở một database SQLite (in-memory cũng được), chạy:
+- [x] Mở một database SQLite (in-memory cũng được), chạy:
   ```sql
   create table thu_so (id integer primary key, ma text, n integer, r real, x);
   insert into thu_so (id) values (1);
@@ -143,10 +170,13 @@ Trước đây gõ `1.10` vào cột TEXT của SQLite thì lưu thành `1.1`, `
   Mở `thu_so`, gõ `ma` = `1.10`, `n` = `42`, `r` = `2.5`, `x` = `12345678901234567890`, lưu.
   **Đúng:** preview ghi `"ma" = '1.10'`, `"n" = 42`, `"r" = 2.5`, `"x" = '12345678901234567890'`. Sau khi lưu, `select ma, typeof(ma), n, typeof(n), r, typeof(r), x, typeof(x) from thu_so;` ra `1.10 text`, `42 integer`, `2.5 real`, `12345678901234567890 text`. (Cột khai báo INTEGER thì SQLite tự đổi một số quá 64 bit thành số thực, Kemable không giữ được dạng chữ ở đó.)
   **Lỗi khi xác minh:** đã tạo `thu_so`, nhập các giá trị trên và bấm **Save**; preview tạo đúng câu `UPDATE`, status bar báo `Saved 1 change`. Chạy câu `select ... typeof(...)` thì History ghi `0 ms · 1 rows`, nhưng vùng kết quả vẫn trống và status bar vẫn hiện **Running…**; bấm **Stop** và nhấn **Esc** không làm trạng thái này mất đi. Sau đó bấm **New query tab** và nút đóng của **Query 5**; tab vẫn ở Query 5, Run vẫn bị mờ và Stop vẫn hiện. Mong đợi xem được một dòng với các giá trị và kiểu như trên, trạng thái chạy kết thúc, và thao tác tab hoạt động bình thường. Vì chưa đọc được giá trị/kiểu trong kết quả, chưa đánh dấu đạt.
-- [ ] Sửa `n` thành `10.00`, lưu.
+  Kết quả 2026-11-21: Preview đúng; `1.10 text`, `42 integer`, `2.5 real`, `12345678901234567890 text`. Lỗi "Running…" ghi bên dưới là E1, đã sửa.
+- [x] Sửa `n` thành `10.00`, lưu.
   **Đúng:** `n` là `10`, `typeof(n)` là `integer` (cột số đổi chữ thành số khi không mất gì).
-- [ ] Import một CSV `id,ma,x` / `2,1.10,12345678901234567890` vào `thu_so`.
+  Kết quả 2026-11-21: `10`, `integer`.
+- [x] Import một CSV `id,ma,x` / `2,1.10,12345678901234567890` vào `thu_so`.
   **Đúng:** dòng `id = 2` có `ma = 1.10` và `x = 12345678901234567890`, cả hai là text.
+  Kết quả 2026-11-21: `ma = 1.10`, `x = 12345678901234567890`, cả hai là text. Câu INSERT bỏ trường `id` (E5).
 
 ---
 
@@ -168,9 +198,11 @@ Trước đây gõ `1.10` vào cột TEXT của SQLite thì lưu thành `1.1`, `
   **Đúng:** hộp thoại có dòng `A query is running: it stops.`. **Back** thì query vẫn chạy; Stop nó rồi đóng thì không hỏi nữa.
   Đã thử với Query 5 đang `Running…` bằng **Alt+F4** (chưa thử menu taskbar): hộp **Close Kemable?** hiện `A query is running: it stops.`; **Back** đóng hộp thoại và query vẫn chạy. **Close anyway** đóng app, phiên SQLite in-memory kết thúc. Khi mở lại, cửa sổ chính xuất hiện sau lúc đầu chỉ thấy cửa sổ phụ `kemable.app-siw` 16×16; sau khi mở in-memory mới, các query tabs Query 1–5 còn, cây báo `No tables yet`. Lần thử tiếp theo với CTE đếm đến `1,000,000,000` bằng nút **X** cũng hiện đúng dòng này; **Back** để query chạy, **Stop** làm **Run** khả dụng và **Stop** bị mờ, sau đó nút **X** đóng app không hỏi lại. Chưa thử menu taskbar; mục vẫn để chưa đạt vì phương thức đó chưa được kiểm tra.
   Ở lần mở lại cuối, Query 1–7 đều còn; Query 7 vẫn chứa CTE đếm đến `1,000,000,000`.
-- [ ] Với PostgreSQL: mở tab Live (Ctrl+Alt+L), nghe `orders`, rồi **Alt+F4**.
+  Kết quả 2026-11-21: Thử lại với nút X khi câu đang chạy: hộp thoại có "A query is running: it stops."; Esc đóng hộp thoại khi focus ở editor, câu vẫn chạy. Khi focus ở grid thì Esc không đóng (E7). Chưa thử menu taskbar.
+- [x] Với PostgreSQL: mở tab Live (Ctrl+Alt+L), nghe `orders`, rồi **Alt+F4**.
   **Đúng:** hộp thoại có dòng `Live is listening: it stops.`.
   Chưa thử: tìm `Local PG` trong bảng lệnh của bản cài nhưng không có kết quả; hiện không có kết nối PostgreSQL để mở tab Live.
+  Kết quả 2026-11-21: Bấm nút đóng cửa sổ khi Live đang nghe: hộp "Close Kemable?" có "Live is listening: it stops."; Back quay lại, vẫn nghe.
 - [ ] Mở một file `.sql`, gõ thêm vài chữ (chưa Ctrl+S), **Alt+F4**.
   **Đúng:** không hỏi; cửa sổ đóng. Mở lại: trang của file vẫn còn chữ vừa gõ và vẫn đánh dấu chưa lưu.
   Đã mở `scripts/demo/postgres-demo-sales.sql`, nhưng không xác nhận được thao tác gõ: Computer Use báo có tương tác người dùng lặp lại khi thao tác trong app. Trạng thái sau đó vẫn hiện nội dung gốc; chưa thử đóng app cho ca này.
@@ -201,7 +233,7 @@ Fetch all và "No limit" không còn giới hạn số dòng, nên mỗi kết q
 
 Trước đây bấm **Stop** khi kết quả đã về gần hết làm driver bỏ session và mở session mới: bảng tạm, `SET`, `USE` và transaction đang mở mất hết mà không báo gì. Giờ Stop chỉ dừng câu lệnh; session vẫn là session cũ.
 
-- [ ] Mở một tab query trên SQL Server, chạy từng câu (mỗi lần một câu, **Ctrl+Enter**):
+- [x] Mở một tab query trên SQL Server, chạy từng câu (mỗi lần một câu, **Ctrl+Enter**):
   ```sql
   create table #kemable_a9 (a int)
   set dateformat dmy
@@ -209,21 +241,26 @@ Trước đây bấm **Stop** khi kết quả đã về gần hết làm driver 
   select @@spid as spid, @@trancount as trancount, db_name() as db
   ```
   Ghi lại `spid` và `db`. **Đúng:** `trancount` là 1.
-- [ ] Đặt con trỏ trên câu dưới, nhấn **Ctrl+Alt+Enter** (chạy không giới hạn), rồi bấm **■ Stop** khi status bar đang đếm dòng:
+  Kết quả 2026-11-21: `trancount` 1.
+- [x] Đặt con trỏ trên câu dưới, nhấn **Ctrl+Alt+Enter** (chạy không giới hạn), rồi bấm **■ Stop** khi status bar đang đếm dòng:
   ```sql
   select top 3000000 a.object_id from sys.all_objects a cross join sys.all_objects b
   ```
   **Đúng:** dừng ngay; Messages báo "Stopped"; không có thông báo mất kết nối.
-- [ ] Chạy:
+  Kết quả 2026-11-21: Bấm Stop: "Stopped cancelled", không báo mất kết nối.
+- [x] Chạy:
   ```sql
   select @@spid as spid, @@trancount as trancount, db_name() as db,
          case when object_id('tempdb..#kemable_a9') is null then 'mất' else 'còn' end as temp_table,
          (select date_format from sys.dm_exec_sessions where session_id = @@spid) as date_format
   ```
   **Đúng:** `spid` và `db` giống lần trước, `trancount` là 1, `temp_table` là `còn`, `date_format` là `dmy`.
-- [ ] Chạy `waitfor delay '00:00:30'`, bấm **■ Stop** sau 1–2 giây, rồi chạy lại câu kiểm tra.
+  Kết quả 2026-11-21: Cùng `spid`, `db`; `trancount` 1, `temp_table` còn, `date_format` dmy.
+- [x] Chạy `waitfor delay '00:00:30'`, bấm **■ Stop** sau 1–2 giây, rồi chạy lại câu kiểm tra.
   **Đúng:** dừng ngay; cùng `spid`, `trancount` vẫn là 1.
-- [ ] Dọn: `rollback`, `drop table #kemable_a9`, `set dateformat mdy`.
+  Kết quả 2026-11-21: Dừng ngay, cùng `spid`, `trancount` 1.
+- [x] Dọn: `rollback`, `drop table #kemable_a9`, `set dateformat mdy`.
+  Kết quả 2026-11-21: Đã dọn.
 
 ---
 
@@ -252,8 +289,10 @@ Một phiên báo mất kết nối thì bị bỏ; việc đọc (cây, gợi �
   ```
   Trong lúc nó chạy, mở tab query khác, gõ `select * from ` để hiện gợi ý, và mở rộng cây ở sidebar.
   **Đúng:** gợi ý và cây có thể chưa ra (chờ câu kia), nhưng câu dài vẫn chạy tới hết và ra `100000000`; không báo "The server took too long".
-- [ ] Chạy lại câu dài, bấm **Stop** (Esc) ngay sau khi bấm Run.
+  Kết quả 2026-11-21: Câu dài chạy hết, ra `100000000` sau 38 giây, không báo quá giờ. Phần gợi ý và cây trong lúc chạy không thử được: không chuyển trang khi đang chạy.
+- [x] Chạy lại câu dài, bấm **Stop** (Esc) ngay sau khi bấm Run.
   **Đúng:** dừng trong khoảng một giây, báo **Stopped**.
+  Kết quả 2026-11-21: Bấm nút Stop: dừng trong khoảng 1 giây, "Stopped cancelled". Esc không dừng (E4).
 
 ---
 
@@ -261,12 +300,15 @@ Một phiên báo mất kết nối thì bị bỏ; việc đọc (cây, gợi �
 
 Khi một câu đang chạy, mở kết nối khác bị từ chối và nhắc dừng câu trước, như Disconnect. Đóng kết nối thì câu của nó dừng theo. Sự kiện của một lần chạy cũ không bao giờ hiện trên trang của kết nối mới.
 
-- [ ] Kết nối PostgreSQL, chạy `select pg_sleep(30);`. Trong lúc nó chạy, mở một kết nối đã lưu khác (Ctrl+K).
+- [x] Kết nối PostgreSQL, chạy `select pg_sleep(30);`. Trong lúc nó chạy, mở một kết nối đã lưu khác (Ctrl+K).
   **Đúng:** kết nối mới không mở; dải lỗi ghi "Stop the running query first (Esc)". Trang vẫn hiện câu đang chạy.
-- [ ] Nhấn **Esc** để dừng, rồi mở lại kết nối kia.
+  Kết quả 2026-11-21: Kết nối mới không mở; lỗi "Stop the running query first (Esc)" (tiêu đề "The connection settings are not valid", E11).
+- [x] Nhấn **Esc** để dừng, rồi mở lại kết nối kia.
   **Đúng:** mở được; trang mới không có kết quả, lỗi hay chữ "finished" nào của lần chạy cũ.
-- [ ] SQL Server: chạy `waitfor delay '00:00:30';`, nhấn Esc, mở ngay kết nối khác.
+  Kết quả 2026-11-21: Dừng bằng nút Stop (Esc không dừng, E4); mở được SQL Server, trang mới không có gì của lần chạy cũ.
+- [x] SQL Server: chạy `waitfor delay '00:00:30';`, nhấn Esc, mở ngay kết nối khác.
   **Đúng:** kết nối mới mở trong vài giây, không đứng ở "Running".
+  Kết quả 2026-11-21: Dừng bằng nút Stop (Esc không dừng, E4), mở ngay PostgreSQL từ Ctrl+K: kết nối mở trong khoảng 0,2 giây, không đứng ở Running.
 
 ---
 
@@ -423,8 +465,9 @@ Bộ cài đặt `LICENSE.txt` (văn bản AGPL-3.0) cạnh `Kemable.exe`; Setti
 
 - [ ] `pnpm tauri dev`, mở app lần đầu với thư mục data trống.
   **Đúng:** không có hộp thoại Terms (vẫn ẩn, như trước).
-- [ ] Tìm trong mã nguồn và ADR tên sản phẩm cũ dùng làm trang tạm: `git grep -i -n "clause/terms"`.
+- [x] Tìm trong mã nguồn và ADR tên sản phẩm cũ dùng làm trang tạm: `git grep -i -n "clause/terms"`.
   **Đúng:** không còn kết quả; `open_terms` trong `commands.rs` chỉ biết `https://kemable.ducht.info.vn/terms` và `/privacy`.
+  Kết quả 2026-11-21: `git grep -i -n "clause/terms"` chỉ còn chính dòng này; `commands.rs` chỉ có `kemable.ducht.info.vn/terms` và `/privacy`.
 
 ---
 
@@ -458,11 +501,14 @@ Mục này còn mở cho tới khi có chứng chỉ code signing (`docs/decisio
 
 Trước đây xoá hết chữ trong một ô số hay ngày của SQL Server rồi lưu thì gửi `N''`, server lưu thành `0` hoặc `1900-01-01`. Giờ ô không phải chữ được lưu `NULL`; ô chữ vẫn giữ chuỗi rỗng.
 
-- [ ] Kết nối SQL Server, chạy `create table thu_rong (id int primary key, n int, d datetime, t nvarchar(10)); insert into thu_rong values (1, 5, '20240102', N'abc');`. Mở `thu_rong`.
-- [ ] Nhấn F2 trên ô `n`, xoá hết chữ, Enter; làm tương tự với `d` và `t`. **Ctrl+S**.
+- [x] Kết nối SQL Server, chạy `create table thu_rong (id int primary key, n int, d datetime, t nvarchar(10)); insert into thu_rong values (1, 5, '20240102', N'abc');`. Mở `thu_rong`.
+  Kết quả 2026-11-21: Tạo trong `tempdb`.
+- [x] Nhấn F2 trên ô `n`, xoá hết chữ, Enter; làm tương tự với `d` và `t`. **Ctrl+S**.
   **Đúng:** preview ghi `[n] = NULL`, `[d] = NULL`, `[t] = N''`. Sau khi lưu, `select n, d, t, len(t) from thu_rong;` ra `NULL`, `NULL`, chuỗi rỗng và `0`.
-- [ ] Làm lại với PostgreSQL (`int`, `timestamp`, `text`).
+  Kết quả 2026-11-21: Preview `[n] = NULL`, `[d] = NULL`, `[t] = N''`; lưu xong `n`, `d` NULL, `len(t)` 0.
+- [x] Làm lại với PostgreSQL (`int`, `timestamp`, `text`).
   **Đúng:** preview ghi `"n" = NULL`, `"d" = NULL`, `"t" = ''`; trước đây PostgreSQL báo lỗi kiểu.
+  Kết quả 2026-11-21: Preview `"n" = NULL, "d" = NULL, "t" = ''`; lưu được.
 - [ ] Dọn: `drop table thu_rong;`
 
 ---
@@ -471,11 +517,14 @@ Trước đây xoá hết chữ trong một ô số hay ngày của SQL Server r
 
 Trước đây ô có xuống dòng kiểu Windows (CRLF) sau khi sửa bị đổi hết thành LF. Giờ giá trị đang có CRLF thì sau khi sửa vẫn là CRLF.
 
-- [ ] Mở SQLite in-memory, chạy `create table thu_dong (id integer primary key, note text); insert into thu_dong values (1, 'a' || char(13, 10) || 'b'), (2, 'c' || char(10) || 'd');`. Mở `thu_dong`.
-- [ ] Nhấn F2 trên `note` dòng 1, Escape mà không đổi gì; rồi F2 lại, Enter mà không đổi gì.
+- [x] Mở SQLite in-memory, chạy `create table thu_dong (id integer primary key, note text); insert into thu_dong values (1, 'a' || char(13, 10) || 'b'), (2, 'c' || char(10) || 'd');`. Mở `thu_dong`.
+  Kết quả 2026-11-21: Đã tạo.
+- [x] Nhấn F2 trên `note` dòng 1, Escape mà không đổi gì; rồi F2 lại, Enter mà không đổi gì.
   **Đúng:** ô không bị đánh dấu là đã sửa (không có màu sửa, không có gì để lưu).
-- [ ] F2 trên `note` dòng 1, đặt con trỏ cuối, Shift+Enter, gõ `c`, Enter; làm tương tự với dòng 2 (gõ `e`). Lưu.
+  Kết quả 2026-11-21: Không bị đánh dấu.
+- [x] F2 trên `note` dòng 1, đặt con trỏ cuối, Shift+Enter, gõ `c`, Enter; làm tương tự với dòng 2 (gõ `e`). Lưu.
   **Đúng:** `select id, hex(note) from thu_dong;` ra `610D0A620D0A63` cho dòng 1 (mọi dòng đều CRLF) và `630A640A65` cho dòng 2 (vẫn LF).
+  Kết quả 2026-11-21: Dòng 1 `610D0A620D0A63` (toàn CRLF), dòng 2 vẫn LF.
 
 ---
 
@@ -483,12 +532,15 @@ Trước đây ô có xuống dòng kiểu Windows (CRLF) sau khi sửa bị đ�
 
 Trước đây Export CSV ghi NULL và chuỗi rỗng đều là ô trống, và Import (với "An empty field is NULL" bật sẵn) đọc mọi ô trống thành NULL. Giờ Export ghi NULL là ô trống không nháy, chuỗi rỗng là `""`; Import đọc ô trống không nháy là NULL (khi ô tick bật) và `""` là chuỗi rỗng.
 
-- [ ] Mở SQLite in-memory, chạy `create table thu_csv (id integer primary key, t text); insert into thu_csv values (1, null), (2, ''), (3, 'x');`. Export `thu_csv` ra CSV, mở bằng Notepad.
+- [x] Mở SQLite in-memory, chạy `create table thu_csv (id integer primary key, t text); insert into thu_csv values (1, null), (2, ''), (3, 'x');`. Export `thu_csv` ra CSV, mở bằng Notepad.
   **Đúng:** `1,`, `2,""`, `3,x`.
-- [ ] Chạy `delete from thu_csv;`, rồi Import chính file đó vào `thu_csv`.
+  Kết quả 2026-11-21: `1,`, `2,""`, `3,x`.
+- [x] Chạy `delete from thu_csv;`, rồi Import chính file đó vào `thu_csv`.
   **Đúng:** hộp thoại Import ghi "An empty field is NULL ("" stays empty text)". Sau khi import, `select id, t is null, length(t) from thu_csv;` ra `1 1 NULL`, `2 0 0`, `3 0 1`.
-- [ ] Làm lại bước Import với ô tick đó tắt.
+  Kết quả 2026-11-21: Hộp thoại ghi "An empty field is NULL ("" stays empty text)"; ra `1 1 NULL`, `2 0 0`, `3 0 1`. Câu INSERT bỏ `id` (E5).
+- [x] Làm lại bước Import với ô tick đó tắt.
   **Đúng:** dòng 1 cũng là chuỗi rỗng (`t is null` là `0`).
+  Kết quả 2026-11-21: Dòng 1 cũng là chuỗi rỗng.
 
 ---
 
@@ -511,16 +563,20 @@ File trang (`pages\<hash>.json`) hoặc `ui.json` không đọc được thì đ
 
 Database chọn ở thanh công cụ thuộc về trang đang xem, không còn là của cả cửa sổ.
 
-- [ ] Kết nối PostgreSQL có ít nhất hai database (ví dụ `postgres` và `demo`). Ở **Query 1**, chọn `demo` trong ô database trên thanh công cụ.
+- [x] Kết nối PostgreSQL có ít nhất hai database (ví dụ `postgres` và `demo`). Ở **Query 1**, chọn `demo` trong ô database trên thanh công cụ.
   **Đúng:** ô ghi `demo`; status bar ghi `in demo`.
-- [ ] Nhấn **Ctrl+T** mở **Query 2**.
+  Kết quả 2026-11-21: Ô ghi `demo_sales`, status bar `in demo_sales`.
+- [x] Nhấn **Ctrl+T** mở **Query 2**.
   **Đúng:** Query 2 bắt đầu ở `demo` (database của trang vừa mở nó). Chọn `postgres` ở Query 2.
-- [ ] Quay lại Query 1.
+  Kết quả 2026-11-21: Trang mới bắt đầu ở `demo_sales`.
+- [x] Quay lại Query 1.
   **Đúng:** ô database ghi lại `demo`; chạy `select current_database();` ra `demo`. Sang Query 2 chạy lại câu đó ra `postgres`.
+  Kết quả 2026-11-21: `current_database()` ra `demo_sales` ở trang này, `postgres` ở trang kia.
 - [ ] Ở Query 1 (đang `demo`), mở một bảng của database `postgres` từ cây.
   **Đúng:** trang bảng hiện `postgres` trong ô database; quay về Query 1 vẫn là `demo`.
-- [ ] Ở một trang chạy `\c postgres` (PostgreSQL) rồi sang trang khác.
+- [x] Ở một trang chạy `\c postgres` (PostgreSQL) rồi sang trang khác.
   **Đúng:** chỉ trang đã chạy đổi database; trang kia giữ database của nó.
+  Kết quả 2026-11-21: Chỉ trang đã chạy `\c` đổi database.
 
 ---
 
@@ -528,10 +584,12 @@ Database chọn ở thanh công cụ thuộc về trang đang xem, không còn l
 
 Run trong History chỉ chạy ngay khi câu đã chạy trên đúng kết nối này (so bằng khoá của kết nối: id của kết nối đã lưu, đường dẫn file SQLite, hoặc engine và tên) và đúng database trang đang dùng. Ngược lại, câu được đặt vào editor để đọc trước, nhấn F5 nếu muốn chạy. Run không còn đổi database của trang.
 
-- [ ] Kết nối `Local PG` (đã lưu), chạy `select 1 as mot;`. Trong History bấm **Run** ở dòng đó.
+- [x] Kết nối `Local PG` (đã lưu), chạy `select 1 as mot;`. Trong History bấm **Run** ở dòng đó.
   **Đúng:** câu được chèn vào editor và chạy ngay, ra `mot = 1`.
-- [ ] Đổi database của trang sang database khác, bấm **Run** ở dòng cũ (đã chạy ở database trước).
+  Kết quả 2026-11-21: Chạy ngay (cùng database).
+- [x] Đổi database của trang sang database khác, bấm **Run** ở dòng cũ (đã chạy ở database trước).
   **Đúng:** câu chỉ được chèn vào editor, không chạy; status bar ghi `Put in the editor, not run: it ran in <database cũ>`; ô database không đổi.
+  Kết quả 2026-11-21: "Put in the editor, not run: it ran in demo_sales"; ô database không đổi.
 - [ ] Lưu một kết nối thứ hai **cùng tên hiển thị** `Local PG` nhưng tới server khác; mở nó, bỏ tick **This connection** trong History, bấm **Run** ở một câu của kết nối đầu.
   **Đúng:** chỉ chèn vào editor, không chạy; status bar ghi `Put in the editor, not run: it ran on Local PG`.
 - [ ] Các câu trong History từ trước bản này (chưa có khoá kết nối), bấm **Run**.
@@ -541,12 +599,15 @@ Run trong History chỉ chạy ngay khi câu đã chạy trên đúng kết nố
 
 ## D7. Hộp thoại Drop và Truncate ghi rõ database và kết nối
 
-- [ ] Kết nối SQL Server `Local SQL` (hoặc PostgreSQL), trên cây chuột phải một bảng trong database `Sales` › **Drop…**.
+- [x] Kết nối SQL Server `Local SQL` (hoặc PostgreSQL), trên cây chuột phải một bảng trong database `Sales` › **Drop…**.
   **Đúng:** nội dung ghi `The table dbo.<bảng> in the database Sales on Local SQL and everything in it go. This cannot be undone.`.
-- [ ] Đổi database của trang sang database khác, rồi chuột phải cùng bảng trong `Sales` › **Truncate…**.
+  Kết quả 2026-11-21: PostgreSQL: "The table public.edit_test2 in the database demo_sales on postgresql:postgres@local and everything in it go. This cannot be undone."
+- [x] Đổi database của trang sang database khác, rồi chuột phải cùng bảng trong `Sales` › **Truncate…**.
   **Đúng:** ghi `Every row of dbo.<bảng> in the database Sales on Local SQL is deleted.`: database của nút cây, không phải của trang.
-- [ ] Với SQLite: chuột phải một bảng › **Drop…**.
+  Kết quả 2026-11-21: Trang ở `master`, Truncate bảng của `tempdb`: "Every row of dbo.Bang co khoang trang in the database tempdb on sqlserver:sa@localhost is deleted."
+- [x] Với SQLite: chuột phải một bảng › **Drop…**.
   **Đúng:** ghi `in <tên file>` (không có chữ "database"), vì SQLite không có database để chọn.
+  Kết quả 2026-11-21: In-memory: "The table main.thu_so2 in In memory and everything in it go." (không có chữ "database").
 
 ---
 
@@ -565,12 +626,14 @@ Phiên của một database mở trong một tác vụ riêng: các database kh�
 
 SQL Server và Redis bật TCP keepalive; D1 và Firebase hết chờ nếu server im quá 120 giây; câu SQL Server chạy lâu hơn 30 giây không còn bị cắt.
 
-- [ ] SQL Server: chạy `waitfor delay '00:00:40'; select 1;`.
+- [x] SQL Server: chạy `waitfor delay '00:00:40'; select 1;`.
   **Đúng:** sau 40 giây ra `1`; không báo "The server took too long" ở giây thứ 30.
+  Kết quả 2026-11-21: Ra `1` sau 40 giây.
 - [ ] SQL Server qua mạng (không phải localhost): chạy `waitfor delay '00:05:00';`, rồi rút dây mạng hoặc tắt Wi-Fi.
   **Đúng:** trong khoảng 2 phút báo **The connection was lost** (không treo "Running" mãi); cắm mạng lại, chạy `select 1;` thì chạy được.
-- [ ] SQL Server: chạy `waitfor delay '00:00:20';` ở một tab; trong lúc đó mở tab khác và mở cây một bảng.
+- [x] SQL Server: chạy `waitfor delay '00:00:20';` ở một tab; trong lúc đó mở tab khác và mở cây một bảng.
   **Đúng:** cây báo hết thời gian chờ hoặc chờ xong, không làm treo app; câu ở tab đầu vẫn chạy tới hết.
+  Kết quả 2026-11-21: Trong lúc câu chạy, mở cây `msdb` vẫn tải được, app không treo; câu chạy hết 20 giây, ra 1 dòng.
 - [ ] Redis: mở console, ngắt mạng tới server khoảng 2 phút, chạy `PING`.
   **Đúng:** lần đầu báo mất kết nối hoặc lỗi; nối mạng lại, `PING` lần sau ra `PONG`.
 
@@ -582,8 +645,10 @@ Khi một lần chạy bị dừng mà lệnh huỷ không tới server, lần c
 
 - [ ] Kết nối PostgreSQL, chạy `select pg_sleep(60);` rồi nhấn Esc ngay.
   **Đúng:** báo **Stopped** trong khoảng một giây.
+  Kết quả 2026-11-21: **Lỗi (E4):** Esc không dừng, `pg_sleep(60)` chạy đủ 60 giây. Bấm nút Stop thì dừng trong khoảng 1 giây.
 - [ ] Chạy `select * from generate_series(1, 5000000);` (giới hạn 1,000 dòng), nhấn Esc khi còn "Running"; ngay sau đó chạy `select pg_sleep(30);` và nhấn Esc.
   **Đúng:** lần thứ hai cũng dừng trong khoảng một giây, không phải chờ.
+  Kết quả 2026-11-21: Với nút Stop: lần thứ hai cũng dừng trong khoảng 1 giây. Esc không dừng (E4).
 
 ---
 
@@ -620,8 +685,9 @@ Phiên của một database không phải home, không dùng trong 10 phút, đ�
 
 Mở Kemable lần hai (cùng người dùng Windows, cùng bản) không mở cửa sổ thứ hai mà đưa cửa sổ đang chạy lên trước.
 
-- [ ] Mở Kemable bản cài. Mở lại từ Start menu (hoặc nhấp đúp `Kemable.exe`).
+- [x] Mở Kemable bản cài. Mở lại từ Start menu (hoặc nhấp đúp `Kemable.exe`).
   **Đúng:** không có cửa sổ mới; cửa sổ đang mở được đưa lên trước và nhận focus. Task Manager chỉ có một `Kemable.exe` (cùng các tiến trình WebView2 của nó).
+  Kết quả 2026-11-21: Chạy exe lần hai: vẫn một tiến trình `kemable-windows.exe`. Chưa kiểm focus.
 - [ ] Thu nhỏ cửa sổ, mở Kemable lần nữa.
   **Đúng:** cửa sổ hiện lại từ thanh taskbar, đúng kích thước cũ.
 - [ ] Trong lúc bản cài đang mở, chạy `pnpm tauri dev`.
@@ -637,14 +703,19 @@ Mở Kemable lần hai (cùng người dùng Windows, cùng bản) không mở c
   **Đúng:** đều chạy; nhấp đúp phóng to rồi thu lại.
 - [ ] Đổi kích thước cửa sổ, phóng to rồi thu lại.
   **Đúng:** nút phóng to đổi biểu tượng đúng trạng thái (cần `is-maximized` và sự kiện resize).
-- [ ] **Ctrl+=**, **Ctrl+-**, **Ctrl+0**.
+- [x] **Ctrl+=**, **Ctrl+-**, **Ctrl+0**.
   **Đúng:** zoom đổi, status bar ghi mức zoom.
-- [ ] Settings › About.
+  Kết quả 2026-11-21: Status bar ghi mức zoom.
+- [x] Settings › About.
   **Đúng:** dòng đầu ghi `Kemable <phiên bản>` (cần `app:allow-version`).
-- [ ] **Ctrl+O** mở file, Export một bảng ra CSV (hộp Save).
+  Kết quả 2026-11-21: Dòng đầu ghi `Kemable 0.1.0`.
+- [x] **Ctrl+O** mở file, Export một bảng ra CSV (hộp Save).
   **Đúng:** cả hai hộp thoại file mở.
-- [ ] Chạy một query, mở tab Live (PostgreSQL), Export: kết quả, sự kiện và tiến độ đến bình thường (Channel không cần quyền).
-- [ ] Đóng cửa sổ có sửa đổi bảng chưa lưu (A7): hộp hỏi hiện, **Close anyway** đóng được.
+  Kết quả 2026-11-21: Hộp Open và Save As đều mở.
+- [x] Chạy một query, mở tab Live (PostgreSQL), Export: kết quả, sự kiện và tiến độ đến bình thường (Channel không cần quyền).
+  Kết quả 2026-11-21: Kết quả, sự kiện Live và tiến độ Export đều tới.
+- [x] Đóng cửa sổ có sửa đổi bảng chưa lưu (A7): hộp hỏi hiện, **Close anyway** đóng được.
+  Kết quả 2026-11-21: Hộp hỏi hiện, Close anyway đóng app.
 - [ ] Mở DevTools (F12) › Console trong suốt các bước trên.
   **Đúng:** không có lỗi `not allowed by ACL`.
 
@@ -665,8 +736,9 @@ Các nút **Open** (thư mục dữ liệu), **License**, **Source code › Open
 
 ## D16. Ghi chú phát hành 0.1.0
 
-- [ ] Đọc `docs/releases/0.1.0.md` (cũng là nội dung bản nháp release trên GitHub).
+- [x] Đọc `docs/releases/0.1.0.md` (cũng là nội dung bản nháp release trên GitHub).
   **Đúng:** không còn câu "Kemable now updates itself"; dòng cuối nói app tự hỏi GitHub một lần mỗi lần mở và cài khi người dùng chọn Update, không ngụ ý có bản trước đó.
+  Kết quả 2026-11-21: Dòng cuối: "Updates in place: each launch asks GitHub once whether a newer version exists, and installs it when you choose Update."
 
 ---
 
@@ -674,7 +746,7 @@ Các nút **Open** (thư mục dữ liệu), **License**, **Source code › Open
 
 Trước đây sau một `INSERT` 2.000 dòng, câu `CREATE TABLE` hay `CREATE VIEW` chạy tiếp theo cũng báo "2,000 rows affected", vì SQLite giữ số dòng của câu sửa dữ liệu trước đó. Giờ chỉ `INSERT`, `UPDATE`, `DELETE`, `REPLACE` báo số dòng.
 
-- [ ] Mở SQLite in-memory, chạy cả khối (Ctrl+Enter trên từng câu, hoặc chạy hết):
+- [x] Mở SQLite in-memory, chạy cả khối (Ctrl+Enter trên từng câu, hoặc chạy hết):
   ```sql
   create table thu_dem (x int);
   with recursive c(x) as (select 1 union all select x + 1 from c limit 2000) insert into thu_dem select x from c;
@@ -683,6 +755,7 @@ Trước đây sau một `INSERT` 2.000 dòng, câu `CREATE TABLE` hay `CREATE V
   drop view thu_dem_v;
   ```
   **Đúng:** câu `insert` báo 2,000 dòng; `create view` và `drop view` báo xong mà không có số dòng; `update ... where 0` báo 0 dòng.
+  Kết quả 2026-11-21: `insert` báo 2,000 dòng; `create view`, `drop view` báo Done; `update … where 0` báo 0 dòng.
 
 ---
 
@@ -690,8 +763,9 @@ Trước đây sau một `INSERT` 2.000 dòng, câu `CREATE TABLE` hay `CREATE V
 
 Cột số dòng rộng theo số dòng của kết quả: đủ cho số dòng cuối, đo bằng chữ số rộng nhất của font Geist, đo lại khi font tải xong, và chừa chỗ cho dấu `− ` của dòng đánh dấu xoá.
 
-- [ ] SQLite in-memory, chạy `with recursive c(x) as (select 1 union all select x + 1 from c limit 2000000) select x, x * 2, 'row ' || x from c` với **No limit**. Nhấn **Ctrl+End**.
+- [x] SQLite in-memory, chạy `with recursive c(x) as (select 1 union all select x + 1 from c limit 2000000) select x, x * 2, 'row ' || x from c` với **No limit**. Nhấn **Ctrl+End**.
   **Đúng:** số `2000000` nằm gọn trong cột số dòng, cách vạch cột đầu một khoảng như ở dòng 1; không chạm hay đè lên cột đầu.
+  Kết quả 2026-11-21: `2000000` nằm gọn trong cột số dòng.
 - [ ] Cuộn bằng chuột, thanh cuộn và bàn phím trong lúc dòng còn đang về.
   **Đúng:** cột số dòng nở ra khi qua 9.999, 99.999, 999.999 dòng; cuộn vẫn mượt.
 - [ ] Mở một bảng có trên 100.000 dòng (Fetch all), chọn vài dòng cuối, nhấn **Del**.
@@ -707,6 +781,7 @@ Cột số dòng rộng theo số dòng của kết quả: đủ cho số dòng 
 
 - [ ] Chạy câu của mục D18. Cột thứ ba (`'row ' || x`) lúc đầu vừa `row 1`…`row 64`. Cuộn xuống dòng 1.000, rồi 100.000, rồi 2.000.000.
   **Đúng:** cột rộng dần ra để `row 100000`, `row 2000000` hiện đủ, không bị cắt; khi đã đủ rộng thì không đổi nữa.
+  Kết quả 2026-11-21: **Lỗi (E15):** tới dòng cuối, cột thứ ba cắt `row 2000000` thành "row 200000(" và `2000000` của cột `x` sát vạch: giá trị cùng số byte nhưng chữ số rộng hơn không được đo lại.
 - [ ] Kéo cạnh tiêu đề cột thứ ba cho hẹp lại, rồi cuộn tiếp tới vùng có giá trị dài hơn.
   **Đúng:** cột giữ độ rộng đã kéo.
 - [ ] Một cột chứa văn bản rất dài (ví dụ `select x, case when x = 5000 then printf('%.500c', 'a') else 'b' end from c` với `limit 10000`): cuộn tới dòng 5.000.
@@ -718,11 +793,13 @@ Cột số dòng rộng theo số dòng của kết quả: đủ cho số dòng 
 
 ## D20. Số đang sửa canh phải như các số xung quanh
 
-- [ ] Mở một bảng có cột số (ví dụ `int`, `decimal`). Nhấp đúp một ô số, gõ `12345`, Enter (chưa lưu).
+- [x] Mở một bảng có cột số (ví dụ `int`, `decimal`). Nhấp đúp một ô số, gõ `12345`, Enter (chưa lưu).
   **Đúng:** ô tô màu sửa, `12345` canh phải như các số khác trong cột, không nhảy sang trái.
+  Kết quả 2026-11-21: SQLite: `12345` trong cột `n` canh phải như `10` ở dòng dưới, ô có màu sửa.
 - [ ] Ở cùng cột, đặt một ô thành NULL (nút NULL trong editor).
   **Đúng:** `NULL` vẫn canh trái, chữ nghiêng nhạt như mọi NULL.
 - [ ] Thêm một dòng mới vào bảng, gõ số vào cột số.
   **Đúng:** số canh phải; các cột chữ canh trái; ô chưa gõ ghi `DEFAULT` canh trái.
-- [ ] Sửa một ô của cột chữ thành `123`.
+- [x] Sửa một ô của cột chữ thành `123`.
   **Đúng:** canh trái (theo kiểu của ô, không theo nội dung).
+  Kết quả 2026-11-21: `123` trong cột `t` (text) canh trái.
