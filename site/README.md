@@ -21,6 +21,16 @@ Without `pnpm worker`, a form sent from `pnpm dev` ends on a 404. `http://127.0.
 
 To read the local tables: `npx wrangler@4.156.0 d1 execute kemable-site --local --command "SELECT * FROM waitlist"`.
 
+## On this PC: the Kemable account
+
+`account_id` in `wrangler.toml` pins Kemable's Cloudflare account, so a `--remote` command run while `wrangler login` is on another account fails rather than touching that account. To make such commands work whatever the login, give `site/` a token of its own:
+
+1. Cloudflare dashboard, on Kemable's account › My Profile › API Tokens › Create Token › Custom token: Account › **D1** › Edit, Account Resources › Include › Kemable's account. Name it for this PC, such as `kemable-local`.
+2. Copy `site/.env.example` to `site/.env` and put the token after `CLOUDFLARE_API_TOKEN=`. Git ignores `.env`.
+3. Check, from `site/`: `npx wrangler@4.156.0 d1 list` lists `kemable-site`.
+
+Wrangler reads `site/.env` only when run in `site/`, and a token there wins over the login, so other projects keep their own accounts. The file also stops `wrangler dev` from handing these values to the local Worker. Deploys still run in CI with the repository's secrets.
+
 ## Deploying
 
 `.github/workflows/site.yml` checks, tests and builds the site on every pull request that touches `site/`. On a push to `main` it also applies the D1 migrations and runs `wrangler deploy`, which uploads `dist/` and `worker/` as the Worker `kemable` and binds it to its domain (`wrangler.toml`). Until the two secrets below exist, it builds and says it did not deploy.

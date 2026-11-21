@@ -2,6 +2,9 @@
 # `wrangler deploy` from .github/workflows/site.yml uploads dist/ and worker/; `wrangler dev` runs both here.
 name = "kemable"
 main = "worker/index.ts"
+# Kemable's Cloudflare account, whatever account `wrangler login` is on: a command run with another
+# account's login fails instead of acting there. Not a secret. site/.env holds this account's token.
+account_id = "6473bcbb74cafb5f4543fa258985ffd3"
 # No later than the newest date the pinned Wrangler's runtime knows (site.yml), or `wrangler dev` will not start.
 compatibility_date = "2026-10-30"
 

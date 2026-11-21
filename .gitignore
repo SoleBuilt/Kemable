@@ -8,7 +8,12 @@ dist/
 ui/windows/src-tauri/gen/
 CLAUDE.local.md
 site/.astro/
-# Wrangler's local state: the local D1 of `wrangler pages dev` (site/README.md)
+# Wrangler's local state: the local D1 of `wrangler dev` (site/README.md)
 site/.wrangler/
+# Secrets for this machine, such as Kemable's Cloudflare token (site/.env.example)
+.env
+.env.*
+!.env.example
+.dev.vars
 # tabstream's own test run (core/crates/tabstream/README.md)
 core/crates/tabstream/Cargo.lock
